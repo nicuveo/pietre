@@ -1,0 +1,237 @@
+cabal-version: 2.2
+
+-- This file has been generated from package.yaml by hpack version 0.37.0.
+--
+-- see: https://github.com/sol/hpack
+
+name:           pietre
+version:        0.0.0.1
+description:    Please see the README on GitHub at <https://github.com/githubuser/pietre#readme>
+homepage:       https://github.com/nicuveo/pietre#readme
+bug-reports:    https://github.com/nicuveo/pietre/issues
+author:         Antoine Leblanc
+maintainer:     nicuveo@gmail.com
+copyright:      2025 Antoine Leblanc
+license:        BSD-3-Clause
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/nicuveo/pietre
+
+library
+  exposed-modules:
+      Lang.Pietre
+      Lang.Pietre.Internal.Encoding
+      Lang.Pietre.Representations.AST
+      Lang.Pietre.Representations.Tokens
+      Lang.Pietre.Stages.Parsing
+      Lang.Pietre.Stages.Parsing.Lexer
+      Lang.Pietre.Stages.Parsing.Monad
+      Lang.Pietre.Stages.Parsing.Parser
+  other-modules:
+      Prelude
+  hs-source-dirs:
+      common
+      src
+  default-extensions:
+      AllowAmbiguousTypes
+      ApplicativeDo
+      BangPatterns
+      BlockArguments
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveLift
+      DeriveTraversable
+      DerivingVia
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      GeneralizedNewtypeDeriving
+      ImportQualifiedPost
+      InstanceSigs
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      NamedFieldPuns
+      NoImplicitPrelude
+      OverloadedStrings
+      PackageImports
+      RankNTypes
+      RecordWildCards
+      RoleAnnotations
+      ScopedTypeVariables
+      StandaloneDeriving
+      StrictData
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      ViewPatterns
+  ghc-options: -Wcompat -Werror -Wall -fwarn-tabs -foptimal-applicative-do
+  build-tools:
+      alex
+    , happy
+  build-depends:
+      array
+    , base
+    , containers
+    , hashable
+    , lens
+    , mtl
+    , text
+    , transformers
+    , unordered-containers
+  default-language: GHC2021
+
+executable pietre
+  main-is: Main.hs
+  other-modules:
+      Prelude
+      Paths_pietre
+  autogen-modules:
+      Paths_pietre
+  hs-source-dirs:
+      common
+      app
+  default-extensions:
+      AllowAmbiguousTypes
+      ApplicativeDo
+      BangPatterns
+      BlockArguments
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveLift
+      DeriveTraversable
+      DerivingVia
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      GeneralizedNewtypeDeriving
+      ImportQualifiedPost
+      InstanceSigs
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      NamedFieldPuns
+      NoImplicitPrelude
+      OverloadedStrings
+      PackageImports
+      RankNTypes
+      RecordWildCards
+      RoleAnnotations
+      ScopedTypeVariables
+      StandaloneDeriving
+      StrictData
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      ViewPatterns
+  ghc-options: -Wcompat -Werror -Wall -fwarn-tabs -foptimal-applicative-do -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      array
+    , base
+    , containers
+    , hashable
+    , lens
+    , mtl
+    , pietre
+    , text
+    , transformers
+    , unordered-containers
+  default-language: GHC2021
+
+test-suite tests
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Prelude
+      Arbitrary
+      Compile
+      E2E.Whitespace
+      Locate
+      Unit.Encode
+      Paths_pietre
+  autogen-modules:
+      Paths_pietre
+  hs-source-dirs:
+      common
+      test
+  default-extensions:
+      AllowAmbiguousTypes
+      ApplicativeDo
+      BangPatterns
+      BlockArguments
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveDataTypeable
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveLift
+      DeriveTraversable
+      DerivingVia
+      FlexibleContexts
+      FlexibleInstances
+      FunctionalDependencies
+      GADTs
+      GeneralizedNewtypeDeriving
+      ImportQualifiedPost
+      InstanceSigs
+      LambdaCase
+      MultiParamTypeClasses
+      MultiWayIf
+      NamedFieldPuns
+      NoImplicitPrelude
+      OverloadedStrings
+      PackageImports
+      RankNTypes
+      RecordWildCards
+      RoleAnnotations
+      ScopedTypeVariables
+      StandaloneDeriving
+      StrictData
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      ViewPatterns
+  ghc-options: -Wcompat -Werror -Wall -fwarn-tabs -foptimal-applicative-do -F -pgmF=tasty-autocollect
+  build-tool-depends:
+      tasty-autocollect:tasty-autocollect
+  build-depends:
+      array
+    , base
+    , containers
+    , directory
+    , filepath
+    , hashable
+    , lens
+    , mtl
+    , pietre
+    , tasty
+    , tasty-autocollect
+    , tasty-hunit
+    , tasty-quickcheck
+    , template-haskell
+    , text
+    , transformers
+    , unordered-containers
+  default-language: GHC2021

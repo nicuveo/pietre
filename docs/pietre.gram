@@ -1,0 +1,72 @@
+file: decl*
+
+decl: import_decl | type_decl | fun_decl
+
+
+import_decl: "import" path_expr ("as" Identifier)?
+
+
+type_decl: alias_decl | enum_decl | struct_decl | const_decl
+
+enum_decl: "enum" Identifier "=" Identifier ("|" Identifier)*
+
+alias_decl: "type" type_name_params "=" type_name_concrete
+
+struct_decl: "struct" type_name_params "{" struct_field ("," struct_field)* ","? "}"
+
+struct_field: Identifier ":" type_name_concrete
+
+
+const_decl: "const" Identifier "=" expr ";"
+
+let_decl: "let" Identifier "=" expr ";"
+
+
+type_name_params: Identifier ("<" type_args_names ">")?
+
+type_name_concrete: Identifier ("<" type_args_values ">")?
+
+type_args_names: Identifier ("," Identifier)*
+
+typr_args_values: type_name_concrete ("," type_name_concrete)*
+
+
+fun_decl: "fun" fun_name "(" fun_args ")" (":" type_name_concrete)? "{" block "}"
+
+fun_name: Identifier ("<" type_args_names ">")?
+
+block: statement*
+
+
+statement: const_decl | let_decl | assignment | expr_stmt | if_block | while_block | for_block | return | break | continue
+
+break: "break" ";"
+
+continue: "continue" ";"
+
+return: "return" expression ";"
+
+assignment: path_expr "=" expression ";"
+
+if_block: "if" "(" expression ")" "{" block "}" elif_block* else_block?
+
+elif_block: "elif" "(" expression ")" "{" block "}"
+
+else_block: "else" "{" block "}"
+
+expr_stmt: expression ";"
+
+
+expression: Literal | path_expr | operator_expr | group_expr | tuple_expr | index_expr | call_expr
+
+path_expr: Identifier ("." Identifier)*
+
+group_expr: "(" expression ")"
+
+tuple_expr: "(" expression ("," expression)+ ")"
+
+index_expr: expression "[" expression "]"
+
+call_expr: Identifier "(" call_args? ")"
+
+call_args: expression ("," expression)*
