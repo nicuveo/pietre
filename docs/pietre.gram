@@ -1,0 +1,192 @@
+# file structure
+
+document: declaration*
+declaration: use_decl | type_decl | const_decl | fun_decl
+
+# declarations
+
+## use
+
+use_decl: "use" use_tree ";"
+use_tree
+  : use_path ("as" IDENTIFIER)?
+  | use_path "::" "*"
+  | use_path "::" "{" IDENTIFIER ("," IDENTIFIER)? ","? "}"
+use_path: IDENTIFIER ("::" IDENTIFIER)*
+
+## type
+
+type_decl: alias_decl | enum_decl | struct_decl
+
+alias_decl: "type" IDENTIFIER generic_params? "=" type ";"
+
+enum_decl: "enum" IDENTIFIER "{" enum_items? "}"
+enum_items: IDENTIFIER ("," IDENTIFIER)* ","?
+
+struct_decl: "struct" IDENTIFIER generic_params? "{" struct_fields "}"
+struct_fields: struct_field ("," struct_field)* ","?
+struct_field: IDENTIFIER ":" type
+
+## constants
+
+const_decl: "const" IDENTIFIER ":" type "=" expression ";"
+
+## function
+
+fun_decl: "fn" IDENTIFIER generic_params? "(" fun_args? ")" fun_return? block
+fun_args: fun_arg ("," fun_arg)* ","?
+fun_arg: IDENTIFIER ":" (type | reference)
+fun_return: "->" type
+
+## generic
+
+generic_params: "<" IDENTIFIER ("," IDENTIFIER)* ","? ">"
+
+# statement
+
+block: "{" statement* "}"
+statement: block_stmt | inline_stmt ";"
+
+block_stmt
+    : if_stmt
+    | while_stmt
+    | for_stmt
+
+inline_stmt
+    : let_stmt
+    | return_stmt
+    | continue_stmt
+    | break_stmt
+    | expression
+
+## block
+
+if_stmt: "if" expression block else_stmt?
+else_stmt: "else" (if_stmt | block)
+
+while_stmt: "while" expression block
+
+for_stmt: "for" IDENTIFIER "in" expression block
+
+## inline
+
+let_stmt: "let" IDENTIFIER (":" type)? "=" expression
+return_stmt: "return" expression?
+continue_stmt: "continue"
+break_stmt: "break"
+
+# expressions
+
+expression
+  : grouped_expr
+  | path_expr
+  | field_access_expr
+  | call_expr
+  | array_expr
+  | index_expr
+  | struct_expr
+  | literal_expr
+  | operator_expr
+
+## grouped
+
+grouped_expr: "(" expression ")"
+
+## path
+
+path_expr: IDENTIFIER ("::" IDENTIFIER)* generic_args?
+
+## field access
+
+field_access_expr: expression "." IDENTIFIER
+
+## call
+
+call_expr: path_expr "(" call_args? ")"
+call_args: expression ("," expression)* ","?
+
+## array
+
+array_expr: "[" array_elements? "]"
+array_elements: expression ("," expression) ","?
+
+## index
+
+index_expr: expression "[" expression "]"
+
+## struct
+
+struct_expr: path_expr "{" field_expr ("," field_expr)* ","? "}"
+field_expr: IDENTIFIER ":" expression
+
+## literal
+
+literal_expr
+  : INT_LITERAL
+  | CHAR_LITERAL
+  | STRING_LITERAL
+  | "true"
+  | "false"
+
+## operator
+
+operator_expr
+   : reference_expr
+   | negation_expr
+   | arithmetic_expr
+   | comparison_expr
+   | boolean_expr
+   | cast_expr
+   | range_expr
+   | assignment_expr
+   | compound_assignment_expr
+
+reference_expr: "&" path_expr
+
+negation_expr: "!" expression | "-" expression
+
+arithmetic_expr
+    : expression "+" expression
+    | expression "-" expression
+    | expression "*" expression
+    | expression "/" expression
+    | expression "%" expression
+    | expression "^" expression
+
+comparison_expr
+    : expression "==" expression
+    | expression "!=" expression
+    | expression ">"  expression
+    | expression "<"  expression
+    | expression ">=" expression
+    | expression "<=" expression
+
+boolean_expr
+    : expression "&&" expression
+    | expression "||" expression
+
+cast_expr: expression "as" type
+
+range_expr: range_inclusive_expr | range_exclusive_expr
+range_inclusive_expr: expression "..=" expression
+range_exclusive_expr: expression ".."  expression
+
+assignment_expr: expression "=" expression
+
+compound_assignment_expr
+    : expression "+=" expression
+    | expression "-=" expression
+    | expression "*=" expression
+    | expression "/=" expression
+    | expression "%=" expression
+    | expression "^=" expression
+
+# type
+
+reference: "&" type
+type: path_type
+path_type: path_expr generic_args
+
+## generic
+
+generic_args: "<" type ("," type)* ","? ">"

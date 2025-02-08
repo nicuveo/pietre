@@ -1,0 +1,109 @@
+name:         pietre
+version:      0.0.0.1
+github:       "nicuveo/pietre"
+license:      BSD-3-Clause
+author:       "Antoine Leblanc"
+maintainer:   "nicuveo@gmail.com"
+copyright:    "2025 Antoine Leblanc"
+category:     Language, Compiler
+synopsis:     Compiler for a stack-based imperative language targeting Piet
+description:  Please see the README on GitHub at <https://github.com/nicuveo/pietre#readme>
+
+extra-source-files:
+- README.md
+
+language: GHC2021
+
+ghc-options:
+  - -Wall
+  - -Werror
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-uni-patterns
+  - -Wpartial-fields
+  - -Wredundant-constraints
+  - -Wtabs
+  - -Wno-unused-do-bind
+  - -fhide-source-paths
+  - -foptimal-applicative-do
+  - -funbox-small-strict-fields
+  - -fwrite-ide-info
+
+default-extensions:
+  - AllowAmbiguousTypes
+  - ApplicativeDo
+  - BlockArguments
+  - DataKinds
+  - DefaultSignatures
+  - DerivingVia
+  - FunctionalDependencies
+  - GADTs
+  - LambdaCase
+  - MultiWayIf
+  - NoImplicitPrelude
+  - OverloadedStrings
+  - PackageImports
+  - RecordWildCards
+  - RoleAnnotations
+  - StrictData
+  - TypeFamilies
+  - ViewPatterns
+
+dependencies:
+  - base
+  - array
+  - containers
+  - hashable
+  - lens
+  - mtl
+  - text
+  - transformers
+  - unordered-containers
+
+library:
+  source-dirs: [common, lib]
+  build-tools:
+    - alex
+    - happy
+
+executables:
+  pc:
+    main: Main.hs
+    source-dirs: [common, pc]
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - pietre
+
+  gramviz:
+    main: Main.hs
+    source-dirs: [common, gramviz]
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - extra
+      - megaparsec
+      - text-builder
+      - graphwiz
+
+tests:
+  tests:
+    main: Main.hs
+    source-dirs: [common, test]
+    build-tools:
+      - tasty-autocollect:tasty-autocollect
+    ghc-options:
+      - -F -pgmF=tasty-autocollect
+    dependencies:
+      - pietre
+      - filepath
+      - directory
+      - tasty
+      - tasty-hunit
+      - tasty-quickcheck
+      - tasty-autocollect
+      - template-haskell

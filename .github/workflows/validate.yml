@@ -1,0 +1,88 @@
+name: code validation
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+
+permissions:
+  contents: read
+
+jobs:
+  # Generates a list of files to analyze. The output depends on the type of event:
+  #   - for a pull request, this is the list of modified files;
+  #   - for a push, it's all Haskell files in the repo.
+  # There are two outputs to this job:
+  #   - haskell-files-text: a string in which files are separated by a space
+  #   - haskell-files-json: a string that represents a JSON array of file names
+  generate-file-list:
+    name: "generate: haskell file list"
+    runs-on: ubuntu-latest
+    outputs:
+      haskell-files-text: ${{ steps[format('{0}-files', github.event_name)].outputs.text }}
+      haskell-files-json: ${{ steps[format('{0}-files', github.event_name)].outputs.json }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pr_changed_files
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: tj-actions/changed-files@v45
+        with:
+          files: "**/*.hs"
+      - name: Export haskell files
+        id: pull_request-files
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          FILES: "${{ steps.pr_changed_files.outputs.all_changed_and_modified_files }}"
+        run: |
+          echo "text=$FILES" | tee -a "$GITHUB_OUTPUT"
+          echo "json=$(jq -c --null-input --arg str "$FILES" '$str | split(" ")')" | tee -a "$GITHUB_OUTPUT"
+      - name: Export haskell files
+        id: push-files
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          echo "text=$(git ls-files '*.hs' '*.hs-boot' | tr '\n' ' ')" | tee -a "$GITHUB_OUTPUT"
+          echo "json=$(jq -c --null-input --arg str "$(git ls-files '*.hs')" '$str | split("\n")')" | tee -a "$GITHUB_OUTPUT"
+
+  # Runs linters on the code.
+  # In the case of a pull-request, only lint modified files.
+  check-lint:
+    name: "check: lint"
+    runs-on: ubuntu-latest
+    needs: generate-file-list
+    if: needs.generate-file-list.outputs.haskell-files-text
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/hlint-setup@v2
+      - uses: haskell-actions/hlint-run@v2
+        with:
+          path: ${{ needs.generate-file-list.outputs.haskell-files-json }}
+
+  # Check formatting.
+  # In the case of a pull-request, only check modified files.
+  check-format:
+    name: "check: format"
+    runs-on: ubuntu-latest
+    needs: generate-file-list
+    if: needs.generate-file-list.outputs.haskell-files-text
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Run stylish-haskell"
+        env:
+          TARGETS: ${{ needs.generate-file-list.outputs.haskell-files-text }}
+        run: |
+          curl -sL https://raw.github.com/haskell/stylish-haskell/main/scripts/latest.sh | sh -s -- --inplace $TARGETS
+          for f in $(git diff --name-only --diff-filter=M); do
+            echo "::error file=$f::File is not formatted properly."
+          done
+
+  # Builds the code, builds the documentation, runs the test.
+  build:
+    name: "build"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: freckle/stack-action@v5
+        with:
+          stack-build-arguments: ""
+          test: false
