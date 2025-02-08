@@ -1,0 +1,130 @@
+name:                pietre
+version:             0.0.0.1
+github:              "nicuveo/pietre"
+license:             BSD-3-Clause
+author:              "Antoine Leblanc"
+maintainer:          "nicuveo@gmail.com"
+copyright:           "2025 Antoine Leblanc"
+
+extra-source-files:
+- README.md
+
+description:         Please see the README on GitHub at <https://github.com/githubuser/pietre#readme>
+
+language: GHC2021
+
+ghc-options:
+  - -Wcompat
+  - -Werror
+  - -Wall
+  - -Wno-unused-do-bind
+  - -fwarn-tabs
+  - -foptimal-applicative-do
+
+default-extensions:
+  - AllowAmbiguousTypes
+  - ApplicativeDo
+  - BangPatterns
+  - BlockArguments
+  - ConstraintKinds
+  - DataKinds
+  - DefaultSignatures
+  - DeriveDataTypeable
+  - DeriveFoldable
+  - DeriveFunctor
+  - DeriveGeneric
+  - DeriveLift
+  - DeriveTraversable
+  - DerivingVia
+  - FlexibleContexts
+  - FlexibleInstances
+  - FunctionalDependencies
+  - GADTs
+  - GeneralizedNewtypeDeriving
+  - ImportQualifiedPost
+  - InstanceSigs
+  - LambdaCase
+  - MultiParamTypeClasses
+  - MultiWayIf
+  - NamedFieldPuns
+  - NoImplicitPrelude
+  - OverloadedStrings
+  - PackageImports
+  - RankNTypes
+  - RecordWildCards
+  - RoleAnnotations
+  - ScopedTypeVariables
+  - StandaloneDeriving
+  - StrictData
+  - TupleSections
+  - TypeApplications
+  - TypeFamilies
+  - TypeOperators
+  - ViewPatterns
+
+dependencies:
+  - base
+  - array
+  - containers
+#  - extra
+  - hashable
+  - lens
+  - mtl
+  - text
+  - transformers
+  - unordered-containers
+
+library:
+  source-dirs: [common, lib]
+  other-modules:
+    - Prelude
+  build-tools:
+    - alex
+    - happy
+
+executables:
+  pc:
+    main: Main.hs
+    source-dirs: [common, pc]
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - pietre
+#      - filepath
+#      - directory
+#      - haskeline
+#      - monad-loops
+#      - pretty-simple
+
+  gramviz:
+    main: Main.hs
+    source-dirs: [common, gramviz]
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - extra
+      - megaparsec
+      - text-builder
+
+tests:
+  tests:
+    main: Main.hs
+    source-dirs: [common, test]
+    build-tools:
+      - tasty-autocollect:tasty-autocollect
+    ghc-options:
+      - -F -pgmF=tasty-autocollect
+    dependencies:
+      - pietre
+      - filepath
+      - directory
+      - tasty
+      - tasty-hunit
+      - tasty-quickcheck
+      # - tasty-golden
+      - tasty-autocollect
+      - template-haskell
