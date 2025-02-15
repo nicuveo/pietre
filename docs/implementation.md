@@ -3,36 +3,48 @@
 The code is segmented in several stages, that resemble the stages of a real compiler. Each stage has a corresponding file in `Lang/Pietre/Stages`, and each representation has a corresponding file in `Lang/Pietre/Representations`.
 
 ```mermaid
-stateDiagram-v2
-    s: source code
-    t: tokens
-    a: AST
-    i: IR
-    b: bytecode
-    r: image
-    e: error
+flowchart TD
+    subgraph fe ["<span style="font-size: 18pt; padding-right: 400px">front&nbspend</span>"]
+        s@{shape: doc, label: "source code"}
+        e@{shape: doc, label: "error"}
+        lexing@{shape: diamond, label: " "}
+        parsing@{shape: diamond, label: " "}
+        analysis@{shape: diamond, label: " "}
+        t1["tokens"]
+        a1["AST"]
+        a2["AST (resolved)"]
 
-    state lexing <<choice>>
-    state parsing <<choice>>
-    state analysis <<choice>>
+        s -- lexing --> lexing
+        lexing --> t1
+        t1 -- parsing --> parsing --> a1
+        a1 -- analysis --> analysis --> a2
 
-    s --> lexing: lexing
-    lexing --> t
-    lexing --> e: lexical error
+        lexing -. "lexical error" .-> e
+        parsing -. "syntax error" .-> e
+        analysis -. "type error" .-> e
+        analysis -. "name error" .-> e
+    end
 
-    t --> parsing: parsing
-    parsing --> a
-    parsing --> e: syntax error
+    subgraph me ["<span style="font-size: 18pt; padding-right: 400px">middle&nbspend</span>"]
+        l@{shape: doc, label: "LLVM IR"}
+        d@{shape: doc, label: "DOT"}
+        i1["IR"]
+        i2["IR (optimized)"]
 
-    a --> analysis: analysis
-    analysis --> i
-    analysis --> e: type error
-    analysis --> e: name error
+        i1 -.-> d
+        i2 -.-> d
+        i2 -.-> l
+        a2 -- lowering --> i1 -- optimization --> i2
+    end
 
-    i --> i: optimization
-    i --> b: code generation
-    b --> r: assembly
+    subgraph be ["<span style="font-size: 18pt; padding-right: 400px">back&nbspend</span>"]
+        p@{shape: doc, label: "PNG"}
+        b1["bytecode"]
+        i2 -- "code generation" --> b1
+        b1 -- assembly --> p
+    end
+
+    d ~~~ b1
 ```
 
 # Lexing and parsing
-
