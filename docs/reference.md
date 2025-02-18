@@ -4,7 +4,7 @@
 
 ### Overview
 
-This document provides a reference for the language as well as details of the implementation.
+This document provides a reference for the language, both its syntax and semantics.
 
 ### Versioning
 
@@ -12,13 +12,24 @@ Until a first version of the language is published, this document will be consid
 
 ### Acknowledgments
 
-The structure of this document is heavily inspired by the [Rust reference](https://doc.rust-lang.org/reference/introduction.html).
+The structure of this document is heavily inspired by the [Rust reference](https://doc.rust-lang.org/reference/introduction.html). This toy language is almost a strict subset of Rust from a syntax perspective, while its semantics differ.
+
+### Semantic differences with Rust
+
+While the differences between the two languages are vast, they are mostly the consequences of Piètre being a strict subset of Rust. There are, however, a few cases where they differ in less obvious ways, such as:
+
+- the `^` operator has a higher precedence, and is used to indicate an exponent instead of a bitwise `xor`;
+- all bindings are mutable by default, the `mut` keyword doesn't exist.
 
 ## Terminology
 
 ### Undefined
 
 This reference uses the term "UNDEFINED" to describe any part of either the compiler or the generated program that falls outside of the scope of this document. Any implementation is free to choose whichever behaviour it deems correct in such cases.
+
+### Incomplete
+
+This document being a draft, some areas of the language are yet to be properly defined. Whenever possible, relevant sections will indicate what's missing with the term "INCOMPLETE".
 
 ## Lexical structure
 
@@ -28,7 +39,7 @@ All input is assumed to be valid UTF-8. Failure to decode a UTF-8 codepoint will
 
 ### Whitespace
 
-Whitespace is not significant beyond the separation of tokens. Replacing all occurrences of one or more whitespace characters in a program by a different non-empty sequence of whitespace characters does not change the meaning of the program.
+Outside of string literals, Whitespace is not significant beyond the separation of tokens. Replacing all occurrences of one or more whitespace characters in a program by a different non-empty sequence of whitespace characters does not change the meaning of the program. Whitespace is defined using the "White_Space" [Unicode character property](https://en.wikipedia.org/wiki/Unicode_character_property#Whitespace).
 
 ### Tokens
 
@@ -95,7 +106,7 @@ Raw string literals are not supported.
 
 ### Keywords
 
-Keywords are special "identifiers" to which the language ascribes special meanings, and that consequently cannot be used as identifiers. They are:
+Keywords are special identifiers to which the language ascribes special meanings, and that consequently cannot be used as identifiers. They are:
 
 - `use`
 - `as`
@@ -110,7 +121,6 @@ Keywords are special "identifiers" to which the language ascribes special meanin
 - `for`
 - `in`
 - `let`
-- `mut`
 - `return`
 - `continue`
 - `break`
@@ -177,50 +187,387 @@ Delimiters are special operators that define a "bracket". The opening bracket mu
 
 The grammar is described in the accompanying [PEG grammar file](pietre.gram). This file is NOT used in the implementation, and is only provided as reference. You can visualize it as a series of flowchart in the [accompanying visualization](grammar.svg).
 
-A piètre file is made of a combination of *statements*. A statement is one of the following:
+### File structure
 
-- an import statement
+A piètre file is made of a combination of *declarations*. A declaration is one of the following:
+
+- an import declaration
 - a type declaration
+- a constant declaration
 - a function declaration
-- a constant value
 
-### Import
+### Declarations
+
+#### Import
 
 An import statement brings into scope the symbols declared in the imported file. Optionally, an import can be given a name, in which case all symbols are scoped within the given name. Module names in import statements point to files, relatives to the current module's location.
 
+```rust
+use Foo::Bar::*          // imports all symbols from Foo/Bar.pi
+use abc::xyz::{a, b}     // imports symbols a and b from abc/xyz.pi
+use control::monad as m  // imports symbols from control/monad.pi under the namespace m
 ```
-import Foo.Bar       // imports symbols from Foo/Bar.pi
-import Foo.Baz as Z  // imports symbols from Foo/Baz.pi
+
+Name conflicts in imports do not cause an error *at time of import*.
+
+#### Type
+
+The language allows for three kinds of type declarations: type aliases, enumerations, and records. Both records and type aliases allow for type arguments.
+
+##### Enumerations
+
+An enum defines the set of valid constructors for a given type, enclosed between brackets. The name of the enum is registered in the namespace as a type, and the enum's constructors as constant values. Enum constructors cannot take an argument.
+
+```rust
+enum Colour { Red | Green | Blue };
 ```
 
-### Type
+This example declares an enum `Colour`, with three constructors `Red`, `Green`, and `Blue`. Under the hood, an enum is represented as an integer, but offers greater type safety.
 
-The language allows for three kinds of type declarations: type aliases, enums, and records. Both records and type aliases allow for type arguments.
+##### Records
 
-```
-enum Colour = Red | Green | Blue;
-
+```rust
 struct Pair<A, B> {
   fst: A,
   snd: B,
 }
+```
 
+TODO
+
+##### Aliases
+
+```rust
 type HashMap<K, V> = Vec<Pair<K,V>>;
 ```
 
-### Functions
+TODO
 
-Functions likewise allow for type arguments. Operators are just functions of two arguments, that are defined with a precedence. A return type is optional; if missing, it is understood to be `void`, a special type that has no value. Custom operators are made of any combination of valid operator characters, however some combinations might be rejected (such as `.`, `;`, or `&`).
+#### Functions
 
-```
-fun scale(p: ref Point, s: int) {
-  &p.x *= s;
-  &p.y *= s;
+Functions are introduced with the `fn` keyword. They may declare a return type, with the `->` operator. If they don't, they are assumed to return the "unit" type `()`. Functions can optionally have type arguments.
+
+```rust
+fn gcd(a: int, b: int) -> int {
+  if b > a {
+    return gcd(b, a);
+  } else if b == 0 {
+    return a;
+  } else {
+    return gcd(b, a % b);
+  }
 }
 
-op 0 (*=)<T>(var: ref T, scale: T): T {
-  const res = var * scale;
-  &var = res;
-  return res;
+fn lookup<K, V>(map: &HashMap<K, V>, key: K) -> V {
+  for elem in map {
+    if elem.fst == key {
+      return elem.snd;
+    }
+  }
+  panic("lookup: key not found");
 }
 ```
+
+Function arguments are the only place in the language in which a type can be declared as a *reference*. Arguments declared as such are not passed by copy, but by reference, and can therefore be mutated from within the function.
+
+A function whose return type isn't `()` must always end on a `return` statement. An exception to that rule is the special type `void`: if an expression returns a value of type `void`, it will always typecheck, but all code after that expression will be deemed unreachable.
+
+### Statements
+
+Blocks are sets of statements delineated by curly brackets. Statements can be:
+
+- statements with a block argument:
+  - an `if` statement,
+  - a `while` statement,
+  - a `for` statement;
+- statements without a block argument, terminated by a `;`:
+  - a `let` statement, introducing a new binding,
+  - a `return` statement, with an optional expression argument,
+  - a `continue` statement,
+  - a `break` statement,
+  - a raw `expression`.
+
+#### If
+
+An `if` statement takes an expression that must evaluate to a boolean (any other type is considered a type error, there is no notion of "truthiness" of other types) and a block. The execution branches, and executes the block if and only if the expression evaluates to `true`. Optionally, if there is an `else` statement, it is executed instead when the expression evaluates to `false`.
+
+```rust
+if x < 0 {
+  foo();
+} else if x > 0 {
+  bar();
+} else {
+  baz();
+}
+```
+
+#### While
+
+A `while` statement similarly takes a boolean expression, and executes the associated block as long as the expression evaluates to `true`.
+
+```rust
+let done = false;
+while (!done) {
+  done = process_line();
+}
+```
+
+#### For
+
+A `for` statement takes an identifier, an expression that evaluates to an iterable type (the only one being the built-in type `vec`), and a block. The block is executed as many times as there are elements in the vector, which the identifier being bound successively to each element.
+
+> UNDEFINED!
+> The behaviour of a `for` loop that modifies the `vec` that is being iterated on is UNDEFINED.
+
+The loop variable is a copy of the vec item, not a reference to it: mutations of the variable are not reflected in the vector.
+
+```rust
+let input = read_lines("filename");
+
+```
+
+#### Let
+
+A `let` statement introduces a new variable into the scope, assigned to the associated value. A type annotation can optionally be given; if it's missing and the compiler is not able to determine the type of the variable from the expression, an error will be raised. Shadowing of an existing name is allowed, but will result in a warning.
+
+#### Return
+
+A `return` statement interrupts the flow of the execution and immediately ends the function's execution. If the function's return type isn't `void`, the `return` statement must contain an expression of the correct type.
+
+#### Continue
+
+A `continue` statement may only appear within the body of a loop (either `for` loop or `while` loop). The rest of the loop's block is skipped, and execution resumes from the loop's head. In the case of a while loop, the boolean condition is re-evaluated, in the case of a for loop the variable is bound to the next element. In case of several nested loops, the statement applies to the innermost loop in which it appears.
+
+#### Break
+
+A `break` statement may only appear within the body of a loop (either `for` loop or `while` loop). The rest of the loop's block is skipped, and execution resumes after the loop.
+
+### Expressions
+
+An expression can be one of the following:
+- a grouped expression
+- a path expression
+- a field access expression
+- a call expression
+- an array expression
+- an index expression
+- a struct expression
+- a range expression
+- a literal expression
+- an operator expression
+
+#### `lvalues` and `rvalues`
+
+Expressions are divided into two overlapping categories: *lvalues* and *rvalues*; all expressions are rvalues, not all of them are lvalues. The `l` and `r` represent their position respective to an assignment operator: all expressions are `rvalues`, because all of them are allowed on the right-hand side of an assignment, but few of them are allowed on the left-hand side.
+
+#### Precedence
+
+All expressions are evaluated in decreasing order of precedence. Associative expressions are grouped according to their associativity; for instance `1 + 2 + 3` is parsed as `(1 + 2) + 3`. The order of evaluation is as follows:
+
+- precedence 12: grouped expressions, path expressions, array expressions, literals
+- precedence 11: struct expressions
+- precedence 10: function calls, field expressions, array indexing expressions, grouped left to right
+- precedence 9: unary operators (`-`, `!`, `&`)
+- precedence 8: `as` cast operator, grouped left to right
+- precedence 7: the `^` exponentiation operator, grouped left to right
+- precedence 6: operators `*`, `/`, `%`, grouped left to right
+- precedence 5: operators `+`, `-`, grouped left to right
+- precedence 4: comparison operators; no grouping is performed, parentheses are required
+- precedence 3: `&&` boolean operator, grouped left to right
+- precedence 2: `||` boolean operator, grouped left to right
+- precedence 1: range expressions
+- precedence 0: assignment and compound assignment operators, right to left
+
+For instance, the following expression:
+
+```rust
+a &&= b ||= foo::bar("nya").z[4]['@'].v as int < 3 + -6 ^ 2 * 5 || len(8 % 9 .. t{u:1}.u) > 7 && true
+```
+
+Will be evaluated as if it had been grouped as follows:
+
+```rust
+(a)&&=((b)||=(((((((((foo::bar)("nya")).(z))[4])['@']).(v))as(int))<((3)+(((-6)^(2))*(5))))||((((len)(((8)%(9))..(((t){u:1}).(u))))>(7))&&(true))))
+```
+
+Or, in tree form:
+
+```mermaid
+flowchart BT
+    classDef p12 fill:#ffd0ff,color:black;
+    classDef p11 fill:#debcff,color:black;
+    classDef p10 fill:#bdb2ff,color:black;
+    classDef p09 fill:#a0c4ff,color:black;
+    classDef p08 fill:#9eddff,color:black;
+    classDef p07 fill:#9bf6ff,color:black;
+    classDef p06 fill:#b3fbdf,color:black;
+    classDef p05 fill:#caffbf,color:black;
+    classDef p04 fill:#fdffb6,color:black;
+    classDef p03 fill:#feebae,color:black;
+    classDef p02 fill:#ffd6a5,color:black;
+    classDef p01 fill:#ffc2a9,color:black;
+    classDef p00 fill:#ffadad,color:black;
+
+    type_int["**precedence: 12**<br>path int"]:::p12
+    lit_true["**precedence: 12**<br>literal true"]:::p12
+    lit_nya["**precedence: 12**<br>literal &quot;nya&quot;"]:::p12
+    lit_at["**precedence: 12**<br>literal '@'"]:::p12
+    lit_1["**precedence: 12**<br>literal 1"]:::p12
+    lit_2["**precedence: 12**<br>literal 2"]:::p12
+    lit_3["**precedence: 12**<br>literal 3"]:::p12
+    lit_4["**precedence: 12**<br>literal 4"]:::p12
+    lit_5["**precedence: 12**<br>literal 5"]:::p12
+    lit_6["**precedence: 12**<br>literal 6"]:::p12
+    lit_7["**precedence: 12**<br>literal 7"]:::p12
+    lit_8["**precedence: 12**<br>literal 8"]:::p12
+    lit_9["**precedence: 12**<br>literal 9"]:::p12
+    var_a["**precedence: 12**<br>path a"]:::p12
+    var_b["**precedence: 12**<br>path b"]:::p12
+    var_u["**precedence: 12**<br>path u"]:::p12
+    var_t["**precedence: 12**<br>path t"]:::p12
+    var_v["**precedence: 12**<br>path v"]:::p12
+    var_z["**precedence: 12**<br>path z"]:::p12
+    path_len["**precedence: 12**<br>path len"]:::p12
+    path_foo_bar["**precedence: 12**<br>path foo::bar"]:::p12
+    struct["**precedence: 11**<br>struct _$1_{u:_$2_}"]:::p11
+    dot_1["**precedence: 10**<br>field access _$1_ . _$2_"]:::p10
+    dot_2["**precedence: 10**<br>field access _$1_ . _$2_"]:::p10
+    dot_3["**precedence: 10**<br>field access _$1_ . _$2_"]:::p10
+    fun_call_1["**precedence: 10**<br>function call _$1_(_$2_)"]:::p10
+    fun_call_2["**precedence: 10**<br>function call _$1_(_$2_)"]:::p10
+    indexing_1["**precedence: 10**<br>array indexing _$1_[_$2_]"]:::p10
+    indexing_2["**precedence: 10**<br>array indexing _$1_[_$2_]"]:::p10
+    minus["**precedence: 9**<br>unary &minus; _$1_"]:::p09
+    cast["**precedence: 8**<br>cast _$1_ as _$2_"]:::p08
+    exponent["**precedence: 7**<br>exponent _$1_ &Hat; _$2_"]:::p07
+    mult["**precedence: 6**<br>multiplication _$1_ &ast; _$2_"]:::p06
+    mod["**precedence: 6**<br>modulo _$1_ &percnt; _$2_"]:::p06
+    plus["**precedence: 5**<br>addition _$1_ &plus; _$2_"]:::p05
+    comparison_gt["**precedence: 4**<br>comparison _$1_ &gt; _$2_"]:::p04
+    comparison_lt["**precedence: 4**<br>comparison _$1_ &lt; _$2_"]:::p04
+    and_bool["**precedence: 3**<br>lazy boolean _$1_ && _$2_"]:::p03
+    or_bool["**precedence: 2**<br>lazy boolean _$1_ || _$2_"]:::p02
+    range["**precedence: 1**<br>range _$1_ .. _$2_"]:::p01
+    and_assign["**precedence: 0**<br>assignment _$1_ &&= _$2_"]:::p00
+    or_assign["**precedence: 0**<br>assignment _$1_ ||= _$2_"]:::p00
+
+    struct ~~~ var_t
+    lit_4 ~~~ var_z
+    range ~~~ mod ~~~ lit_8
+    or_bool ~~~ comparison_lt
+    or_bool ~~~ and_bool
+
+    and_assign --> var_a
+    and_assign --> or_assign
+    or_assign --> var_b
+    or_assign --> or_bool
+    or_bool --> comparison_lt
+    or_bool --> and_bool
+    comparison_lt --> cast
+    comparison_lt --> plus
+    cast --> dot_2
+    cast --> type_int
+    dot_2 --> indexing_2
+    dot_2 --> var_v
+    indexing_2 --> indexing_1
+    indexing_2 --> lit_at
+    indexing_1 --> dot_1
+    indexing_1 --> lit_4
+    dot_1 --> fun_call_1
+    dot_1 --> var_z
+    fun_call_1 --> path_foo_bar
+    fun_call_1 --> lit_nya
+    plus --> lit_3
+    plus --> mult
+    mult --> exponent
+    mult --> lit_5
+    exponent --> minus
+    exponent --> lit_2
+    minus --> lit_6
+    and_bool --> comparison_gt
+    and_bool --> lit_true
+    comparison_gt --> fun_call_2
+    comparison_gt --> lit_7
+    fun_call_2 --> path_len
+    fun_call_2 --> range
+    range --> mod
+    range --> dot_3
+    mod --> lit_8
+    mod --> lit_9
+    dot_3 --> struct
+    dot_3 --> var_u
+    struct --> var_t
+    struct --> lit_1
+```
+
+#### Grouped
+
+Expressions can be wrapped between parentheses. The resulting expression evaluates to the same value as the inner expression. This can be used to control the order of evaluation.
+
+```rust
+let a =  2 + 3  * 4; // 14
+let b = (2 + 3) * 4; // 20
+```
+
+Grouped expressions are `rvalues` only, regardless of what the inner expression is.
+
+#### Path
+
+A path expression points to the name of a given symbol in scope. it can be qualified with the source module path to resolve ambiguities.
+
+```rust
+use foo::bar::{a, b};
+use xyz as u;
+use foo::baz::{b};
+
+fn asdhfla() {
+  let v1 = a;            // resolves to foo::bar::a
+  let v2 = foo::bar::a;  // resolves to foo::bar::a
+  let v3 = u.a           // resolve to xyz::a
+  let v4 = b             // ERROR! ambiguous name
+  let v5 = foo::bar::b;  // resolves to foo::bar::b
+}
+```
+
+Path expressions are valid `lvalues`, although they might be rejected if the assignment target is invalid.
+
+####  Field access
+
+Any expression that returns a struct can use the field access operator `.` to access an inner field of said struct.
+
+```rust
+struct Point {
+  x: int,
+  y: int,
+}
+
+int magnitude_sqr(p: &Point) -> int {
+  return p.x * p.x + p.y * p.y;
+}
+```
+
+Field access expressions are valid `lvalues`.
+
+#### Call
+
+A path expression that points to a function can be called by supplying the arguments between parentheses. The type of the expression is the return type of the function. In the case of a function returning `()`, the return value may not be used.
+
+A function call is not a valid `lvalue`.
+
+#### Array
+
+An array expression is a comma separated list of values between brackets. Its type is `vec<A>` where `A` is the type of the items in the array. If the array is empty, the type of `A` will be determined from context, and an error will be raised if there isn't enough information for the compiler to determine it. Otherwise, `A` will be determined by the first element, and all further elements will be expected to be of type `A`.
+
+```rust
+let a = [1,2,3];       // vec<int>
+let b = ["foo"];       // vec<str>
+let c = [];            // ERROR: ambiguous type
+let d: vec<int> = [];  // OK
+let e = [1,'2'];       // ERROR: '2' is not an int
+```
+
+An array expression is not a valid `lvalue`.
+
+#### Index
+
+Values within a `vec` can be accessed via their index, within brackets.

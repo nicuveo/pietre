@@ -626,22 +626,19 @@ digraph grammar {
         fontsize=16;
         fontname="Helvetica";
         let_stmt_00000000 [label="let", style="filled", shape="box", fillcolor="#FFD7A6"]
-        let_stmt_00000001 [label="mut", style="filled", shape="box", fillcolor="#FFD7A6"]
-        let_stmt_00000002 [label="IDENTIFIER"]
-        let_stmt_00000003 [label=":", style="filled", shape="diamond", fillcolor="#FDFFB6"]
-        let_stmt_00000004 [label="type"]
-        let_stmt_00000005 [label="=", style="filled", shape="diamond", fillcolor="#FDFFB6"]
-        let_stmt_00000006 [label="expression"]
+        let_stmt_00000001 [label="IDENTIFIER"]
+        let_stmt_00000002 [label=":", style="filled", shape="diamond", fillcolor="#FDFFB6"]
+        let_stmt_00000003 [label="type"]
+        let_stmt_00000004 [label="=", style="filled", shape="diamond", fillcolor="#FDFFB6"]
+        let_stmt_00000005 [label="expression"]
         let_stmt_START -> let_stmt_00000000
         let_stmt_00000000 -> let_stmt_00000001
         let_stmt_00000001 -> let_stmt_00000002
-        let_stmt_00000000 -> let_stmt_00000002
         let_stmt_00000002 -> let_stmt_00000003
         let_stmt_00000003 -> let_stmt_00000004
+        let_stmt_00000001 -> let_stmt_00000004
         let_stmt_00000004 -> let_stmt_00000005
-        let_stmt_00000002 -> let_stmt_00000005
-        let_stmt_00000005 -> let_stmt_00000006
-        let_stmt_00000006 -> let_stmt_END
+        let_stmt_00000005 -> let_stmt_END
       }
       subgraph cluster_return_stmt {
         label="return_stmt";
@@ -1434,7 +1431,7 @@ digraph grammar {
   generic_params_00000001 [shape="box", style="filled", fillcolor="#FFAEAE"]
   generic_params_00000003 [shape="box", style="filled", fillcolor="#FFAEAE"]
   for_stmt_00000001 [shape="box", style="filled", fillcolor="#FFAEAE"]
-  let_stmt_00000002 [shape="box", style="filled", fillcolor="#FFAEAE"]
+  let_stmt_00000001 [shape="box", style="filled", fillcolor="#FFAEAE"]
   path_expr_00000000 [shape="box", style="filled", fillcolor="#FFAEAE"]
   path_expr_00000002 [shape="box", style="filled", fillcolor="#FFAEAE"]
   field_access_expr_00000002 [shape="box", style="filled", fillcolor="#FFAEAE"]

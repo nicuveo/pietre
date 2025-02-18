@@ -11,7 +11,7 @@ use_decl: "use" use_tree ";"
 use_tree
   : use_path ("as" IDENTIFIER)?
   | use_path "::" "*"
-  | use_path "::" "{" IDENTIFIER ("," IDENTIFIER)? "}"
+  | use_path "::" "{" IDENTIFIER ("," IDENTIFIER)? ","? "}"
 use_path: IDENTIFIER ("::" IDENTIFIER)*
 
 ## type
@@ -21,8 +21,7 @@ type_decl: alias_decl | enum_decl | struct_decl
 alias_decl: "type" IDENTIFIER generic_params? "=" type ";"
 
 enum_decl: "enum" IDENTIFIER "{" enum_items? "}"
-enum_items: enum_item ("," enum_item)* ","?
-enum_item: IDENTIFIER
+enum_items: IDENTIFIER ("," IDENTIFIER)* ","?
 
 struct_decl: "struct" IDENTIFIER generic_params? "{" struct_fields "}"
 struct_fields: struct_field ("," struct_field)* ","?
@@ -71,7 +70,7 @@ for_stmt: "for" IDENTIFIER "in" expression block
 
 ## inline
 
-let_stmt: "let" "mut"? IDENTIFIER (":" type)? "=" expression
+let_stmt: "let" IDENTIFIER (":" type)? "=" expression
 return_stmt: "return" expression?
 continue_stmt: "continue"
 break_stmt: "break"
