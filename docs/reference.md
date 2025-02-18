@@ -267,7 +267,7 @@ fn lookup<K, V>(map: &HashMap<K, V>, key: K) -> V {
 
 Function arguments are the only place in the language in which a type can be declared as a *reference*. Arguments declared as such are not passed by copy, but by reference, and can therefore be mutated from within the function.
 
-A function whose return type isn't `()` must always end on a `return` statement. An exception to that rule is the special type `void`: if an expression returns a value of type `void`, it will always typecheck, but all code after that expression will be deemed unreachable.
+A function whose return type isn't `()` must always end on a `return` statement. An exception to that rule is the special type `!void`: if an expression returns a value of type `!void`, it will always typecheck, but all code after that expression will be deemed unreachable.
 
 ## Statements
 
@@ -329,7 +329,7 @@ A `let` statement introduces a new variable into the scope, assigned to the asso
 
 ### Return
 
-A `return` statement interrupts the flow of the execution and immediately ends the function's execution. If the function's return type isn't `void`, the `return` statement must contain an expression of the correct type.
+A `return` statement interrupts the flow of the execution and immediately ends the function's execution. If the function's return type isn't `()`, the `return` statement must contain an expression of the correct type.
 
 ### Continue
 
@@ -749,6 +749,10 @@ enum bool{false, true}
 ### Vec
 
 `vec` is a dynamically-sized array. Since Piet does not have a notion of a heap, arrays are directly stored on the stack. They are represented as `n+1` cells, the first one being the array's length. Due to this, passing vectors by copy is fairly inefficient.
+
+### Special types
+
+`()` and `!void` are special types that can't be used by users. They are equivalent, respectively, to an enum with only one constructor, and to an enum with no constructor at all. `()` is the type returned by functions that do not specify a return value. No expression or statement allows for the use of values of this type. Since there are no possible values of type `!void`, this type only appears in language constructs that want to indicate unreachable code, such as the built-in `panic` function.
 
 ## User defined
 
