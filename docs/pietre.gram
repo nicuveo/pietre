@@ -85,7 +85,6 @@ expression
   | array_expr
   | index_expr
   | struct_expr
-  | range_expr
   | literal_expr
   | operator_expr
 
@@ -120,12 +119,6 @@ index_expr: expression "[" expression "]"
 struct_expr: path_expr "{" field_expr ("," field_expr)* ","? "}"
 field_expr: IDENTIFIER ":" expression
 
-## range
-
-range_expr: range_inclusive_expr | range_exclusive_expr
-range_inclusive_expr: expression "..=" expression
-range_exclusive_expr: expression ".."  expression
-
 ## literal
 
 literal_expr
@@ -144,6 +137,7 @@ operator_expr
    | comparison_expr
    | boolean_expr
    | cast_expr
+   | range_expr
    | assignment_expr
    | compound_assignment_expr
 
@@ -172,6 +166,10 @@ boolean_expr
     | expression "||" expression
 
 cast_expr: expression "as" type
+
+range_expr: range_inclusive_expr | range_exclusive_expr
+range_inclusive_expr: expression "..=" expression
+range_exclusive_expr: expression ".."  expression
 
 assignment_expr: expression "=" expression
 

@@ -90,7 +90,8 @@ digraph grammar {
         use_tree_00000009 [label="IDENTIFIER"]
         use_tree_00000010 [label=",", style="filled", shape="diamond", fillcolor="#FDFFB6"]
         use_tree_00000011 [label="IDENTIFIER"]
-        use_tree_00000012 [label="}", style="filled", shape="diamond", fillcolor="#FDFFB6"]
+        use_tree_00000012 [label=",", style="filled", shape="diamond", fillcolor="#FDFFB6"]
+        use_tree_00000013 [label="}", style="filled", shape="diamond", fillcolor="#FDFFB6"]
         use_tree_START -> use_tree_00000000
         use_tree_00000000 -> use_tree_00000001
         use_tree_00000001 -> use_tree_00000002
@@ -105,10 +106,13 @@ digraph grammar {
         use_tree_00000010 -> use_tree_00000011
         use_tree_00000011 -> use_tree_00000012
         use_tree_00000009 -> use_tree_00000012
+        use_tree_00000012 -> use_tree_00000013
+        use_tree_00000011 -> use_tree_00000013
+        use_tree_00000009 -> use_tree_00000013
         use_tree_00000002 -> use_tree_END
         use_tree_00000000 -> use_tree_END
         use_tree_00000005 -> use_tree_END
-        use_tree_00000012 -> use_tree_END
+        use_tree_00000013 -> use_tree_END
       }
       subgraph cluster_use_path {
         label="use_path";
@@ -205,9 +209,9 @@ digraph grammar {
         labeljust="c";
         fontsize=16;
         fontname="Helvetica";
-        enum_items_00000000 [label="enum_item"]
+        enum_items_00000000 [label="IDENTIFIER"]
         enum_items_00000001 [label=",", style="filled", shape="diamond", fillcolor="#FDFFB6"]
-        enum_items_00000002 [label="enum_item"]
+        enum_items_00000002 [label="IDENTIFIER"]
         enum_items_00000003 [label=",", style="filled", shape="diamond", fillcolor="#FDFFB6"]
         enum_items_START -> enum_items_00000000
         enum_items_00000002 -> enum_items_00000001
@@ -218,18 +222,6 @@ digraph grammar {
         enum_items_00000003 -> enum_items_END
         enum_items_00000002 -> enum_items_END
         enum_items_00000000 -> enum_items_END
-      }
-      subgraph cluster_enum_item {
-        label="enum_item";
-        enum_item_START [label="", fixedsize="true", width=0.2, shape="circle"]
-        enum_item_END [label="", fixedsize="true", width=0.2, shape="doublecircle"]
-        bgcolor="white"
-        labeljust="c";
-        fontsize=16;
-        fontname="Helvetica";
-        enum_item_00000000 [label="IDENTIFIER"]
-        enum_item_START -> enum_item_00000000
-        enum_item_00000000 -> enum_item_END
       }
       subgraph cluster_struct_decl {
         label="struct_decl";
@@ -702,9 +694,8 @@ digraph grammar {
       expression_00000004 [label="array_expr"]
       expression_00000005 [label="index_expr"]
       expression_00000006 [label="struct_expr"]
-      expression_00000007 [label="range_expr"]
-      expression_00000008 [label="literal_expr"]
-      expression_00000009 [label="operator_expr"]
+      expression_00000007 [label="literal_expr"]
+      expression_00000008 [label="operator_expr"]
       expression_START -> expression_00000000
       expression_START -> expression_00000001
       expression_START -> expression_00000002
@@ -714,7 +705,6 @@ digraph grammar {
       expression_START -> expression_00000006
       expression_START -> expression_00000007
       expression_START -> expression_00000008
-      expression_START -> expression_00000009
       expression_00000000 -> expression_END
       expression_00000001 -> expression_END
       expression_00000002 -> expression_END
@@ -724,7 +714,6 @@ digraph grammar {
       expression_00000006 -> expression_END
       expression_00000007 -> expression_END
       expression_00000008 -> expression_END
-      expression_00000009 -> expression_END
     }
     subgraph cluster_s0011 {
       label="grouped";
@@ -969,60 +958,6 @@ digraph grammar {
       }
     }
     subgraph cluster_s0018 {
-      label="range";
-      bgcolor="#D9EdF8";
-      labeljust="l";
-      fontsize=20;
-      fontname="Helvetica-Oblique";
-      subgraph cluster_range_expr {
-        label="range_expr";
-        range_expr_START [label="", fixedsize="true", width=0.2, shape="circle"]
-        range_expr_END [label="", fixedsize="true", width=0.2, shape="doublecircle"]
-        bgcolor="white"
-        labeljust="c";
-        fontsize=16;
-        fontname="Helvetica";
-        range_expr_00000000 [label="range_inclusive_expr"]
-        range_expr_00000001 [label="range_exclusive_expr"]
-        range_expr_START -> range_expr_00000000
-        range_expr_START -> range_expr_00000001
-        range_expr_00000000 -> range_expr_END
-        range_expr_00000001 -> range_expr_END
-      }
-      subgraph cluster_range_inclusive_expr {
-        label="range_inclusive_expr";
-        range_inclusive_expr_START [label="", fixedsize="true", width=0.2, shape="circle"]
-        range_inclusive_expr_END [label="", fixedsize="true", width=0.2, shape="doublecircle"]
-        bgcolor="white"
-        labeljust="c";
-        fontsize=16;
-        fontname="Helvetica";
-        range_inclusive_expr_00000000 [label="expression"]
-        range_inclusive_expr_00000001 [label="..=", style="filled", shape="diamond", fillcolor="#FDFFB6"]
-        range_inclusive_expr_00000002 [label="expression"]
-        range_inclusive_expr_START -> range_inclusive_expr_00000000
-        range_inclusive_expr_00000000 -> range_inclusive_expr_00000001
-        range_inclusive_expr_00000001 -> range_inclusive_expr_00000002
-        range_inclusive_expr_00000002 -> range_inclusive_expr_END
-      }
-      subgraph cluster_range_exclusive_expr {
-        label="range_exclusive_expr";
-        range_exclusive_expr_START [label="", fixedsize="true", width=0.2, shape="circle"]
-        range_exclusive_expr_END [label="", fixedsize="true", width=0.2, shape="doublecircle"]
-        bgcolor="white"
-        labeljust="c";
-        fontsize=16;
-        fontname="Helvetica";
-        range_exclusive_expr_00000000 [label="expression"]
-        range_exclusive_expr_00000001 [label="..", style="filled", shape="diamond", fillcolor="#FDFFB6"]
-        range_exclusive_expr_00000002 [label="expression"]
-        range_exclusive_expr_START -> range_exclusive_expr_00000000
-        range_exclusive_expr_00000000 -> range_exclusive_expr_00000001
-        range_exclusive_expr_00000001 -> range_exclusive_expr_00000002
-        range_exclusive_expr_00000002 -> range_exclusive_expr_END
-      }
-    }
-    subgraph cluster_s0019 {
       label="literal";
       bgcolor="#D9EdF8";
       labeljust="l";
@@ -1053,7 +988,7 @@ digraph grammar {
         literal_expr_00000004 -> literal_expr_END
       }
     }
-    subgraph cluster_s0020 {
+    subgraph cluster_s0019 {
       label="operator";
       bgcolor="#D9EdF8";
       labeljust="l";
@@ -1073,8 +1008,9 @@ digraph grammar {
         operator_expr_00000003 [label="comparison_expr"]
         operator_expr_00000004 [label="boolean_expr"]
         operator_expr_00000005 [label="cast_expr"]
-        operator_expr_00000006 [label="assignment_expr"]
-        operator_expr_00000007 [label="compound_assignment_expr"]
+        operator_expr_00000006 [label="range_expr"]
+        operator_expr_00000007 [label="assignment_expr"]
+        operator_expr_00000008 [label="compound_assignment_expr"]
         operator_expr_START -> operator_expr_00000000
         operator_expr_START -> operator_expr_00000001
         operator_expr_START -> operator_expr_00000002
@@ -1083,6 +1019,7 @@ digraph grammar {
         operator_expr_START -> operator_expr_00000005
         operator_expr_START -> operator_expr_00000006
         operator_expr_START -> operator_expr_00000007
+        operator_expr_START -> operator_expr_00000008
         operator_expr_00000000 -> operator_expr_END
         operator_expr_00000001 -> operator_expr_END
         operator_expr_00000002 -> operator_expr_END
@@ -1091,6 +1028,7 @@ digraph grammar {
         operator_expr_00000005 -> operator_expr_END
         operator_expr_00000006 -> operator_expr_END
         operator_expr_00000007 -> operator_expr_END
+        operator_expr_00000008 -> operator_expr_END
       }
       subgraph cluster_reference_expr {
         label="reference_expr";
@@ -1266,6 +1204,53 @@ digraph grammar {
         cast_expr_00000001 -> cast_expr_00000002
         cast_expr_00000002 -> cast_expr_END
       }
+      subgraph cluster_range_expr {
+        label="range_expr";
+        range_expr_START [label="", fixedsize="true", width=0.2, shape="circle"]
+        range_expr_END [label="", fixedsize="true", width=0.2, shape="doublecircle"]
+        bgcolor="white"
+        labeljust="c";
+        fontsize=16;
+        fontname="Helvetica";
+        range_expr_00000000 [label="range_inclusive_expr"]
+        range_expr_00000001 [label="range_exclusive_expr"]
+        range_expr_START -> range_expr_00000000
+        range_expr_START -> range_expr_00000001
+        range_expr_00000000 -> range_expr_END
+        range_expr_00000001 -> range_expr_END
+      }
+      subgraph cluster_range_inclusive_expr {
+        label="range_inclusive_expr";
+        range_inclusive_expr_START [label="", fixedsize="true", width=0.2, shape="circle"]
+        range_inclusive_expr_END [label="", fixedsize="true", width=0.2, shape="doublecircle"]
+        bgcolor="white"
+        labeljust="c";
+        fontsize=16;
+        fontname="Helvetica";
+        range_inclusive_expr_00000000 [label="expression"]
+        range_inclusive_expr_00000001 [label="..=", style="filled", shape="diamond", fillcolor="#FDFFB6"]
+        range_inclusive_expr_00000002 [label="expression"]
+        range_inclusive_expr_START -> range_inclusive_expr_00000000
+        range_inclusive_expr_00000000 -> range_inclusive_expr_00000001
+        range_inclusive_expr_00000001 -> range_inclusive_expr_00000002
+        range_inclusive_expr_00000002 -> range_inclusive_expr_END
+      }
+      subgraph cluster_range_exclusive_expr {
+        label="range_exclusive_expr";
+        range_exclusive_expr_START [label="", fixedsize="true", width=0.2, shape="circle"]
+        range_exclusive_expr_END [label="", fixedsize="true", width=0.2, shape="doublecircle"]
+        bgcolor="white"
+        labeljust="c";
+        fontsize=16;
+        fontname="Helvetica";
+        range_exclusive_expr_00000000 [label="expression"]
+        range_exclusive_expr_00000001 [label="..", style="filled", shape="diamond", fillcolor="#FDFFB6"]
+        range_exclusive_expr_00000002 [label="expression"]
+        range_exclusive_expr_START -> range_exclusive_expr_00000000
+        range_exclusive_expr_00000000 -> range_exclusive_expr_00000001
+        range_exclusive_expr_00000001 -> range_exclusive_expr_00000002
+        range_exclusive_expr_00000002 -> range_exclusive_expr_END
+      }
       subgraph cluster_assignment_expr {
         label="assignment_expr";
         assignment_expr_START [label="", fixedsize="true", width=0.2, shape="circle"]
@@ -1335,7 +1320,7 @@ digraph grammar {
       }
     }
   }
-  subgraph cluster_s0021 {
+  subgraph cluster_s0020 {
     label="type";
     bgcolor="#E4F1EE";
     labeljust="l";
@@ -1381,7 +1366,7 @@ digraph grammar {
       path_type_00000000 -> path_type_00000001
       path_type_00000001 -> path_type_END
     }
-    subgraph cluster_s0022 {
+    subgraph cluster_s0021 {
       label="generic";
       bgcolor="#D9EdF8";
       labeljust="l";
@@ -1422,7 +1407,8 @@ digraph grammar {
   use_path_00000002 [shape="box", style="filled", fillcolor="#FFAEAE"]
   alias_decl_00000001 [shape="box", style="filled", fillcolor="#FFAEAE"]
   enum_decl_00000001 [shape="box", style="filled", fillcolor="#FFAEAE"]
-  enum_item_00000000 [shape="box", style="filled", fillcolor="#FFAEAE"]
+  enum_items_00000000 [shape="box", style="filled", fillcolor="#FFAEAE"]
+  enum_items_00000002 [shape="box", style="filled", fillcolor="#FFAEAE"]
   struct_decl_00000001 [shape="box", style="filled", fillcolor="#FFAEAE"]
   struct_field_00000000 [shape="box", style="filled", fillcolor="#FFAEAE"]
   const_decl_00000001 [shape="box", style="filled", fillcolor="#FFAEAE"]
