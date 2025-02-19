@@ -113,7 +113,7 @@ As a bonus goal, we aim to also translate our IR into the LLVM IR, allowing for 
 
 One of the difficulties in working with Piet is the fact that the instruction pointer is *four-dimensional*. At any point, the interpreter knows our coordinates in the image, the direction in which we're moving, and whether we should check the leftmost extremity of the next "codel" edge, or the rightmost one. A program must therefore be constructed by taking those constraints into account. A reliable approach is to define "snippets", basic structures that can easily be replicated. For instance, consider the following program: it prompts for a number *n*, and prints the *n*th element of the fibonacci sequence.
 
-![a fibonacci Piet program](/docs/img/fibonacci.png)
+<p align="center"><img src="/docs/img/fibonacci.png", alt="a fibonacci Piet program" /></p>
 
 It showcases some techniques we will employ when building our programs. The rest of this section is dedicated to documenting those building blocks, to document the gist of our approach.
 
@@ -121,9 +121,9 @@ It showcases some techniques we will employ when building our programs. The rest
 
 Each function, and each label within each function, is assigned a unique integer value, with `main` starting at address 0 in this example. The program starts by pushing a 0 on the stack and navigating to `main`, using the "main bus" that circumnavigates the image. At the top of the image is a line that checks that the current address on top of the stack belongs to the next function.
 
-![a line of Piet instructions](/docs/img/main_bus.png)
+<p align="center"><img src="/docs/img/main_bus.png", alt="a line of Piet instructions" /></p>
 
-This small set of instructions checks whether the top value of the stack is smaller than 2, as the corresponding function has two labels. The result of this comparison is a 0 or 1 value on top of the stack, above the address. We then execute a `pointer` instruciton, which pops our top value, and rotates the _Direction Pointer_ clockwise by the popped amount, which is either 0 or 1; meaning that if the current address is within the function, we will rotate to start heading below the yellow pixels, and otherwise we will continue on the same line to test the next function.
+This small set of instructions checks whether the top value of the stack is smaller than 2, as the corresponding function has two labels. The result of this comparison is a 0 or 1 value on top of the stack, above the address. We then execute a `pointer` instruction, which pops our top value, and rotates the _Direction Pointer_ clockwise by the popped amount, which is either 0 or 1; meaning that if the current address is within the function, we will rotate to start heading below the yellow pixels, and otherwise we will continue on the same line to test the next function.
 
 To make a function call, a function pushes a return address to the stack, then pushes the arguments to the function, then finally pushes the address of the function it wishes to call, and then redirects the execution towards the main bus. A `return` instruction from a function simply brings the return address to the top of the stack and returns to the main bus.
 
@@ -133,22 +133,22 @@ Functions do not need a lot of the space: since all instructions but one only re
 
 Function entrances use a similar structure to the function selection on the main bus, albeit simpler. The structure in our sample program uses this loop shape, to avoid having to manipulate direction pointer manually, while also allowing the flow of the function to cross the entrance block without it resulting in any instruction being executed.
 
-![a Piet instruction block](/docs/img/function_entrance.png)
+<p align="center"><img src="/docs/img/function_entrance.png", alt="a Piet instruction block" /></p>
 
 Function exits do a very similar loop-de-loop to insert themselves in the exit bus.
 
-![a Piet instruction block](/docs/img/function_exit.png)
+<p align="center"><img src="/docs/img/function_exit.png", alt="a Piet instruction block" /></p>
 
 ### Conditional jumps
 
 Another structure this example demonstrate is a conditional jump, specifically a "jump if zero". To do this, the function first executes a `not` instruction, to invert the condition and to make sure it's a 0 or 1 value. It then pushes to the stack the address to which it should jump, uses a roll instruction to bring the conditional value to the top, and then executes a `switch` instruction. If the condition value is 1 (meaning the original value before the `not` was indeed zero), the _Codel Chooser_ switches from left to right, meaning we select the codel of the right, while otherwise we continue through the code on the left.
 
-![a Piet instruction block](/docs/img/jump_when_zero.png)
+<p align="center"><img src="/docs/img/jump_when_zero.png", alt="a Piet instruction block" /></p>
 
 ### Ending
 
 To stop the execution, we need to "trap" the instruction pointer. Specifically, we need to find a structure in which, for all four directions of the _Direction Pointer_, for each value of the _Codel Chooser_, there is nowhere to go, like in this snippet.
 
-![a Piet instruction block](/docs/img/ending.png)
+<p align="center"><img src="/docs/img/ending.png", alt="a Piet instruction block" /></p>
 
 [^1]: By Matthias Braun, Sebastian Buchwald, Sebastian Hack, Roland Leißa, Christoph Mallon, and Andreas Zwinkau.
