@@ -1,0 +1,53 @@
+name: code validation
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: freckle/stack-action@v5
+        with:
+          stack-build-arguments: ""
+          test: false
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: changed-files
+        uses: tj-actions/changed-files@v45
+        with:
+          files: "**/*.hs"
+          json: true
+          escape_json: false
+      - uses: haskell-actions/hlint-setup@v2
+      - if: steps.changed-files.outputs.all_changed_and_modified_files != '[]'
+        uses: haskell-actions/hlint-run@v2
+        with:
+          path: ${{ steps.changed-files.outputs.all_changed_and_modified_files }}
+
+  formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: changed-files
+        uses: tj-actions/changed-files@v45
+        with:
+          files: "**/*.hs"
+      - if: steps.changed-files.outputs.all_changed_and_modified_files
+        env:
+          TARGETS: ${{ steps.changed-files.outputs.all_changed_and_modified_files }}
+        run: |
+          curl -sL https://raw.github.com/haskell/stylish-haskell/main/scripts/latest.sh | sh -s -- --inplace $TARGETS
+          for f in $(git diff --name-only --diff-filter=M); do
+            echo "::error file=$f::File is not formatted properly."
+          done

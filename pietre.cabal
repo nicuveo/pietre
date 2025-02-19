@@ -36,6 +36,7 @@ library
       Lang.Pietre.Stages.Assembling
       Lang.Pietre.Stages.Generation
       Lang.Pietre.Stages.Linking
+      Lang.Pietre.Stages.Lowering
       Lang.Pietre.Stages.Parsing
       Lang.Pietre.Stages.Parsing.Lexer
       Lang.Pietre.Stages.Parsing.Monad
