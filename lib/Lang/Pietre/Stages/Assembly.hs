@@ -1,4 +1,4 @@
-module Lang.Pietre.Stages.Assembling where
+module Lang.Pietre.Stages.Assembly where
 
 {-
 import "this" Prelude
