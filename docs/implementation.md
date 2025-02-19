@@ -66,7 +66,7 @@ At the end of those two phases is the [AST](/lib/Lang/Pietre/Representations/AST
 ### Semantic analysis
 
 We then go through the AST to do [semantic analysis](/lib/Lang/Pietre/Stages/Analysis.hs) of the parsed program. This includes:
-  - validating language requirements that are not expressed in the grammar (such as restrictions on _rvalues_),
+  - validating language requirements that are not expressed in the grammar (such as restrictions on _lvalues_),
   - resolving the name of all symbols,
   - checking the type of expressions,
   - performing some control flow analysis.
@@ -79,7 +79,7 @@ From this, we move on to the [IR](/lib/Lang/Pietre/Representations/IR.hs): a ver
 
 ### Optimization
 
-Some optimizations are performed as part of the lowering stage, such as obvious cases of dead-code analysis and constant propagation. We can however perform [further optimizations](/lib/Lang/Pietre/Stages/Optimization.hs) on the IR, such as TODO.
+Some optimizations are performed as part of the lowering stage, such as obvious cases of dead-code analysis and constant propagation. We can however perform [further optimizations](/lib/Lang/Pietre/Stages/Optimization.hs) on the IR, such as: (TODO: detail which optimizations we perform once we perform them).
 
 ### Code generation
 

@@ -1,7 +1,7 @@
 <div align="center">
   <img src="/docs/img/logo.png" alt="the project logo, which is itself a Piet program", style="float:left"/>
-  
-[Documentation] | [Twitch] <!-- | [Youtube] -->
+
+[Documentation](/docs) | [Twitch] <!-- | [Youtube] -->
 
 </div>
 
@@ -10,6 +10,8 @@
 Piètre is a small stack-based imperative language that compiles to [Piet](https://www.dangermouse.net/esoteric/piet.html), an esoteric language in which the source code is an image[^1]. Its syntax is similar to Rust's[^2].
 
 The main goal of this project is to be educational: it aims first at being a good resource to learn about compilers and how to implement them. A secondary objective is to provide a reference for how to organize a medium-size Haskell codebase. Furthermore, until 1.0 is reached, the code of this project will be entirely written [live on Twitch][Twitch]. Streams are announced ahead of time on the [channel's schedule][Twitch schedule].
+
+_Piètre_ means "shoddy" or "second-rate" in french.
 
 <br />
 
@@ -44,8 +46,6 @@ Once the project has made enough progress, a roadmap to 1.0 will be detailed her
 
 <br />
 
-[Documentation]: /docs/
-[Reference]: /docs/reference.md
 [Twitch]: https://twitch.tv/nicuveo
 [Youtube]: https://www.youtube.com/@nicuveo
 [Twitch schedule]: https://www.twitch.tv/nicuveo/schedule
@@ -53,5 +53,5 @@ Once the project has made enough progress, a roadmap to 1.0 will be detailed her
 [Stack]: https://docs.haskellstack.org/en/stable/
 
 [^1]: The logo of the project is itself a valid Piet program, that behaves like `cat`. You can try it with `echo "foo" | npiet -q logo.png`.
-[^2]: But with fewer features. See [the reference][Reference] for more information.
+[^2]: But with fewer features. See the reference for more information.
 [^3]: Once it works, that is.
