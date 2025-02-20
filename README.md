@@ -13,6 +13,8 @@ The main goal of this project is to be educational: it aims first at being a goo
 
 _Piètre_ means "shoddy" or "second-rate" in french.
 
+[![main build status][ShieldM]][Actionm] [![dev build status][ShieldD]][ActionD]
+
 <br />
 
 ## Getting started
@@ -46,6 +48,10 @@ Once the project has made enough progress, a roadmap to 1.0 will be detailed her
 
 <br />
 
+[ActionM]: https://github.com/nicuveo/pietre/actions/workflows/validate.yml?query=branch%3Amain
+[ActionD]: https://github.com/nicuveo/pietre/actions/workflows/validate.yml?query=branch%3Adev
+[ShieldM]: https://img.shields.io/github/actions/workflow/status/nicuveo/pietre/validate.yml?logo=github&event=push&style=flat&branch=main&label=main
+[ShieldD]: https://img.shields.io/github/actions/workflow/status/nicuveo/pietre/validate.yml?logo=github&event=push&style=flat&branch=dev&label=dev
 [Twitch]: https://twitch.tv/nicuveo
 [Youtube]: https://www.youtube.com/@nicuveo
 [Twitch schedule]: https://www.twitch.tv/nicuveo/schedule
