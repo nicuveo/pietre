@@ -1,72 +1,58 @@
-name:                pietre
-version:             0.0.0.1
-github:              "nicuveo/pietre"
-license:             BSD-3-Clause
-author:              "Antoine Leblanc"
-maintainer:          "nicuveo@gmail.com"
-copyright:           "2025 Antoine Leblanc"
+name:         pietre
+version:      0.0.0.1
+github:       "nicuveo/pietre"
+license:      BSD-3-Clause
+author:       "Antoine Leblanc"
+maintainer:   "nicuveo@gmail.com"
+copyright:    "2025 Antoine Leblanc"
+category:     Language, Compiler
+synopsis:     Compiler for a stack-based imperative language targeting Piet
+description:  Please see the README on GitHub at <https://github.com/nicuveo/pietre#readme>
 
 extra-source-files:
 - README.md
 
-description:         Please see the README on GitHub at <https://github.com/githubuser/pietre#readme>
-
 language: GHC2021
 
 ghc-options:
-  - -Wcompat
-  - -Werror
   - -Wall
+  - -Werror
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-uni-patterns
+  - -Wpartial-fields
+  - -Wredundant-constraints
+  - -Wtabs
   - -Wno-unused-do-bind
-  - -fwarn-tabs
+  - -fhide-source-paths
   - -foptimal-applicative-do
+  - -funbox-small-strict-fields
+  - -fwrite-ide-info
 
 default-extensions:
   - AllowAmbiguousTypes
   - ApplicativeDo
-  - BangPatterns
   - BlockArguments
-  - ConstraintKinds
   - DataKinds
   - DefaultSignatures
-  - DeriveDataTypeable
-  - DeriveFoldable
-  - DeriveFunctor
-  - DeriveGeneric
-  - DeriveLift
-  - DeriveTraversable
   - DerivingVia
-  - FlexibleContexts
-  - FlexibleInstances
   - FunctionalDependencies
   - GADTs
-  - GeneralizedNewtypeDeriving
-  - ImportQualifiedPost
-  - InstanceSigs
   - LambdaCase
-  - MultiParamTypeClasses
   - MultiWayIf
-  - NamedFieldPuns
   - NoImplicitPrelude
   - OverloadedStrings
   - PackageImports
-  - RankNTypes
   - RecordWildCards
   - RoleAnnotations
-  - ScopedTypeVariables
-  - StandaloneDeriving
   - StrictData
-  - TupleSections
-  - TypeApplications
   - TypeFamilies
-  - TypeOperators
   - ViewPatterns
 
 dependencies:
   - base
   - array
   - containers
-#  - extra
   - hashable
   - lens
   - mtl
@@ -76,8 +62,6 @@ dependencies:
 
 library:
   source-dirs: [common, lib]
-  other-modules:
-    - Prelude
   build-tools:
     - alex
     - happy
@@ -92,11 +76,6 @@ executables:
       - -with-rtsopts=-N
     dependencies:
       - pietre
-#      - filepath
-#      - directory
-#      - haskeline
-#      - monad-loops
-#      - pretty-simple
 
   gramviz:
     main: Main.hs
@@ -125,6 +104,5 @@ tests:
       - tasty
       - tasty-hunit
       - tasty-quickcheck
-      # - tasty-golden
       - tasty-autocollect
       - template-haskell

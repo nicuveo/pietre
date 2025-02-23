@@ -1,3 +1,5 @@
+module Main where
+
 import "this" Prelude
 
 import System.Exit

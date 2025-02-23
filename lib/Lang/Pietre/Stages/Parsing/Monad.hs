@@ -119,7 +119,7 @@ alexInputPrevChar = view parserPrevChar
 alexError :: Parser a
 alexError = do
   Position _ line column <- use parserPosition
-  throwError $ "lexical error at line " ++ (show line) ++ ", column " ++ (show column)
+  throwError $ "lexical error at line " ++ show line ++ ", column " ++ show column
 
 
 -- happy functions
@@ -127,4 +127,4 @@ alexError = do
 happyError :: Token -> Parser a
 happyError _ = do
   Position _ line column <- use parserPosition
-  throwError $ "parse error at line " ++ (show line) ++ ", column " ++ (show column)
+  throwError $ "parse error at line " ++ show line ++ ", column " ++ show column

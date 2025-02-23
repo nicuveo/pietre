@@ -6,7 +6,9 @@ cabal-version: 2.2
 
 name:           pietre
 version:        0.0.0.1
-description:    Please see the README on GitHub at <https://github.com/githubuser/pietre#readme>
+synopsis:       Compiler for a stack-based imperative language targeting Piet
+description:    Please see the README on GitHub at <https://github.com/nicuveo/pietre#readme>
+category:       Language, Compiler
 homepage:       https://github.com/nicuveo/pietre#readme
 bug-reports:    https://github.com/nicuveo/pietre/issues
 author:         Antoine Leblanc
@@ -24,6 +26,7 @@ source-repository head
 
 library
   exposed-modules:
+      Prelude
       Lang.Pietre
       Lang.Pietre.Batteries.BuiltIn
       Lang.Pietre.Internal.Encoding
@@ -33,60 +36,42 @@ library
       Lang.Pietre.Representations.IR
       Lang.Pietre.Representations.Tokens
       Lang.Pietre.Stages.Analysis
-      Lang.Pietre.Stages.Assembling
+      Lang.Pietre.Stages.Assembly
       Lang.Pietre.Stages.Generation
       Lang.Pietre.Stages.Linking
       Lang.Pietre.Stages.Lowering
+      Lang.Pietre.Stages.Optimization
       Lang.Pietre.Stages.Parsing
       Lang.Pietre.Stages.Parsing.Lexer
       Lang.Pietre.Stages.Parsing.Monad
       Lang.Pietre.Stages.Parsing.Parser
   other-modules:
-      Prelude
+      Paths_pietre
+  autogen-modules:
+      Paths_pietre
   hs-source-dirs:
       common
       lib
   default-extensions:
       AllowAmbiguousTypes
       ApplicativeDo
-      BangPatterns
       BlockArguments
-      ConstraintKinds
       DataKinds
       DefaultSignatures
-      DeriveDataTypeable
-      DeriveFoldable
-      DeriveFunctor
-      DeriveGeneric
-      DeriveLift
-      DeriveTraversable
       DerivingVia
-      FlexibleContexts
-      FlexibleInstances
       FunctionalDependencies
       GADTs
-      GeneralizedNewtypeDeriving
-      ImportQualifiedPost
-      InstanceSigs
       LambdaCase
-      MultiParamTypeClasses
       MultiWayIf
-      NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
       PackageImports
-      RankNTypes
       RecordWildCards
       RoleAnnotations
-      ScopedTypeVariables
-      StandaloneDeriving
       StrictData
-      TupleSections
-      TypeApplications
       TypeFamilies
-      TypeOperators
       ViewPatterns
-  ghc-options: -Wcompat -Werror -Wall -Wno-unused-do-bind -fwarn-tabs -foptimal-applicative-do
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info
   build-tools:
       alex
     , happy
@@ -115,44 +100,23 @@ executable gramviz
   default-extensions:
       AllowAmbiguousTypes
       ApplicativeDo
-      BangPatterns
       BlockArguments
-      ConstraintKinds
       DataKinds
       DefaultSignatures
-      DeriveDataTypeable
-      DeriveFoldable
-      DeriveFunctor
-      DeriveGeneric
-      DeriveLift
-      DeriveTraversable
       DerivingVia
-      FlexibleContexts
-      FlexibleInstances
       FunctionalDependencies
       GADTs
-      GeneralizedNewtypeDeriving
-      ImportQualifiedPost
-      InstanceSigs
       LambdaCase
-      MultiParamTypeClasses
       MultiWayIf
-      NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
       PackageImports
-      RankNTypes
       RecordWildCards
       RoleAnnotations
-      ScopedTypeVariables
-      StandaloneDeriving
       StrictData
-      TupleSections
-      TypeApplications
       TypeFamilies
-      TypeOperators
       ViewPatterns
-  ghc-options: -Wcompat -Werror -Wall -Wno-unused-do-bind -fwarn-tabs -foptimal-applicative-do -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       array
     , base
@@ -181,44 +145,23 @@ executable pc
   default-extensions:
       AllowAmbiguousTypes
       ApplicativeDo
-      BangPatterns
       BlockArguments
-      ConstraintKinds
       DataKinds
       DefaultSignatures
-      DeriveDataTypeable
-      DeriveFoldable
-      DeriveFunctor
-      DeriveGeneric
-      DeriveLift
-      DeriveTraversable
       DerivingVia
-      FlexibleContexts
-      FlexibleInstances
       FunctionalDependencies
       GADTs
-      GeneralizedNewtypeDeriving
-      ImportQualifiedPost
-      InstanceSigs
       LambdaCase
-      MultiParamTypeClasses
       MultiWayIf
-      NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
       PackageImports
-      RankNTypes
       RecordWildCards
       RoleAnnotations
-      ScopedTypeVariables
-      StandaloneDeriving
       StrictData
-      TupleSections
-      TypeApplications
       TypeFamilies
-      TypeOperators
       ViewPatterns
-  ghc-options: -Wcompat -Werror -Wall -Wno-unused-do-bind -fwarn-tabs -foptimal-applicative-do -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       array
     , base
@@ -251,44 +194,23 @@ test-suite tests
   default-extensions:
       AllowAmbiguousTypes
       ApplicativeDo
-      BangPatterns
       BlockArguments
-      ConstraintKinds
       DataKinds
       DefaultSignatures
-      DeriveDataTypeable
-      DeriveFoldable
-      DeriveFunctor
-      DeriveGeneric
-      DeriveLift
-      DeriveTraversable
       DerivingVia
-      FlexibleContexts
-      FlexibleInstances
       FunctionalDependencies
       GADTs
-      GeneralizedNewtypeDeriving
-      ImportQualifiedPost
-      InstanceSigs
       LambdaCase
-      MultiParamTypeClasses
       MultiWayIf
-      NamedFieldPuns
       NoImplicitPrelude
       OverloadedStrings
       PackageImports
-      RankNTypes
       RecordWildCards
       RoleAnnotations
-      ScopedTypeVariables
-      StandaloneDeriving
       StrictData
-      TupleSections
-      TypeApplications
       TypeFamilies
-      TypeOperators
       ViewPatterns
-  ghc-options: -Wcompat -Werror -Wall -Wno-unused-do-bind -fwarn-tabs -foptimal-applicative-do -F -pgmF=tasty-autocollect
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -F -pgmF=tasty-autocollect
   build-tool-depends:
       tasty-autocollect:tasty-autocollect
   build-depends:

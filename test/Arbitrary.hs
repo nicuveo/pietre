@@ -10,7 +10,7 @@ import Test.Tasty.QuickCheck
 
 -- source file
 
-data SourceFile = SourceFile Text
+newtype SourceFile = SourceFile Text
   deriving (Show, Eq)
 
 instance Arbitrary SourceFile where

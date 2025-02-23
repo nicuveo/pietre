@@ -1,3 +1,5 @@
+module Main where
+
 {- AUTOCOLLECT.MAIN
 
 group_type = tree
