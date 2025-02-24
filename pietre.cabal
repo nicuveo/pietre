@@ -122,6 +122,7 @@ executable gramviz
     , base
     , containers
     , extra
+    , graphwiz
     , hashable
     , lens
     , megaparsec

@@ -10,19 +10,18 @@ import "this" Prelude
 
 import Control.Lens               hiding ((...))
 import Control.Monad.Extra        (whenM)
-import Control.Monad.RWS
 import Data.Char
 import Data.HashMap.Strict        qualified as M
 import Data.HashSet               qualified as S
 import Data.List                  (nub)
-import Data.Maybe                 (fromJust)
 import Data.Text                  qualified as T
 import Data.Text.IO               qualified as T
 import System.Environment
 import System.Exit
 import System.IO                  qualified as IO
 import Text.Builder               qualified as TB
-import Text.Megaparsec            hiding (Token, token, tokens)
+import Text.Dot                   hiding (start)
+import Text.Megaparsec            hiding (Token, label, token, tokens)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Printf
@@ -224,144 +223,114 @@ terminals gram = render =<< withTTYInfo do
 -- dot
 
 dot :: Grammar -> IO ()
-dot gram = render =<< do
-  let (content, (_, paths), nodes) =
-        runRWS (visitTree gram) [] (0 :: Int, M.empty)
-      alterations = do
-        (nodeID, nodeRule) <- nodes
-        guard $ not $ M.member nodeRule paths
-        pure $ mkToken nodeID
-  pure $ concat
-    [ fileHeader
-    , indent <$> content
-    , indent <$> alterations
-    , fileFooter
-    ]
+dot grammar = TB.putLnToStdOut =<< evalStateT visitGrammar mempty
   where
-    indent = ("  " <>)
-
-    fileHeader =
-      [ "digraph grammar {"
-      , "  compound=true;"
+    categoryAttributes desc depth = M.fromList
+      [ ("labeljust", "l")
+      , ("fontsize",  "20")
+      , ("fontname",  "Helvetica-Oblique")
+      , ("label",     desc)
+      , ("bgcolor",) $ case depth of
+          1 -> "#E4F1EE"
+          2 -> "#D9EdF8"
+          _ -> "#DEDAF4"
+      ]
+    ruleAttributes desc = M.fromList
+      [ ("bgcolor",   "white")
+      , ("labeljust",  "c")
+      , ("fontsize",  "16")
+      , ("fontname",  "Helvetica")
+      , ("label",     desc)
+      ]
+    startNodeAttributes = M.fromList
+      [ ("fixedsize", "true")
+      , ("width",     "0.2")
+      , ("shape",     "circle")
+      ]
+    stopNodeAttributes = M.fromList
+      [ ("fixedsize", "true")
+      , ("width",     "0.2")
+      , ("shape",     "doublecircle")
+      ]
+    stringNodeAttributes = M.fromList
+      [ ("style",     "filled")
+      , ("fillcolor", "#FFD7A6")
+      , ("shape",     "box")
+      ]
+    symbolNodeAttributes = M.fromList
+      [ ("style",     "filled")
+      , ("fillcolor", "#FDFFB6")
+      , ("shape",     "diamond")
+      ]
+    tokenAttributes = M.fromList
+      [ ("shape",     "box")
+      , ("style",     "filled")
+      , ("fillcolor", "#FFAEAE")
       ]
 
-    fileFooter =
-      [ "}"
-      ]
+    visitGrammar = digraphT do
+      visitTree grammar
+      (rules, nodes) <- lift get
+      for_ nodes \(nodeName, nodeID) ->
+        unless (nodeName `S.member` rules) $
+          attributes nodeID <>:= tokenAttributes
 
-    visitTree (RuleTree rules sections) =
-      liftA2 (concat ... mappend)
-        (traverse visitRule rules)
-        (traverse visitSection sections)
+    visitTree (RuleTree rules sections) = do
+      traverse_ visitRule rules
+      traverse_ visitSection sections
 
     visitSection (sectionName, ruleTree) = do
-      clusterID <- use _1
-      _1 += 1
-      path <- ask
-      let subgraphName = T.pack $ printf "s%04d" clusterID
-          bgColor = case length path of
-            0 -> "#E4F1EE"
-            1 -> "#D9EdF8"
-            2 -> "#DEDAF4"
-            _ -> error "too deep"
-          config =
-            [ "bgcolor=\"" <> bgColor <> "\";"
-            , "labeljust=\"l\";"
-            , "fontsize=20;"
-            , "fontname=\"Helvetica-Oblique\";"
-            ]
-      content <- local (sectionName:) $ visitTree ruleTree
-      pure $ mkSubgraph subgraphName sectionName $ config <> content
+      path <- currentPath
+      clusterWith \categoryID -> do
+        attributes categoryID .= categoryAttributes sectionName (length path)
+        visitTree ruleTree
 
     visitRule (name, expr) = do
-      path <- ask
-      whenM (uses _2 $ M.member name) $
+      whenM (lift $ uses _1 $ S.member name) $
         error $ "multiple definitions for " ++ T.unpack name
-      _2 %= M.insert name path
-      let start = name <> "_START"
-          end   = name <> "_END"
-          ((edges, _, ends), (_, localNodes), textNodes) =
-            runRWS (visitExpr [start] expr) (path, name) (0, [])
-      tell textNodes
-      pure $ mkSubgraph name name $ concat
-        [ [ TB.text start <> " [label=\"\", fixedsize=\"true\", width=0.2, shape=\"circle\"]"
-          , TB.text end   <> " [label=\"\", fixedsize=\"true\", width=0.2, shape=\"doublecircle\"]"
-          , "bgcolor=\"white\""
-          , "labeljust=\"c\";"
-          , "fontsize=16;"
-          , "fontname=\"Helvetica\";"
-          ]
-        , localNodes
-        , edges
-        , map (`mkLink` end) ends
-        ]
+      lift $ _1 %= S.insert name
+      clusterWith \ruleID -> do
+        start <- node ""
+        stop  <- node ""
+        attributes ruleID <>:= ruleAttributes name
+        attributes start  <>:= startNodeAttributes
+        attributes stop   <>:= stopNodeAttributes
+        (_starts, ends) <- visitExpr [start] expr
+        traverse_ (--> stop) ends
 
     visitExpr prevs expr = do
-      (edges, starts, ends) <- unzip3 <$> traverse (visitBranch prevs [] Nothing) expr
-      pure ( concat edges
-           , nub $ concat starts
-           , nub $ concat ends
-           )
+      (starts, ends) <- unzip <$> traverse (visitBranch prevs) expr
+      pure (nub $ concat $ catMaybes starts, nub $ concat ends)
 
-    visitBranch prevs res starts = \case
-      []     -> pure (res, fromJust starts, prevs)
-      (q:qs) -> do
-        (newEdges, newStarts, newPrevs) <- visitQualifiedTerm prevs q
-        visitBranch newPrevs (res <> newEdges) (starts <|> Just newStarts) qs
+    visitBranch prevs =
+      foldlM visitQualifiedTerm (Nothing, prevs)
 
-    visitQualifiedTerm prevs (QTerm t m) = do
-      (l, s, e) <- visitTerm prevs t
-      let loop = liftA2 mkLink e s
-      pure $ case m of
-        Single   -> (        l, s, e)
-        Optional -> (        l, s, e <> prevs)
-        Some     -> (loop <> l, s, e)
-        Many     -> (loop <> l, s, e <> prevs)
+    visitQualifiedTerm (beginning, prevs) (QTerm t m) = do
+      (starts, ends) <- visitTerm prevs t
+      let newBegin = beginning <|> Just starts
+          makeLoop = sequence $ liftA2 (-->) ends starts
+      case m of
+        Single   -> pure (newBegin, ends)
+        Optional -> pure (newBegin, ends <> prevs)
+        Some     -> makeLoop >> pure (newBegin, ends)
+        Many     -> makeLoop >> pure (newBegin, ends <> prevs)
 
     visitTerm prevs = \case
       Identifier desc -> do
-        name <- declareNode mkNode desc
-        tell $ pure (name, desc)
-        pure (map (`mkLink` name) prevs, [name], [name])
+        step <- node desc
+        lift $ _2 <>= [(desc, step)]
+        for_ prevs (--> step)
+        pure ([step], [step])
       String desc -> do
-        name <-
+        step <- node desc
+        attributes step <>:=
           if T.all isAlphaNum desc
-            then declareNode mkKeyword  desc
-            else declareNode mkOperator desc
-        pure (map (`mkLink` name) prevs, [name], [name])
-      Group expr -> visitExpr prevs expr
-
-    declareNode f desc = do
-      rule <- asks snd
-      (current, register) <- get
-      let name = rule <> "_" <> T.pack (printf "%08d" (current :: Int))
-      put (current + 1, register <> [f name desc])
-      pure name
-
-    mkSubgraph :: Text -> Text -> [TB.Builder] -> [TB.Builder]
-    mkSubgraph name desc content = concat
-      [ [ "subgraph cluster_" <> TB.text name <> " {"
-        , "  label=\"" <> TB.text desc <> "\";"
-        ]
-      , indent <$> content
-      , [ "}"
-        ]
-      ]
-
-    mkNode name desc =
-      TB.text name <> " [label=\"" <> TB.text desc <> "\"]"
-
-    mkLink a b =
-      TB.text a <> " -> " <> TB.text b
-
-    mkToken name =
-      TB.text name <> " [shape=\"box\", style=\"filled\", fillcolor=\"#FFAEAE\"]"
-
-    mkKeyword name desc =
-      TB.text name <> " [label=\"" <> TB.text desc <> "\", style=\"filled\", shape=\"box\", fillcolor=\"#FFD7A6\"]"
-
-    mkOperator name desc =
-      TB.text name <> " [label=\"" <> TB.text desc <> "\", style=\"filled\", shape=\"diamond\", fillcolor=\"#FDFFB6\"]"
+          then stringNodeAttributes
+          else symbolNodeAttributes
+        traverse_ (--> step) prevs
+        pure ([step], [step])
+      Group expr ->
+        visitExpr prevs expr
 
 
 --------------------------------------------------------------------------------
