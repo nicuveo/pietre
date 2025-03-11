@@ -25,9 +25,10 @@ module Lang.Pietre.Stages.Parsing.Monad where
 import "this" Prelude
 
 import Control.Lens
-import Data.Text                          qualified as T
-import Data.Word                          (Word8)
+import Data.Text                            qualified as T
+import Data.Word                            (Word8)
 import Lang.Pietre.Internal.Encoding
+import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
 
 
@@ -51,7 +52,7 @@ runParser (Parser f) filename source = fmap fst $ f $ initialState filename sour
 data ParserState = ParserState
   { _parserFileName :: FilePath
   , _parserInput    :: Text
-  , _parserPosition :: Position
+  , _parserLocation :: Location
   , _parserPrevChar :: Char
   , _parserBytes    :: [Word8]
   } deriving Show
@@ -60,28 +61,10 @@ initialState :: FilePath -> Text -> ParserState
 initialState filename source = ParserState
   { _parserFileName  = filename
   , _parserInput     = source
-  , _parserPosition  = initialPosition
+  , _parserLocation  = initialLocation
   , _parserPrevChar  = '\n'
   , _parserBytes     = []
   }
-
-
--- position
-
-data Position = Position
-  { _posAddress :: Int
-  , _posLine    :: Int
-  , _posColumn  :: Int
-  }
-  deriving (Show, Eq, Ord)
-
-initialPosition :: Position
-initialPosition = Position 0 1 1
-
-updatePosition :: Position -> Char -> Position
-updatePosition (Position a l c) = \case
-  '\n' -> Position (a+1) (l+1) 1
-  _    -> Position (a+1) l (c+1)
 
 
 -- error
@@ -92,7 +75,6 @@ type ParseError = String
 -- lens generation
 
 makeLenses ''ParserState
-makeLenses ''Position
 
 
 -- alex functions
@@ -105,9 +87,9 @@ alexGetByte prev@ParserState {..} = case _parserBytes of
   []     -> do
     (c, remaining) <- T.uncons _parserInput
     let b :| bytes = decomposeUTF8 c
-        newPos     = updatePosition _parserPosition c
+        newPos     = updateLocation _parserLocation c
         newState   = prev
-          & parserPosition .~ newPos
+          & parserLocation .~ newPos
           & parserInput    .~ remaining
           & parserPrevChar .~ c
           & parserBytes    .~ bytes
@@ -118,7 +100,7 @@ alexInputPrevChar = view parserPrevChar
 
 alexError :: Parser a
 alexError = do
-  Position _ line column <- use parserPosition
+  Location _ line column <- use parserLocation
   throwError $ "lexical error at line " ++ show line ++ ", column " ++ show column
 
 
@@ -126,5 +108,5 @@ alexError = do
 
 happyError :: Token -> Parser a
 happyError _ = do
-  Position _ line column <- use parserPosition
+  Location _ line column <- use parserLocation
   throwError $ "parse error at line " ++ show line ++ ", column " ++ show column
