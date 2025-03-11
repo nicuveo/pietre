@@ -1,10 +1,70 @@
 module Lang.Pietre.Representations.Tokens where
 
--- import "this" Prelude
-
 data Token
-  = TKeyword Keyword
+  = TKeywordAs
+  | TKeywordBreak
+  | TKeywordConst
+  | TKeywordContinue
+  | TKeywordElse
+  | TKeywordEnum
+  | TKeywordFalse
+  | TKeywordFn
+  | TKeywordFor
+  | TKeywordIf
+  | TKeywordIn
+  | TKeywordLet
+  | TKeywordReturn
+  | TKeywordStruct
+  | TKeywordTrue
+  | TKeywordType
+  | TKeywordUse
+  | TKeywordWhile
+
+  | TOperatorSemicolon
+  | TOperatorType
+  | TOperatorStar
+  | TOperatorComma
+  | TOperatorAssign
+  | TOperatorColon
+  | TOperatorArrow
+  | TOperatorLessThan
+  | TOperatorGreaterThan
+  | TOperatorDot
+  | TOperatorRangeInclusive
+  | TOperatorRangeExclusive
+  | TOperatorReference
+  | TOperatorNot
+  | TOperatorMinus
+  | TOperatorPlus
+  | TOperatorDiv
+  | TOperatorMod
+  | TOperatorPow
+  | TOperatorEqual
+  | TOperatorDiff
+  | TOperatorGreaterOrEqual
+  | TOperatorLessOrEqual
+  | TOperatorBoolAnd
+  | TOperatorBoolOr
+  | TOperatorAssignPlus
+  | TOperatorAssignMinus
+  | TOperatorAssignMult
+  | TOperatorAssignDiv
+  | TOperatorAssignMod
+  | TOperatorAssignPow
+
+  | TDelimiterParensOpen
+  | TDelimiterParensClose
+  | TDelimiterBracesOpen
+  | TDelimiterBracesClose
+  | TDelimiterBracketsOpen
+  | TDelimiterBracketsClose
+
+  | TLiteralString Text
+  | TLiteralChar   Char
+  | TLiteralInt    Int
+
+  | TIdentifier    Identifier
+
   | TEOF
 
-data Keyword
-  = KConst
+  deriving Show
