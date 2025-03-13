@@ -1,5 +1,9 @@
 module Lang.Pietre.Representations.Tokens where
 
+import "this" Prelude
+
+type Identifier = Text
+
 data Token
   = TKeywordAs
   | TKeywordBreak

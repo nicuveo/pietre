@@ -34,6 +34,7 @@ library
       Lang.Pietre.Representations.Bytecode
       Lang.Pietre.Representations.Image
       Lang.Pietre.Representations.IR
+      Lang.Pietre.Representations.Location
       Lang.Pietre.Representations.Tokens
       Lang.Pietre.Stages.Analysis
       Lang.Pietre.Stages.Assembly
@@ -79,8 +80,10 @@ library
       array
     , base
     , containers
+    , extra
     , hashable
     , lens
+    , monad-loops
     , mtl
     , text
     , transformers
@@ -126,6 +129,7 @@ executable gramviz
     , hashable
     , lens
     , megaparsec
+    , monad-loops
     , mtl
     , text
     , text-builder
@@ -167,8 +171,10 @@ executable pc
       array
     , base
     , containers
+    , extra
     , hashable
     , lens
+    , monad-loops
     , mtl
     , pietre
     , text
@@ -219,9 +225,11 @@ test-suite tests
     , base
     , containers
     , directory
+    , extra
     , filepath
     , hashable
     , lens
+    , monad-loops
     , mtl
     , pietre
     , tasty

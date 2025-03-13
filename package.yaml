@@ -53,8 +53,10 @@ dependencies:
   - base
   - array
   - containers
+  - extra
   - hashable
   - lens
+  - monad-loops
   - mtl
   - text
   - transformers

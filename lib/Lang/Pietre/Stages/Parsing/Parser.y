@@ -4,23 +4,26 @@ module Lang.Pietre.Stages.Parsing.Parser where
 import "this" Prelude
 
 import Control.Lens ((.~))
+import Data.Text qualified as T
+import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Parsing.Lexer
 import Lang.Pietre.Stages.Parsing.Monad
+
 }
 
 
 %name parser
-%tokentype { Token }
+%tokentype { (Location, Token) }
 
 %error { happyError }
 %monad { Parser } { >>= } { return }
-%lexer { lexer } { TEOF }
+%lexer { lexer } { (_, TEOF) }
 
 
 %token
 
-const               { TKeyword KConst }
+const               { (_, TKeywordConst) }
 
 %%
 
@@ -38,13 +41,21 @@ keyword: const const { () }
 
 {
 
-lexer :: (Token -> Parser a) -> Parser a
+lexer :: ((Location, Token) -> Parser a) -> Parser a
 lexer f = do
-  currentState <- get
+  currentState@ParserState {..} <- get
   case alexScan currentState 0 of
-    AlexEOF                       -> f TEOF
-    AlexError newState            -> put newState >> alexError
-    AlexSkip  newState _len       -> put newState >> (lexer f)
-    AlexToken newState _len token -> put newState >> (f token)
+    AlexEOF ->
+      f (_parserLocation, TEOF)
+    AlexError newState -> do
+      put newState
+      alexError
+    AlexSkip  newState _len -> do
+      put newState
+      lexer f
+    AlexToken newState len action -> do
+      put newState
+      let matchedText = T.take len _parserInput
+      action currentState _parserLocation matchedText >>= f
 
 }

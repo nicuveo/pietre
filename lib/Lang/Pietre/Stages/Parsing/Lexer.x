@@ -4,10 +4,14 @@ module Lang.Pietre.Stages.Parsing.Lexer where
 
 import "this" Prelude
 
+import Control.Monad.Extra (whenM)
+import Control.Monad.Loops (whileM, unfoldM)
 import Data.Char (digitToInt)
 import Data.Text qualified as T
-import Lang.Pietre.Stages.Parsing.Monad
+import Data.Text.Read qualified as T
+import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
+import Lang.Pietre.Stages.Parsing.Monad
 
 }
 
@@ -74,41 +78,52 @@ tokens :-
   [0-9]+           { mkDecimalLiteral                }
   "0x"[0-9A-Fa-f]+ { mkHexadecimalLiteral            }
   "'"              { mkCharLiteral                   }
-  "\""             { mkStringLiteral                 }
+  "                { mkStringLiteral                 }
 
-  $white*          { mkIdentifier                    }
+  .                { mkIdentifier                    }
 
 
 {
 
-mkToken :: Token -> Location -> Text -> Parser (WithLocation Token)
-mkToken t l _ = pure (l, t)
+type AlexAction = ParserState -> Location -> Text -> Parser (Location, Token)
 
-mkDecimalLiteral :: Location -> Text -> Parser (WithLocation Token)
-mkDecimalLiteral l t = pure (l, TLiteralInt $ read $ T.unpack t)
+mkToken :: Token -> AlexAction
+mkToken tok _ location _ = pure (location, tok)
 
-mkHexadecimalLiteral :: Location -> Text -> Parser (WithLocation Token)
-mkHexadecimalLiteral l t = pure (l, TLiteralInt $ foldl' readHex 0 $ T.unpack $ T.drop 2 t)
+mkDecimalLiteral :: AlexAction
+mkDecimalLiteral _ location matched = case T.decimal matched of
+  Right (intValue, remaining)
+    | T.null remaining -> pure (location, TLiteralInt intValue)
+  _ -> alexError
 
-readHex :: Int -> Char -> Int
-readHex accum c = 16 * accum + digitToInt c
+mkHexadecimalLiteral :: AlexAction
+mkHexadecimalLiteral _ location matched = case T.hexadecimal matched of
+  Right (intValue, remaining)
+    | T.null remaining -> pure (location, TLiteralInt intValue)
+  _ -> alexError
 
-mkCharLiteral :: Location -> Text -> Parser (WithLocation Token)
-mkCharLiteral location _ = do
-  c <- readStringChar
-  expect '\''
+mkCharLiteral :: AlexAction
+mkCharLiteral _ location _ = do
+  whenM (alexTry '\'')
+    alexError
+  c <- alexReadStringChar
+  alexExpect '\''
   pure (location, TLiteralChar c)
 
-mkStringLiteral :: Location -> Text -> Parser (WithLocation Token)
-mkStringLiteral location _ = do
+mkStringLiteral :: AlexAction
+mkStringLiteral _ location _ = do
   s <- readStringChars
-  pure (location, TLiteralString s)
+  pure (location, TLiteralString $ T.pack s)
   where
-    readStringChars = do
-      tryRead '"' >>= \case
-        Just _  -> pure ""
-        Nothing -> do
-          c <- readStringChar
-          fmap (c:) $ readStringChars
+    readStringChars =
+      whileM (not <$> alexTry '"')
+        alexReadStringChar
+
+mkIdentifier :: AlexAction
+mkIdentifier prevState location _ = do
+  put prevState
+  firstCharacter <- alexReadFirstIdentifierChar
+  remainingCharacters <- unfoldM alexReadIdentifierChar
+  pure (location, TIdentifier $ T.pack (firstCharacter : remainingCharacters))
 
 }

@@ -25,6 +25,8 @@ module Lang.Pietre.Stages.Parsing.Monad where
 import "this" Prelude
 
 import Control.Lens
+import Control.Monad.Extra
+import Data.Char
 import Data.Text                            qualified as T
 import Data.Word                            (Word8)
 import Lang.Pietre.Internal.Encoding
@@ -50,8 +52,7 @@ runParser (Parser f) filename source = fmap fst $ f $ initialState filename sour
 -- internal state
 
 data ParserState = ParserState
-  { _parserFileName :: FilePath
-  , _parserInput    :: Text
+  { _parserInput    :: Text
   , _parserLocation :: Location
   , _parserPrevChar :: Char
   , _parserBytes    :: [Word8]
@@ -59,9 +60,8 @@ data ParserState = ParserState
 
 initialState :: FilePath -> Text -> ParserState
 initialState filename source = ParserState
-  { _parserFileName  = filename
-  , _parserInput     = source
-  , _parserLocation  = initialLocation
+  { _parserInput     = source
+  , _parserLocation  = initialLocation filename
   , _parserPrevChar  = '\n'
   , _parserBytes     = []
   }
@@ -87,6 +87,7 @@ alexGetByte prev@ParserState {..} = case _parserBytes of
   []     -> do
     (c, remaining) <- T.uncons _parserInput
     let b :| bytes = decomposeUTF8 c
+        -- TODO: only increment position if bytes is empty
         newPos     = updateLocation _parserLocation c
         newState   = prev
           & parserLocation .~ newPos
@@ -100,13 +101,73 @@ alexInputPrevChar = view parserPrevChar
 
 alexError :: Parser a
 alexError = do
-  Location _ line column <- use parserLocation
-  throwError $ "lexical error at line " ++ show line ++ ", column " ++ show column
+  Location filename _ line column <- use parserLocation
+  throwError $ filename ++ ":" ++ show line ++ ":" ++ show column ++ ": lexical error"
+
+alexExpect :: Char -> Parser ()
+alexExpect expected =
+  unlessM (alexTry expected) alexError
+
+alexTry :: Char -> Parser Bool
+alexTry expected = do
+  currentState <- get
+  case alexGetByte currentState of
+    Nothing -> pure False
+    Just (byte, newState)
+      | chr (fromIntegral byte) /= expected -> pure False
+      | otherwise -> do
+          put newState
+          pure True
+
+alexReadStringChar :: Parser Char
+alexReadStringChar = do
+  c1 <- getNextChar
+  if c1 /= '\\' then pure c1 else
+    getNextChar >>= \case
+      '\n' -> undefined -- handleWhitespace
+      'x'  -> undefined -- handleASCIIChar
+      'u'  -> undefined -- handleUnicodeCodePoint
+      'n'  -> pure '\n'
+      'r'  -> pure '\r'
+      't'  -> pure '\t'
+      '0'  -> pure '\0'
+      '\'' -> pure '\''
+      '"'  -> pure '"'
+      _    -> alexError
+  where
+    getNextChar =
+      getMatchingChar (const True)
+        `onNothingM` alexError
+
+alexReadFirstIdentifierChar :: Parser Char
+alexReadFirstIdentifierChar =
+  getMatchingChar predicate
+    `onNothingM` alexError
+  where
+    predicate c = isAlpha c || c == '_'
+
+alexReadIdentifierChar :: Parser (Maybe Char)
+alexReadIdentifierChar = getMatchingChar predicate
+  where
+    predicate c = isAlphaNum c || c == '_'
+
+getMatchingChar :: (Char -> Bool) -> Parser (Maybe Char)
+getMatchingChar predicate = do
+  current@ParserState {..} <- get
+  case T.uncons _parserInput of
+    Nothing -> alexError
+    Just (c, remaining)
+      | predicate c -> do
+          put $ current
+            & parserLocation .~ updateLocation _parserLocation c
+            & parserInput    .~ remaining
+            & parserPrevChar .~ c
+          pure (Just c)
+      | otherwise -> pure Nothing
 
 
 -- happy functions
 
-happyError :: Token -> Parser a
-happyError _ = do
-  Location _ line column <- use parserLocation
-  throwError $ "parse error at line " ++ show line ++ ", column " ++ show column
+happyError :: (Location, Token) -> Parser a
+happyError (Location filename _ line column, token) = do
+  throwError $ filename ++ ":" ++ show line ++ ":" ++ show column ++ ": parser error: " ++ show token
