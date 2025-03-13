@@ -11,7 +11,7 @@ use_decl: "use" use_tree ";"
 use_tree
   : use_path ("as" IDENTIFIER)?
   | use_path "::" "*"
-  | use_path "::" "{" IDENTIFIER ("," IDENTIFIER)? ","? "}"
+  | use_path "::" "{" IDENTIFIER ("," IDENTIFIER)* ","? "}"
 use_path: IDENTIFIER ("::" IDENTIFIER)*
 
 ## type
