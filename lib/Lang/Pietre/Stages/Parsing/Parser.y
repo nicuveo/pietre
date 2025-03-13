@@ -13,7 +13,7 @@ import Lang.Pietre.Stages.Parsing.Monad
 }
 
 
-%name parser
+%name parseFile file
 %tokentype { (Location, Token) }
 
 %error { happyError }
