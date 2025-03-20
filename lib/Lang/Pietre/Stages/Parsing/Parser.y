@@ -3,6 +3,7 @@ module Lang.Pietre.Stages.Parsing.Parser where
 
 import "this" Prelude
 
+import Control.Lens (over)
 import Data.Text qualified as T
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Location
@@ -30,7 +31,9 @@ import Lang.Pietre.Stages.Parsing.Monad
 %left "+" "-"
 %left "*" "/" "%"
 %left "^"
+%left "as"
 %left UNARY
+%left "." "["
 
 %token
 
@@ -113,18 +116,13 @@ use_decl :: { Import }
   : "use" use_tree ";" { $2 }
 
 use_tree :: { Import }
-  : use_path optional(use_alias)                 { Import $1 (Qualified $2) }
-  | use_path "::" "*"                            { Import $1 Exhaustive }
-  | use_path "::" "{" comma_list(IDENTIFIER) "}" { Import $1 (Specific (map getRawIdentifier $4)) }
+  : IDENTIFIER optional(use_alias)                 { Import [getRawIdentifier $1] (Qualified $2) }
+  | IDENTIFIER "::" "*"                            { Import [getRawIdentifier $1] Exhaustive }
+  | IDENTIFIER "::" "{" comma_list(IDENTIFIER) "}" { Import [getRawIdentifier $1] (Specific (map getRawIdentifier $4)) }
+  | IDENTIFIER "::" use_tree                       { prefixImport (getRawIdentifier $1) $3 }
 
 use_alias :: { Identifier }
   : "as" IDENTIFIER { getRawIdentifier $2 }
-
-use_path :: { [Identifier] }
-  : IDENTIFIER many(use_path_item) { getRawIdentifier $1 : $2 }
-
-use_path_item :: { Identifier }
-  : "::" IDENTIFIER { getRawIdentifier $2 }
 
 
 alias_decl :: { Declaration Parsed }
@@ -239,10 +237,9 @@ grouped_expr :: { Expression Parsed }
   : "(" expression ")" { undefined }
 
 path_expr :: { Expression Parsed }
-  : IDENTIFIER many(path_expr_item) optional(generic_args) { undefined }
-
-path_expr_item :: { Expression Parsed }
-  : "::" IDENTIFIER { undefined }
+  : IDENTIFIER                   { undefined }
+  | IDENTIFIER "::" generic_args { undefined }
+  | IDENTIFIER "::" path_expr    { undefined }
 
 field_access_expr :: { Expression Parsed }
   : expression "." IDENTIFIER { undefined }
@@ -342,7 +339,9 @@ reference :: { TypeExpr Parsed }
   : "&" type_expr { $2 }
 
 type_expr :: { TypeExpr Parsed }
-  : IDENTIFIER many(path_expr_item) optional(generic_args) { undefined }
+  : IDENTIFIER                   { undefined }
+  | IDENTIFIER "::" generic_args { undefined }
+  | IDENTIFIER "::" type_expr    { undefined }
 
 generic_args :: { [TypeExpr Parsed] }
   : "<" comma_list(type_expr) ">" { $2 }
@@ -372,5 +371,8 @@ getRawIdentifier :: (Location, Token) -> Identifier
 getRawIdentifier (_, tok) = case tok of
   TIdentifier i -> i
   _             -> error "ICE: not an identifier"
+
+prefixImport :: Identifier -> Import -> Import
+prefixImport prefix = over importPath (prefix:)
 
 }

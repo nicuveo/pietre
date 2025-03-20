@@ -1,7 +1,10 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Lang.Pietre.Representations.AST where
 
 import "this" Prelude
 
+import Control.Lens
 import Data.Kind
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
@@ -210,3 +213,6 @@ deriving instance ASTRepresentation p => Show (Expression p)
 data TypeExpr (p :: ASTPhase)
 
 deriving instance ASTRepresentation p => Show (TypeExpr p)
+
+
+makeLenses 'Import
