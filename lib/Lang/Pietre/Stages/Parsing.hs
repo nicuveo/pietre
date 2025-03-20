@@ -18,5 +18,5 @@ lex = runParser $ unfoldM $ fmap filterOutEOF alexGetNextToken
       (_, TEOF) -> Nothing
       tokeninfo -> Just tokeninfo
 
-parse :: FilePath -> Text -> Either ParseError File
-parse = runParser parseFile
+parseModule :: FilePath -> Text -> Either ParseError (Module Parsed)
+parseModule = runParser moduleParser

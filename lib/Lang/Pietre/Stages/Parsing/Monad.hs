@@ -167,6 +167,6 @@ getMatchingChar predicate = do
 
 -- happy functions
 
-happyError :: (Location, Token) -> Parser a
-happyError (Location filename _ line column, token) = do
-  throwError $ filename ++ ":" ++ show line ++ ":" ++ show column ++ ": parser error: " ++ show token
+happyError :: ((Location, Token), [String]) -> Parser a
+happyError ((Location filename _ line column, token), expected) = do
+  throwError $ filename ++ ":" ++ show line ++ ":" ++ show column ++ ": parser error: " ++ show token ++ "; expecting:" ++ unwords expected
