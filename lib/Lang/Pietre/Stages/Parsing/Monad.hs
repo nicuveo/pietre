@@ -87,7 +87,6 @@ alexGetByte prev@ParserState {..} = case _parserBytes of
   []     -> do
     (c, remaining) <- T.uncons _parserInput
     let b :| bytes = decomposeUTF8 c
-        -- TODO: only increment position if bytes is empty
         newPos     = updateLocation _parserLocation c
         newState   = prev
           & parserLocation .~ newPos
