@@ -20,3 +20,6 @@ lex = runParser $ unfoldM $ fmap filterOutEOF alexGetNextToken
 
 parseModule :: FilePath -> Text -> Either ParseError (Module Parsed)
 parseModule = runParser moduleParser
+
+parseExpr :: FilePath -> Text -> Either ParseError (Expression Parsed)
+parseExpr = fmap snd ... runParser expressionParser

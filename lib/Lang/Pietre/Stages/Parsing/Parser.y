@@ -4,6 +4,7 @@ module Lang.Pietre.Stages.Parsing.Parser where
 import "this" Prelude
 
 import Control.Lens (over)
+import Data.List.NonEmpty ((<|))
 import Data.Text qualified as T
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Location
@@ -15,6 +16,7 @@ import Lang.Pietre.Stages.Parsing.Monad
 
 
 %name moduleParser module
+%name expressionParser expression
 %tokentype { (Location, Token) }
 
 %error { happyError }
@@ -116,40 +118,40 @@ use_decl :: { Import }
   : "use" use_tree ";" { $2 }
 
 use_tree :: { Import }
-  : IDENTIFIER optional(use_alias)                 { Import [getRawIdentifier $1] (Qualified $2) }
-  | IDENTIFIER "::" "*"                            { Import [getRawIdentifier $1] Exhaustive }
-  | IDENTIFIER "::" "{" comma_list(IDENTIFIER) "}" { Import [getRawIdentifier $1] (Specific (map getRawIdentifier $4)) }
-  | IDENTIFIER "::" use_tree                       { prefixImport (getRawIdentifier $1) $3 }
+  : IDENTIFIER optional(use_alias)                 { Import [getIdentifierLiteral $1] (Qualified $2) }
+  | IDENTIFIER "::" "*"                            { Import [getIdentifierLiteral $1] Exhaustive }
+  | IDENTIFIER "::" "{" comma_list(IDENTIFIER) "}" { Import [getIdentifierLiteral $1] (Specific (map getIdentifierLiteral $4)) }
+  | IDENTIFIER "::" use_tree                       { prependImport (getIdentifierLiteral $1) $3 }
 
 use_alias :: { Identifier }
-  : "as" IDENTIFIER { getRawIdentifier $2 }
+  : "as" IDENTIFIER { getIdentifierLiteral $2 }
 
 
 alias_decl :: { Declaration Parsed }
-  : "type" IDENTIFIER optional(generic_params) "=" type_expr ";" { TypeAliasDecl $1 (TypeAliasInfo (getRawIdentifier $2) (fold $3) $5)}
+  : "type" IDENTIFIER optional(generic_params) "=" type_expr ";" { TypeAliasDecl $1 (TypeAliasInfo (getIdentifierLiteral $2) (fold $3) $5)}
 
 enum_decl :: { Declaration Parsed }
-  : "enum" IDENTIFIER "{" optional(comma_list(enum_item)) "}" { EnumDecl $1 (EnumInfo (getRawIdentifier $2) (fold $4)) }
+  : "enum" IDENTIFIER "{" optional(comma_list(enum_item)) "}" { EnumDecl $1 (EnumInfo (getIdentifierLiteral $2) (fold $4)) }
 
 enum_item :: { Identifier }
-  : IDENTIFIER { getRawIdentifier $1 }
+  : IDENTIFIER { getIdentifierLiteral $1 }
 
 struct_decl :: { Declaration Parsed }
-  : "struct" IDENTIFIER optional(generic_params) "{" comma_list(struct_field) "}" { StructDecl $1 (StructInfo (getRawIdentifier $2) (fold $3) $5) }
+  : "struct" IDENTIFIER optional(generic_params) "{" comma_list(struct_field) "}" { StructDecl $1 (StructInfo (getIdentifierLiteral $2) (fold $3) $5) }
 
 struct_field :: { (Identifier, TypeExpr Parsed) }
-  : IDENTIFIER ":" type_expr { (getRawIdentifier $1, $3) }
+  : IDENTIFIER ":" type_expr { (getIdentifierLiteral $1, $3) }
 
 
 const_decl :: { Declaration Parsed }
-  : "const" IDENTIFIER ":" type_expr "=" expression ";" { ConstDecl $1 (ConstInfo (getRawIdentifier $2) $4 (snd $6)) }
+  : "const" IDENTIFIER ":" type_expr "=" expression ";" { ConstDecl $1 (ConstInfo (getIdentifierLiteral $2) $4 (snd $6)) }
 
 
 fun_decl :: { Declaration Parsed }
-  : "fn" IDENTIFIER optional(generic_params) "(" optional(comma_list(fun_arg)) ")" optional(fun_return) block { FunctionDecl $1 (FunctionInfo (getRawIdentifier $2) (fold $3) (fold $5) $7 $8) }
+  : "fn" IDENTIFIER optional(generic_params) "(" optional(comma_list(fun_arg)) ")" optional(fun_return) block { FunctionDecl $1 (FunctionInfo (getIdentifierLiteral $2) (fold $3) (fold $5) $7 $8) }
 
 fun_arg :: { (Identifier, FunctionArgType Parsed) }
-  : IDENTIFIER ":" fun_arg_type { (getRawIdentifier $1, $3) }
+  : IDENTIFIER ":" fun_arg_type { (getIdentifierLiteral $1, $3) }
 
 fun_arg_type :: { FunctionArgType Parsed }
   : type_expr { ByValue     $1 }
@@ -163,7 +165,7 @@ generic_params :: { [Identifier] }
   : "<" comma_list(generic_param) ">" { $2 }
 
 generic_param :: { Identifier }
-  : IDENTIFIER { getRawIdentifier $1 }
+  : IDENTIFIER { getIdentifierLiteral $1 }
 
 
 block :: { [Statement Parsed] }
@@ -200,11 +202,11 @@ while_stmt :: { Statement Parsed }
   : "while" expression block { WhileStmt $1 (WhileInfo (snd $2) $3) }
 
 for_stmt :: { Statement Parsed }
-  : "for" IDENTIFIER "in" expression block { ForStmt $1 (ForInfo (getRawIdentifier $2) (snd $4) $5) }
+  : "for" IDENTIFIER "in" expression block { ForStmt $1 (ForInfo (getIdentifierLiteral $2) (snd $4) $5) }
 
 
 let_stmt :: { Statement Parsed }
-  : "let" IDENTIFIER optional(let_type) "=" expression { LetStmt $1 (LetInfo (getRawIdentifier $2) $3 (snd $5)) }
+  : "let" IDENTIFIER optional(let_type) "=" expression { LetStmt $1 (LetInfo (getIdentifierLiteral $2) $3 (snd $5)) }
 
 let_type :: { TypeExpr Parsed }
   : ":" type_expr { $2 }
@@ -223,125 +225,119 @@ expr_stmt :: { Statement Parsed }
 
 
 expression :: { (Location, Expression Parsed) }
-  : grouped_expr      { undefined }
-  | path_expr         { undefined }
-  | field_access_expr { undefined }
-  | call_expr         { undefined }
-  | array_expr        { undefined }
-  | index_expr        { undefined }
-  | struct_expr       { undefined }
-  | literal_expr      { undefined }
-  | operator_expr     { undefined }
+  : grouped_expr      { $1 }
+  | path_expr         { (fst $1, PathExpr (fst $1) (snd $1)) }
+  | field_access_expr { $1 }
+  | call_expr         { $1 }
+  | array_expr        { $1 }
+  | index_expr        { $1 }
+  | struct_expr       { $1 }
+  | literal_expr      { $1 }
+  | operator_expr     { $1 }
 
-grouped_expr :: { Expression Parsed }
-  : "(" expression ")" { undefined }
+grouped_expr :: { (Location, Expression Parsed) }
+  : "(" expression ")" { $2 }
 
-path_expr :: { Expression Parsed }
-  : IDENTIFIER                   { undefined }
-  | IDENTIFIER "::" generic_args { undefined }
-  | IDENTIFIER "::" path_expr    { undefined }
+path_expr :: { (Location, PathInfo Parsed) }
+  : IDENTIFIER                   { (fst $1, PathInfo (pure $ getIdentifierLiteral $1) []) }
+  | IDENTIFIER "::" generic_args { (fst $1, PathInfo (pure $ getIdentifierLiteral $1) $3) }
+  | IDENTIFIER "::" path_expr    { (fst $1, prependPathInfo (getIdentifierLiteral $1) (snd $3)) }
 
-field_access_expr :: { Expression Parsed }
-  : expression "." IDENTIFIER { undefined }
+field_access_expr :: { (Location, Expression Parsed) }
+  : expression "." IDENTIFIER { let (l, e) = $1 in (l, FieldAccessExpr l e (getIdentifierLiteral $3)) }
 
-call_expr :: { Expression Parsed }
-  : path_expr "(" optional(comma_list(call_arg)) ")" { undefined }
+call_expr :: { (Location, Expression Parsed) }
+  : path_expr "(" optional(comma_list(call_arg)) ")" { let (l, pi) = $1 in (l, CallExpr l pi (fold $3)) }
 
 call_arg :: { Expression Parsed }
-  : expression { undefined }
+  : expression { snd $1 }
 
-array_expr :: { Expression Parsed }
-  : "[" optional(comma_list(array_element)) "]" { undefined }
+array_expr :: { (Location, Expression Parsed) }
+  : "[" optional(comma_list(array_element)) "]" { ($1, ArrayExpr $1 (fold $2)) }
 
 array_element :: { Expression Parsed }
-  : expression { undefined }
+  : expression { snd $1 }
 
-index_expr :: { Expression Parsed }
-  : expression "[" expression "]" { undefined }
+index_expr :: { (Location, Expression Parsed) }
+  : expression "[" expression "]" { (fst $1, IndexExpr (fst $1) (snd $1) (snd $3)) }
 
-struct_expr :: { Expression Parsed }
-  : path_expr "{" comma_list(field_expr) "}" { undefined }
+struct_expr :: { (Location, Expression Parsed) }
+  : path_expr "{" comma_list(field_expr) "}" { (fst $1, StructExpr (fst $1) (snd $1) $3) }
 
-field_expr :: { Expression Parsed }
-  : IDENTIFIER ":" expression { undefined }
+field_expr :: { (Identifier, Expression Parsed) }
+  : IDENTIFIER ":" expression { (getIdentifierLiteral $1, snd $3) }
 
-literal_expr :: { Expression Parsed }
-  : INT     { undefined }
-  | CHAR    { undefined }
-  | STRING  { undefined }
-  | "true"  { undefined }
-  | "false" { undefined }
+literal_expr :: { (Location, Expression Parsed) }
+  : INT     { (fst $1, IntLiteralExpr    (fst $1) (getIntLiteral    $1)) }
+  | CHAR    { (fst $1, CharLiteralExpr   (fst $1) (getCharLiteral   $1)) }
+  | STRING  { (fst $1, StringLiteralExpr (fst $1) (getStringLiteral $1)) }
+  | "true"  { ($1, BoolLiteralExpr   $1 True)  }
+  | "false" { ($1, BoolLiteralExpr   $1 False) }
 
-operator_expr :: { Expression Parsed }
-   : reference_expr           { undefined }
-   | negation_expr            { undefined }
-   | arithmetic_expr          { undefined }
-   | comparison_expr          { undefined }
-   | boolean_expr             { undefined }
-   | cast_expr                { undefined }
-   | range_expr               { undefined }
-   | assignment_expr          { undefined }
-   | compound_assignment_expr { undefined }
+operator_expr :: { (Location, Expression Parsed) }
+   : reference_expr           { $1 }
+   | negation_expr            { $1 }
+   | arithmetic_expr          { $1 }
+   | comparison_expr          { $1 }
+   | boolean_expr             { $1 }
+   | cast_expr                { $1 }
+   | range_expr               { $1 }
+   | assignment_expr          { $1 }
+   | compound_assignment_expr { $1 }
 
-reference_expr :: { Expression Parsed }
-  : "&" path_expr %prec UNARY { undefined }
+reference_expr :: { (Location, Expression Parsed) }
+  : "&" path_expr %prec UNARY { ($1, ReferenceExpr $1 (snd $2)) }
 
-negation_expr :: { Expression Parsed }
-  : "!" expression %prec UNARY { undefined }
-  | "-" expression %prec UNARY { undefined }
+negation_expr :: { (Location, Expression Parsed) }
+  : "!" expression %prec UNARY { ($1, NegationExpr $1 (snd $2)) }
+  | "-" expression %prec UNARY { ($1, NegationExpr $1 (snd $2)) }
 
-arithmetic_expr :: { Expression Parsed }
-  : expression "+" expression { undefined }
-  | expression "-" expression { undefined }
-  | expression "*" expression { undefined }
-  | expression "/" expression { undefined }
-  | expression "%" expression { undefined }
-  | expression "^" expression { undefined }
+arithmetic_expr :: { (Location, Expression Parsed) }
+  : expression "+" expression { binaryExpr AdditionExpr       $1 $3 }
+  | expression "-" expression { binaryExpr SubtractionExpr    $1 $3 }
+  | expression "*" expression { binaryExpr MultiplicationExpr $1 $3 }
+  | expression "/" expression { binaryExpr DivisionExpr       $1 $3 }
+  | expression "%" expression { binaryExpr ModuloExpr         $1 $3 }
+  | expression "^" expression { binaryExpr ExponentiationExpr $1 $3 }
 
-comparison_expr :: { Expression Parsed }
-  : expression "==" expression { undefined }
-  | expression "!=" expression { undefined }
-  | expression ">"  expression { undefined }
-  | expression "<"  expression { undefined }
-  | expression ">=" expression { undefined }
-  | expression "<=" expression { undefined }
+comparison_expr :: { (Location, Expression Parsed) }
+  : expression "==" expression { binaryExpr EqualityExpr   $1 $3 }
+  | expression "!=" expression { binaryExpr DifferenceExpr $1 $3 }
+  | expression ">"  expression { binaryExpr GreaterExpr    $1 $3 }
+  | expression "<"  expression { binaryExpr LesserExpr     $1 $3 }
+  | expression ">=" expression { binaryExpr GreaterEqExpr  $1 $3 }
+  | expression "<=" expression { binaryExpr LesserEqExpr   $1 $3 }
 
-boolean_expr :: { Expression Parsed }
-  : expression "&&" expression { undefined }
-  | expression "||" expression { undefined }
+boolean_expr :: { (Location, Expression Parsed) }
+  : expression "&&" expression { binaryExpr BoolAndExpr $1 $3 }
+  | expression "||" expression { binaryExpr BoolOrExpr  $1 $3 }
 
-cast_expr :: { Expression Parsed }
-  : expression "as" type_expr { undefined }
+cast_expr :: { (Location, Expression Parsed) }
+  : expression "as" type_expr { (fst $1, CastExpr (fst $1) (snd $1) $3) }
 
-range_expr :: { Expression Parsed }
-  : range_inclusive_expr { undefined }
-  | range_exclusive_expr { undefined }
+range_expr :: { (Location, Expression Parsed) }
+  : expression "..=" expression { binaryExpr RangeInclusiveExpr $1 $3 }
+  | expression ".."  expression { binaryExpr RangeExclusiveExpr $1 $3 }
 
-range_inclusive_expr :: { Expression Parsed }
-  : expression "..=" expression { undefined }
+assignment_expr :: { (Location, Expression Parsed) }
+  : expression "=" expression { binaryExpr AssignmentExpr $1 $3 }
 
-range_exclusive_expr :: { Expression Parsed }
-  : expression ".." expression { undefined }
-
-assignment_expr :: { Expression Parsed }
-  : expression "=" expression { undefined }
-
-compound_assignment_expr :: { Expression Parsed }
-  : expression "+=" expression { undefined }
-  | expression "-=" expression { undefined }
-  | expression "*=" expression { undefined }
-  | expression "/=" expression { undefined }
-  | expression "%=" expression { undefined }
-  | expression "^=" expression { undefined }
+compound_assignment_expr :: { (Location, Expression Parsed) }
+  : expression "+=" expression { binaryExpr AdditionAssignmentExpr       $1 $3 }
+  | expression "-=" expression { binaryExpr SubtractionAssignmentExpr    $1 $3 }
+  | expression "*=" expression { binaryExpr MultiplicationAssignmentExpr $1 $3 }
+  | expression "/=" expression { binaryExpr DivisionAssignmentExpr       $1 $3 }
+  | expression "%=" expression { binaryExpr ModuloAssignmentExpr         $1 $3 }
+  | expression "^=" expression { binaryExpr ExponentiationAssignmentExpr $1 $3 }
 
 
 reference :: { TypeExpr Parsed }
   : "&" type_expr { $2 }
 
 type_expr :: { TypeExpr Parsed }
-  : IDENTIFIER                   { undefined }
-  | IDENTIFIER "::" generic_args { undefined }
-  | IDENTIFIER "::" type_expr    { undefined }
+  : IDENTIFIER                   { PathInfo (pure $ getIdentifierLiteral $1) [] }
+  | IDENTIFIER "::" generic_args { PathInfo (pure $ getIdentifierLiteral $1) $3 }
+  | IDENTIFIER "::" type_expr    { prependPathInfo (getIdentifierLiteral $1) $3 }
 
 generic_args :: { [TypeExpr Parsed] }
   : "<" comma_list(type_expr) ">" { $2 }
@@ -367,12 +363,37 @@ many(p)
 lexer :: ((Location, Token) -> Parser a) -> Parser a
 lexer = (>>=) alexGetNextToken
 
-getRawIdentifier :: (Location, Token) -> Identifier
-getRawIdentifier (_, tok) = case tok of
+getIdentifierLiteral :: (Location, Token) -> Identifier
+getIdentifierLiteral (_, tok) = case tok of
   TIdentifier i -> i
   _             -> error "ICE: not an identifier"
 
-prefixImport :: Identifier -> Import -> Import
-prefixImport prefix = over importPath (prefix:)
+getIntLiteral :: (Location, Token) -> Int
+getIntLiteral (_, tok) = case tok of
+  TLiteralInt i -> i
+  _             -> error "ICE: not an int"
+
+getCharLiteral :: (Location, Token) -> Char
+getCharLiteral (_, tok) = case tok of
+  TLiteralChar i -> i
+  _              -> error "ICE: not a char"
+
+getStringLiteral :: (Location, Token) -> Text
+getStringLiteral (_, tok) = case tok of
+  TLiteralString i -> i
+  _                -> error "ICE: not a string"
+
+prependPathInfo :: Identifier -> PathInfo Parsed -> PathInfo Parsed
+prependPathInfo prepend = over pathName (prepend <|)
+
+prependImport :: Identifier -> Import -> Import
+prependImport prepend = over importPath (prepend :)
+
+binaryExpr
+  :: (Location -> Expression Parsed -> Expression Parsed -> Expression Parsed)
+  -> (Location, Expression Parsed)
+  -> (Location, Expression Parsed)
+  -> (Location, Expression Parsed)
+binaryExpr cons (location, exp1) (_, exp2) = (location, cons location exp1 exp2)
 
 }
