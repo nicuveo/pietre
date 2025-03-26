@@ -8,6 +8,7 @@ import Control.Lens
 import Data.Kind
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
+import Text.Builder                         qualified as TB
 
 
 data ASTPhase = Parsed
@@ -353,6 +354,187 @@ data PathInfo (p :: ASTPhase) = PathInfo
 type TypeExpr (p :: ASTPhase) = PathInfo p
 
 deriving instance ASTRepresentation p => Show (TypeExpr p)
+
+
+prettyPrint :: Module Parsed -> Text
+prettyPrint Module{..} = TB.run $ TB.intercalate "\n" $ map ppImport _modImports ++ map ppDeclaration _modDeclarations
+  where
+    ppIdentifier = TB.text
+    ppImport Import {..} = "use " <> TB.intercalate "::" (map ppIdentifier _importPath) <> case _importType of
+      Qualified (Just name) -> " as " <> ppIdentifier name <> ";"
+      Qualified _           -> ";"
+      Specific  names       -> "::{" <> TB.intercalate ", " (map ppIdentifier names) <> "};"
+      Exhaustive            -> "::*;"
+    ppDeclaration = \case
+      TypeAliasDecl _ tai -> ppTypeAliasInfo tai
+      EnumDecl      _ ei  -> ppEnumInfo ei
+      StructDecl    _ si  -> ppStructInfo si
+      ConstDecl     _ ci  -> ppConstInfo ci
+      FunctionDecl  _ fi  -> ppFunctionInfo fi
+    ppParams []     = mempty
+    ppParams params = mconcat
+      [ "<"
+      , TB.intercalate ", " (map ppIdentifier params)
+      , ">"
+      ]
+    ppTypeAliasInfo TypeAliasInfo {..} = mconcat
+      [ "type "
+      , ppIdentifier _aliasName
+      , ppParams _aliasParams
+      , " = "
+      , ppTypeExpr _aliasValue
+      , ";"
+      ]
+    ppEnumInfo EnumInfo {..} = mconcat
+      [ "enum "
+      , ppIdentifier _enumName
+      , " {\n"
+      , TB.intercalate ",\n" do
+          value <- _enumValues
+          pure $ "  " <> ppIdentifier value
+      , "\n}"
+      ]
+    ppStructInfo StructInfo {..} = mconcat
+      [ "struct "
+      , ppIdentifier _structName
+      , ppParams _structParams
+      , "{\n"
+      , TB.intercalate ",\n" do
+          (name, typeExpr) <- _structValues
+          pure $ mconcat
+            [ "  "
+            , ppIdentifier name
+            , " : "
+            , ppTypeExpr typeExpr
+            ]
+      , "\n}"
+      ]
+    ppConstInfo ConstInfo {..} = mconcat
+      [ "const "
+      , ppIdentifier _constName
+      , " : "
+      , ppTypeExpr _constType
+      , " = "
+      , ppExpr _constExpr
+      , ";"
+      ]
+    ppBlock =
+      map ("  " <> ) . concatMap ppStatement
+    ppFunctionInfo FunctionInfo {..} = mconcat
+      [ "fn "
+      , ppIdentifier _funName
+      , ppParams _funParams
+      , "("
+      , ppFunArgs _funArgs
+      , ")"
+      , foldMap (\t -> " -> " <> ppTypeExpr t) _funType
+      , " {\n"
+      , TB.intercalate "\n" $ ppBlock _funBody
+      , "\n}"
+      ]
+    ppFunArgs args = TB.intercalate ", " do
+      (name, argType) <- args
+      pure $ ppIdentifier name <> " : " <> case argType of
+        ByValue     te -> ppTypeExpr te
+        ByReference te -> "&" <> ppTypeExpr te
+    ppStatement = \case
+      IfStmt         _ ii -> ppIfInfo "" ii
+      ForStmt        _ fi -> ppForInfo   fi
+      WhileStmt      _ wi -> ppWhileInfo wi
+      LetStmt        _ li -> ppLetInfo   li
+      ReturnStmt     _ rs -> ["return" <> foldMap ((" " <>) . ppExpr) rs <> ";"]
+      ContinueStmt   _    -> ["continue;"]
+      BreakStmt      _    -> ["break;"]
+      ExpressionStmt _  e -> [ppExpr e <> ";"]
+    ppIfInfo prefix IfInfo {..} = mconcat
+      [ [ mconcat
+          [ prefix
+          , "if "
+          , ppExpr _ifExpr
+          , " {"
+          ]
+        ]
+      , ppBlock _ifBody
+      , case _ifElse of
+          Nothing             -> ["}"]
+          Just (ElseIf    ii) -> ppIfInfo "} else " ii
+          Just (ElseBlock  b) -> mconcat
+            [ ["} else {"]
+            , ppBlock b
+            , ["}"]
+            ]
+      ]
+    ppForInfo ForInfo {..} = mconcat
+      [ [ mconcat
+          [ "for "
+          , ppIdentifier _forVariableName
+          , " in "
+          , ppExpr _forRangeExpr
+          , " {"
+          ]
+        ]
+      , ppBlock _forBody
+      , ["}"]
+      ]
+    ppWhileInfo WhileInfo {..} = mconcat
+      [ [ mconcat
+          [ "while "
+          , ppExpr _whileExpr
+          , " {"
+          ]
+        ]
+      , ppBlock _whileBody
+      , ["}"]
+      ]
+    ppLetInfo LetInfo {..} = pure $ mconcat
+      [ "let "
+      , ppIdentifier _letName
+      , foldMap ((" : " <>) . ppTypeExpr) _letType
+      , " = "
+      , ppExpr _letExpr
+      , ";"
+      ]
+    ppExpr = \case
+      PathExpr                     _ p     -> ppPathInfo p
+      CastExpr                     _ e  t  -> "(" <> ppExpr e <> ") as (" <> ppTypeExpr t <> ")"
+      FieldAccessExpr              _ e  i  -> "(" <> ppExpr e <> ").(" <> ppIdentifier i <> ")"
+      CallExpr                     _ f  as -> "(" <> ppPathInfo f <> ")(" <> TB.intercalate ", " (map ppExpr as) <> ")"
+      ArrayExpr                    _ vs    -> "[" <> TB.intercalate ", " (map ppExpr vs) <> "]"
+      IndexExpr                    _ e1 e2 -> "(" <> ppExpr e1 <> ")[" <> ppExpr e2 <> "]"
+      StructExpr                   _ p  fs -> "(" <> ppPathInfo p <> ") {" <> TB.intercalate ", " [ppIdentifier name <> " : " <> ppExpr value | (name, value) <- fs] <> "}"
+      BoolLiteralExpr              _ b     -> if b then "true" else "false"
+      IntLiteralExpr               _ i     -> TB.string (show i)
+      CharLiteralExpr              _ c     -> TB.string (show c)
+      StringLiteralExpr            _ s     -> TB.string (show s)
+      ReferenceExpr                _ e     -> "&(" <> ppPathInfo e <> ")"
+      NegationExpr                 _ e     -> "!(" <> ppExpr e <> ")"
+      AdditionExpr                 _ e1 e2 -> "(" <> ppExpr e1 <> ") + ("   <> ppExpr e2 <> ")"
+      SubtractionExpr              _ e1 e2 -> "(" <> ppExpr e1 <> ") - ("   <> ppExpr e2 <> ")"
+      MultiplicationExpr           _ e1 e2 -> "(" <> ppExpr e1 <> ") * ("   <> ppExpr e2 <> ")"
+      DivisionExpr                 _ e1 e2 -> "(" <> ppExpr e1 <> ") / ("   <> ppExpr e2 <> ")"
+      ModuloExpr                   _ e1 e2 -> "(" <> ppExpr e1 <> ") % ("   <> ppExpr e2 <> ")"
+      ExponentiationExpr           _ e1 e2 -> "(" <> ppExpr e1 <> ") ^ ("   <> ppExpr e2 <> ")"
+      EqualityExpr                 _ e1 e2 -> "(" <> ppExpr e1 <> ") == ("  <> ppExpr e2 <> ")"
+      DifferenceExpr               _ e1 e2 -> "(" <> ppExpr e1 <> ") != ("  <> ppExpr e2 <> ")"
+      GreaterExpr                  _ e1 e2 -> "(" <> ppExpr e1 <> ") > ("   <> ppExpr e2 <> ")"
+      LesserExpr                   _ e1 e2 -> "(" <> ppExpr e1 <> ") < ("   <> ppExpr e2 <> ")"
+      GreaterEqExpr                _ e1 e2 -> "(" <> ppExpr e1 <> ") >= ("  <> ppExpr e2 <> ")"
+      LesserEqExpr                 _ e1 e2 -> "(" <> ppExpr e1 <> ") <= ("  <> ppExpr e2 <> ")"
+      BoolAndExpr                  _ e1 e2 -> "(" <> ppExpr e1 <> ") && ("  <> ppExpr e2 <> ")"
+      BoolOrExpr                   _ e1 e2 -> "(" <> ppExpr e1 <> ") || ("  <> ppExpr e2 <> ")"
+      RangeInclusiveExpr           _ e1 e2 -> "(" <> ppExpr e1 <> ") ..= (" <> ppExpr e2 <> ")"
+      RangeExclusiveExpr           _ e1 e2 -> "(" <> ppExpr e1 <> ") .. ("  <> ppExpr e2 <> ")"
+      AssignmentExpr               _ e1 e2 -> "(" <> ppExpr e1 <> ") = ("   <> ppExpr e2 <> ")"
+      AdditionAssignmentExpr       _ e1 e2 -> "(" <> ppExpr e1 <> ") += ("  <> ppExpr e2 <> ")"
+      SubtractionAssignmentExpr    _ e1 e2 -> "(" <> ppExpr e1 <> ") -= ("  <> ppExpr e2 <> ")"
+      MultiplicationAssignmentExpr _ e1 e2 -> "(" <> ppExpr e1 <> ") *= ("  <> ppExpr e2 <> ")"
+      DivisionAssignmentExpr       _ e1 e2 -> "(" <> ppExpr e1 <> ") /= ("  <> ppExpr e2 <> ")"
+      ModuloAssignmentExpr         _ e1 e2 -> "(" <> ppExpr e1 <> ") %= ("  <> ppExpr e2 <> ")"
+      ExponentiationAssignmentExpr _ e1 e2 -> "(" <> ppExpr e1 <> ") ^= ("  <> ppExpr e2 <> ")"
+    ppTypeExpr = ppPathInfo
+    ppPathInfo PathInfo {..} = TB.intercalate "::" (fmap ppIdentifier _pathName) <> case _pathParams of
+      [] -> mempty
+      _  -> "::<" <> TB.intercalate ", " (map ppTypeExpr _pathParams) <> ">"
 
 
 makeLenses 'Import

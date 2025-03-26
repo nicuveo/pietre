@@ -59,6 +59,7 @@ dependencies:
   - monad-loops
   - mtl
   - text
+  - text-builder
   - transformers
   - unordered-containers
 
@@ -89,7 +90,6 @@ executables:
     dependencies:
       - extra
       - megaparsec
-      - text-builder
       - graphwiz
 
 tests:

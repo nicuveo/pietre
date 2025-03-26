@@ -86,6 +86,7 @@ library
     , monad-loops
     , mtl
     , text
+    , text-builder
     , transformers
     , unordered-containers
   default-language: GHC2021
@@ -178,6 +179,7 @@ executable pc
     , mtl
     , pietre
     , text
+    , text-builder
     , transformers
     , unordered-containers
   default-language: GHC2021
@@ -238,6 +240,7 @@ test-suite tests
     , tasty-quickcheck
     , template-haskell
     , text
+    , text-builder
     , transformers
     , unordered-containers
   default-language: GHC2021
