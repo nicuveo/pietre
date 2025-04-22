@@ -107,6 +107,7 @@ tests:
       - directory
       - tasty
       - tasty-hunit
+      - tasty-golden
       - tasty-quickcheck
       - tasty-autocollect
       - template-haskell

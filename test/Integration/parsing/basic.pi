@@ -1,0 +1,22 @@
+use Foo::Bar::*;
+use Baz::{a, b, c};
+use Fksdf as G;
+
+const ANSWER: int = 42;
+
+enum Color {Red, Green, Blue}
+
+struct Customer<T> {
+  uniqueID: T
+}
+
+fn main<T,U>() -> T {
+  if true {
+    if false {
+      if 42 {
+        print(a*b+c-d/e^f%g);
+        let x = -42;
+      }
+    }
+  }
+}
