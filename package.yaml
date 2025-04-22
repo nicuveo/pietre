@@ -58,6 +58,7 @@ dependencies:
   - lens
   - monad-loops
   - mtl
+  - prettyprinter
   - text
   - text-builder
   - transformers

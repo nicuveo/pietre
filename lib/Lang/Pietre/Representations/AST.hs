@@ -4,16 +4,21 @@ module Lang.Pietre.Representations.AST where
 
 import "this" Prelude
 
+import Control.Applicative                  (liftA3)
 import Control.Lens
 import Data.Kind
 import Data.List.NonEmpty                   qualified as NE
+import Prettyprinter
+import Prettyprinter.Render.Text
+
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
-import Text.Builder                         qualified as TB
 
+
+--------------------------------------------------------------------------------
+-- AST Phase
 
 data ASTPhase = Parsed
-
 
 class
   ( Show (XTypeAlias                p)
@@ -158,6 +163,9 @@ instance ASTRepresentation Parsed where
   type XModuloAssignment         Parsed = Location
   type XExponentiationAssignment Parsed = Location
 
+
+--------------------------------------------------------------------------------
+-- AST
 
 data Module (p :: ASTPhase) = Module
   { _modImports      :: [Import]
@@ -357,186 +365,188 @@ type TypeExpr (p :: ASTPhase) = PathInfo p
 deriving instance ASTRepresentation p => Show (TypeExpr p)
 
 
+--------------------------------------------------------------------------------
+-- Pretty print
+
+instance Pretty (Module p) where
+  pretty Module {..} = vsep $ map pretty _modImports ++ map pretty _modDeclarations
+
+instance Pretty Import where
+  pretty Import {..} = hsep
+    [ "use"
+    , hcat $ intersperse "::" (map pretty $ toList _importPath)
+    , case _importType of
+        Qualified (Just name) -> "as" <+> pretty name
+        Qualified _           -> mempty
+        Specific  names       -> encloseSep "::{" "}" "," (map pretty $ NE.toList names)
+        Exhaustive            -> "::*"
+    ] <> ";"
+
+instance Pretty (Declaration p) where
+  pretty = \case
+    TypeAliasDecl _ tai -> pretty tai
+    EnumDecl      _ ei  -> pretty ei
+    StructDecl    _ si  -> pretty si
+    ConstDecl     _ ci  -> pretty ci
+    FunctionDecl  _ fi  -> pretty fi
+
+instance Pretty (TypeAliasInfo p) where
+  pretty TypeAliasInfo {..} = hsep
+    [ "type"
+    , pretty _aliasName
+    , prettyParams _aliasParams
+    , "="
+    , pretty _aliasValue
+    ] <> ";"
+
+instance Pretty (EnumInfo p) where
+  pretty EnumInfo {..} = hsep
+    [ "enum"
+    , pretty _enumName
+    , encloseSep "{" "}" "," $ map pretty _enumValues
+    ]
+
+instance Pretty (StructInfo p) where
+  pretty StructInfo {..} = hsep
+    [ "struct"
+    , pretty _structName
+    , prettyParams _structParams
+    , encloseSep "{" "}" "," do
+        (name, typeExpr) <- NE.toList _structValues
+        pure $ hsep
+          [ pretty name
+          , ":"
+          , pretty typeExpr
+          ]
+    ]
+
+instance Pretty (ConstInfo p) where
+  pretty (ConstInfo {..}) = hsep
+    [ "const"
+    , pretty _constName
+    , ":"
+    , pretty _constType
+    , "="
+    , pretty _constExpr
+    ] <> ";"
+
+instance Pretty (FunctionInfo p) where
+  pretty FunctionInfo {..} = hsep
+    [ "fn"
+    , pretty _funName
+    , prettyParams _funParams
+    , encloseSep "(" ")" "," do
+        (name, argType) <- _funArgs
+        pure $ hsep
+          [ pretty name
+          , ":"
+          , case argType of
+              ByValue     te -> pretty te
+              ByReference te -> "&" <+> pretty te
+          ]
+    , foldMap (\t -> "->" <+> pretty t) _funType
+    , prettyBlock _funBody
+    ]
+
+instance Pretty (Statement p) where
+  pretty = \case
+    IfStmt         _ ii -> pretty ii
+    ForStmt        _ fi -> pretty fi
+    WhileStmt      _ wi -> pretty wi
+    LetStmt        _ li -> pretty li
+    ReturnStmt     _ rs -> "return" <+> foldMap pretty rs <> ";"
+    ContinueStmt   _    -> "continue;"
+    BreakStmt      _    -> "break;"
+    ExpressionStmt _  e -> pretty e <> ";"
+
+instance Pretty (IfInfo p) where
+  pretty IfInfo {..} = hsep
+    [ "if"
+    , pretty _ifExpr
+    , prettyBlock _ifBody
+    , case _ifElse of
+        Nothing             -> mempty
+        Just (ElseIf    ii) -> "else" <+> pretty ii
+        Just (ElseBlock  b) -> "else" <+> prettyBlock b
+    ]
+
+instance Pretty (ForInfo p) where
+  pretty ForInfo {..} = hsep
+    [ "for"
+    , pretty _forVariableName
+    , "in"
+    , pretty _forRangeExpr
+    , prettyBlock _forBody
+    ]
+
+instance Pretty (WhileInfo p) where
+  pretty WhileInfo {..} = hsep
+    [ "while"
+    , pretty _whileExpr
+    , prettyBlock _whileBody
+    ]
+
+instance Pretty (LetInfo p) where
+  pretty LetInfo {..} = hsep
+    [ "let"
+    , pretty _letName
+    , foldMap (\t -> ":" <+> pretty t) _letType
+    , "="
+    , pretty _letExpr
+    ] <> ";"
+
+instance Pretty (Expression p) where
+  pretty = \case
+    PathExpr                     _ p     -> pretty p
+    CastExpr                     _ e  t  -> parens (pretty e) <+> "as" <+> parens (pretty t)
+    FieldAccessExpr              _ e  i  -> parens (pretty e) <> "." <> pretty i
+    CallExpr                     _ f  as -> parens (pretty f) <> encloseSep "(" ")" "," (map pretty as)
+    ArrayExpr                    _ vs    -> list $ map pretty vs
+    IndexExpr                    _ e1 e2 -> parens (pretty e1) <> brackets (pretty e2)
+    StructExpr                   _ p  fs -> parens (pretty p) <> encloseSep "{" "}" "," [pretty name <+> ":" <+> pretty value | (name, value) <- fs]
+    BoolLiteralExpr              _ b     -> if b then "true" else "false"
+    IntLiteralExpr               _ i     -> viaShow i
+    CharLiteralExpr              _ c     -> viaShow c
+    StringLiteralExpr            _ s     -> viaShow s
+    ReferenceExpr                _ e     -> "&" <> parens (pretty e)
+    NegationExpr                 _ e     -> "!" <> parens (pretty e)
+    AdditionExpr                 _ e1 e2 -> parens (pretty e1) <+> "+"   <+> parens (pretty e2)
+    SubtractionExpr              _ e1 e2 -> parens (pretty e1) <+> "-"   <+> parens (pretty e2)
+    MultiplicationExpr           _ e1 e2 -> parens (pretty e1) <+> "*"   <+> parens (pretty e2)
+    DivisionExpr                 _ e1 e2 -> parens (pretty e1) <+> "/"   <+> parens (pretty e2)
+    ModuloExpr                   _ e1 e2 -> parens (pretty e1) <+> "%"   <+> parens (pretty e2)
+    ExponentiationExpr           _ e1 e2 -> parens (pretty e1) <+> "^"   <+> parens (pretty e2)
+    EqualityExpr                 _ e1 e2 -> parens (pretty e1) <+> "=="  <+> parens (pretty e2)
+    DifferenceExpr               _ e1 e2 -> parens (pretty e1) <+> "!="  <+> parens (pretty e2)
+    GreaterExpr                  _ e1 e2 -> parens (pretty e1) <+> "> "  <+> parens (pretty e2)
+    LesserExpr                   _ e1 e2 -> parens (pretty e1) <+> "< "  <+> parens (pretty e2)
+    GreaterEqExpr                _ e1 e2 -> parens (pretty e1) <+> ">="  <+> parens (pretty e2)
+    LesserEqExpr                 _ e1 e2 -> parens (pretty e1) <+> "<="  <+> parens (pretty e2)
+    BoolAndExpr                  _ e1 e2 -> parens (pretty e1) <+> "&&"  <+> parens (pretty e2)
+    BoolOrExpr                   _ e1 e2 -> parens (pretty e1) <+> "||"  <+> parens (pretty e2)
+    RangeInclusiveExpr           _ e1 e2 -> parens (pretty e1) <+> "..=" <+> parens (pretty e2)
+    RangeExclusiveExpr           _ e1 e2 -> parens (pretty e1) <+> ".."  <+> parens (pretty e2)
+    AssignmentExpr               _ e1 e2 -> parens (pretty e1) <+> "="   <+> parens (pretty e2)
+    AdditionAssignmentExpr       _ e1 e2 -> parens (pretty e1) <+> "+="  <+> parens (pretty e2)
+    SubtractionAssignmentExpr    _ e1 e2 -> parens (pretty e1) <+> "-="  <+> parens (pretty e2)
+    MultiplicationAssignmentExpr _ e1 e2 -> parens (pretty e1) <+> "*="  <+> parens (pretty e2)
+    DivisionAssignmentExpr       _ e1 e2 -> parens (pretty e1) <+> "/="  <+> parens (pretty e2)
+    ModuloAssignmentExpr         _ e1 e2 -> parens (pretty e1) <+> "%="  <+> parens (pretty e2)
+    ExponentiationAssignmentExpr _ e1 e2 -> parens (pretty e1) <+> "^="  <+> parens (pretty e2)
+
+
+instance Pretty (PathInfo p) where
+  pretty PathInfo {..} = hcat (intersperse "::" (toList $ fmap pretty _pathName)) <> case _pathParams of
+    [] -> mempty
+    _  -> encloseSep "::<" ">" "," $ map pretty _pathParams
+
+
+prettyParams :: Pretty p => [p] -> Doc ann
+prettyParams []     = mempty
+prettyParams params = encloseSep "<" ">" "," $ map pretty params
+
+prettyBlock :: Pretty p => [p] -> Doc ann
+prettyBlock = braces . enclose hardline hardline . indent 2 . vsep . map pretty
+
 prettyPrint :: Module Parsed -> Text
-prettyPrint Module{..} = TB.run $ TB.intercalate "\n" $ map ppImport _modImports ++ map ppDeclaration _modDeclarations
-  where
-    ppIdentifier = TB.text
-    ppImport Import {..} = "use " <> TB.intercalate "::" (map ppIdentifier _importPath) <> case _importType of
-      Qualified (Just name) -> " as " <> ppIdentifier name <> ";"
-      Qualified _           -> ";"
-      Specific  names       -> "::{" <> TB.intercalate ", " (map ppIdentifier names) <> "};"
-      Exhaustive            -> "::*;"
-    ppDeclaration = \case
-      TypeAliasDecl _ tai -> ppTypeAliasInfo tai
-      EnumDecl      _ ei  -> ppEnumInfo ei
-      StructDecl    _ si  -> ppStructInfo si
-      ConstDecl     _ ci  -> ppConstInfo ci
-      FunctionDecl  _ fi  -> ppFunctionInfo fi
-    ppParams []     = mempty
-    ppParams params = mconcat
-      [ "<"
-      , TB.intercalate ", " (map ppIdentifier params)
-      , ">"
-      ]
-    ppTypeAliasInfo TypeAliasInfo {..} = mconcat
-      [ "type "
-      , ppIdentifier _aliasName
-      , ppParams _aliasParams
-      , " = "
-      , ppTypeExpr _aliasValue
-      , ";"
-      ]
-    ppEnumInfo EnumInfo {..} = mconcat
-      [ "enum "
-      , ppIdentifier _enumName
-      , " {\n"
-      , TB.intercalate ",\n" do
-          value <- _enumValues
-          pure $ "  " <> ppIdentifier value
-      , "\n}"
-      ]
-    ppStructInfo StructInfo {..} = mconcat
-      [ "struct "
-      , ppIdentifier _structName
-      , ppParams _structParams
-      , "{\n"
-      , TB.intercalate ",\n" do
-          (name, typeExpr) <- _structValues
-          pure $ mconcat
-            [ "  "
-            , ppIdentifier name
-            , " : "
-            , ppTypeExpr typeExpr
-            ]
-      , "\n}"
-      ]
-    ppConstInfo ConstInfo {..} = mconcat
-      [ "const "
-      , ppIdentifier _constName
-      , " : "
-      , ppTypeExpr _constType
-      , " = "
-      , ppExpr _constExpr
-      , ";"
-      ]
-    ppBlock =
-      map ("  " <> ) . concatMap ppStatement
-    ppFunctionInfo FunctionInfo {..} = mconcat
-      [ "fn "
-      , ppIdentifier _funName
-      , ppParams _funParams
-      , "("
-      , ppFunArgs _funArgs
-      , ")"
-      , foldMap (\t -> " -> " <> ppTypeExpr t) _funType
-      , " {\n"
-      , TB.intercalate "\n" $ ppBlock _funBody
-      , "\n}"
-      ]
-    ppFunArgs args = TB.intercalate ", " do
-      (name, argType) <- args
-      pure $ ppIdentifier name <> " : " <> case argType of
-        ByValue     te -> ppTypeExpr te
-        ByReference te -> "&" <> ppTypeExpr te
-    ppStatement = \case
-      IfStmt         _ ii -> ppIfInfo "" ii
-      ForStmt        _ fi -> ppForInfo   fi
-      WhileStmt      _ wi -> ppWhileInfo wi
-      LetStmt        _ li -> ppLetInfo   li
-      ReturnStmt     _ rs -> ["return" <> foldMap ((" " <>) . ppExpr) rs <> ";"]
-      ContinueStmt   _    -> ["continue;"]
-      BreakStmt      _    -> ["break;"]
-      ExpressionStmt _  e -> [ppExpr e <> ";"]
-    ppIfInfo prefix IfInfo {..} = mconcat
-      [ [ mconcat
-          [ prefix
-          , "if "
-          , ppExpr _ifExpr
-          , " {"
-          ]
-        ]
-      , ppBlock _ifBody
-      , case _ifElse of
-          Nothing             -> ["}"]
-          Just (ElseIf    ii) -> ppIfInfo "} else " ii
-          Just (ElseBlock  b) -> mconcat
-            [ ["} else {"]
-            , ppBlock b
-            , ["}"]
-            ]
-      ]
-    ppForInfo ForInfo {..} = mconcat
-      [ [ mconcat
-          [ "for "
-          , ppIdentifier _forVariableName
-          , " in "
-          , ppExpr _forRangeExpr
-          , " {"
-          ]
-        ]
-      , ppBlock _forBody
-      , ["}"]
-      ]
-    ppWhileInfo WhileInfo {..} = mconcat
-      [ [ mconcat
-          [ "while "
-          , ppExpr _whileExpr
-          , " {"
-          ]
-        ]
-      , ppBlock _whileBody
-      , ["}"]
-      ]
-    ppLetInfo LetInfo {..} = pure $ mconcat
-      [ "let "
-      , ppIdentifier _letName
-      , foldMap ((" : " <>) . ppTypeExpr) _letType
-      , " = "
-      , ppExpr _letExpr
-      , ";"
-      ]
-    ppExpr = \case
-      PathExpr                     _ p     -> ppPathInfo p
-      CastExpr                     _ e  t  -> "(" <> ppExpr e <> ") as (" <> ppTypeExpr t <> ")"
-      FieldAccessExpr              _ e  i  -> "(" <> ppExpr e <> ").(" <> ppIdentifier i <> ")"
-      CallExpr                     _ f  as -> "(" <> ppPathInfo f <> ")(" <> TB.intercalate ", " (map ppExpr as) <> ")"
-      ArrayExpr                    _ vs    -> "[" <> TB.intercalate ", " (map ppExpr vs) <> "]"
-      IndexExpr                    _ e1 e2 -> "(" <> ppExpr e1 <> ")[" <> ppExpr e2 <> "]"
-      StructExpr                   _ p  fs -> "(" <> ppPathInfo p <> ") {" <> TB.intercalate ", " [ppIdentifier name <> " : " <> ppExpr value | (name, value) <- fs] <> "}"
-      BoolLiteralExpr              _ b     -> if b then "true" else "false"
-      IntLiteralExpr               _ i     -> TB.string (show i)
-      CharLiteralExpr              _ c     -> TB.string (show c)
-      StringLiteralExpr            _ s     -> TB.string (show s)
-      ReferenceExpr                _ e     -> "&(" <> ppPathInfo e <> ")"
-      NegationExpr                 _ e     -> "!(" <> ppExpr e <> ")"
-      AdditionExpr                 _ e1 e2 -> "(" <> ppExpr e1 <> ") + ("   <> ppExpr e2 <> ")"
-      SubtractionExpr              _ e1 e2 -> "(" <> ppExpr e1 <> ") - ("   <> ppExpr e2 <> ")"
-      MultiplicationExpr           _ e1 e2 -> "(" <> ppExpr e1 <> ") * ("   <> ppExpr e2 <> ")"
-      DivisionExpr                 _ e1 e2 -> "(" <> ppExpr e1 <> ") / ("   <> ppExpr e2 <> ")"
-      ModuloExpr                   _ e1 e2 -> "(" <> ppExpr e1 <> ") % ("   <> ppExpr e2 <> ")"
-      ExponentiationExpr           _ e1 e2 -> "(" <> ppExpr e1 <> ") ^ ("   <> ppExpr e2 <> ")"
-      EqualityExpr                 _ e1 e2 -> "(" <> ppExpr e1 <> ") == ("  <> ppExpr e2 <> ")"
-      DifferenceExpr               _ e1 e2 -> "(" <> ppExpr e1 <> ") != ("  <> ppExpr e2 <> ")"
-      GreaterExpr                  _ e1 e2 -> "(" <> ppExpr e1 <> ") > ("   <> ppExpr e2 <> ")"
-      LesserExpr                   _ e1 e2 -> "(" <> ppExpr e1 <> ") < ("   <> ppExpr e2 <> ")"
-      GreaterEqExpr                _ e1 e2 -> "(" <> ppExpr e1 <> ") >= ("  <> ppExpr e2 <> ")"
-      LesserEqExpr                 _ e1 e2 -> "(" <> ppExpr e1 <> ") <= ("  <> ppExpr e2 <> ")"
-      BoolAndExpr                  _ e1 e2 -> "(" <> ppExpr e1 <> ") && ("  <> ppExpr e2 <> ")"
-      BoolOrExpr                   _ e1 e2 -> "(" <> ppExpr e1 <> ") || ("  <> ppExpr e2 <> ")"
-      RangeInclusiveExpr           _ e1 e2 -> "(" <> ppExpr e1 <> ") ..= (" <> ppExpr e2 <> ")"
-      RangeExclusiveExpr           _ e1 e2 -> "(" <> ppExpr e1 <> ") .. ("  <> ppExpr e2 <> ")"
-      AssignmentExpr               _ e1 e2 -> "(" <> ppExpr e1 <> ") = ("   <> ppExpr e2 <> ")"
-      AdditionAssignmentExpr       _ e1 e2 -> "(" <> ppExpr e1 <> ") += ("  <> ppExpr e2 <> ")"
-      SubtractionAssignmentExpr    _ e1 e2 -> "(" <> ppExpr e1 <> ") -= ("  <> ppExpr e2 <> ")"
-      MultiplicationAssignmentExpr _ e1 e2 -> "(" <> ppExpr e1 <> ") *= ("  <> ppExpr e2 <> ")"
-      DivisionAssignmentExpr       _ e1 e2 -> "(" <> ppExpr e1 <> ") /= ("  <> ppExpr e2 <> ")"
-      ModuloAssignmentExpr         _ e1 e2 -> "(" <> ppExpr e1 <> ") %= ("  <> ppExpr e2 <> ")"
-      ExponentiationAssignmentExpr _ e1 e2 -> "(" <> ppExpr e1 <> ") ^= ("  <> ppExpr e2 <> ")"
-    ppTypeExpr = ppPathInfo
-    ppPathInfo PathInfo {..} = TB.intercalate "::" (fmap ppIdentifier _pathName) <> case _pathParams of
-      [] -> mempty
-      _  -> "::<" <> TB.intercalate ", " (map ppTypeExpr _pathParams) <> ">"
-
-
-makeLenses 'Import
-makeLenses 'PathInfo
+prettyPrint = renderStrict . layoutPretty defaultLayoutOptions . pretty
