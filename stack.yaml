@@ -6,3 +6,4 @@ packages:
 
 extra-deps:
   - graphwiz-1.0.0
+  - alex-3.5.3.0
