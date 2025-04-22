@@ -40,6 +40,7 @@ library
       Lang.Pietre.Stages.Assembly
       Lang.Pietre.Stages.Assembly.Color
       Lang.Pietre.Stages.Assembly.Templates
+      Lang.Pietre.Stages.Assembly.Templates.Load
       Lang.Pietre.Stages.Generation
       Lang.Pietre.Stages.Linking
       Lang.Pietre.Stages.Lowering
@@ -83,14 +84,17 @@ library
     , base
     , bytestring
     , containers
+    , directory
     , extra
     , file-embed
+    , filepath
     , hashable
     , hip
     , lens
     , monad-loops
     , mtl
     , prettyprinter
+    , template-haskell
     , text
     , text-builder
     , transformers
@@ -133,8 +137,10 @@ executable gramviz
     , base
     , bytestring
     , containers
+    , directory
     , extra
     , file-embed
+    , filepath
     , graphwiz
     , hashable
     , hip
@@ -143,6 +149,7 @@ executable gramviz
     , monad-loops
     , mtl
     , prettyprinter
+    , template-haskell
     , text
     , text-builder
     , transformers
@@ -185,8 +192,10 @@ executable pc
     , base
     , bytestring
     , containers
+    , directory
     , extra
     , file-embed
+    , filepath
     , hashable
     , hip
     , lens
@@ -194,6 +203,7 @@ executable pc
     , mtl
     , pietre
     , prettyprinter
+    , template-haskell
     , text
     , text-builder
     , transformers

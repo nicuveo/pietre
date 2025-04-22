@@ -54,14 +54,17 @@ dependencies:
   - array
   - bytestring
   - containers
+  - directory
   - extra
   - file-embed
+  - filepath
   - hashable
   - hip
   - lens
   - monad-loops
   - mtl
   - prettyprinter
+  - template-haskell
   - text
   - text-builder
   - transformers
@@ -107,11 +110,8 @@ tests:
       - -F -pgmF=tasty-autocollect
     dependencies:
       - pietre
-      - filepath
-      - directory
       - tasty
       - tasty-hunit
       - tasty-golden
       - tasty-quickcheck
       - tasty-autocollect
-      - template-haskell

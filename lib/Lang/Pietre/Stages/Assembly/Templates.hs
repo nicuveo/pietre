@@ -5,14 +5,14 @@ module Lang.Pietre.Stages.Assembly.Templates where
 
 import "this" Prelude
 
-import Data.ByteString.Char8             (ByteString)
-import Data.ByteString.Char8             qualified as B
-import Data.FileEmbed
-import Data.Vector                       qualified as V
-import Data.Word                         (Word8)
-import Graphics.Image                    qualified as I
+import Data.ByteString.Char8                      (ByteString)
+import Data.ByteString.Char8                      qualified as B
+import Data.Vector                                qualified as V
+import Data.Word                                  (Word8)
+import Graphics.Image                             qualified as I
 
 import Lang.Pietre.Stages.Assembly.Color
+import Lang.Pietre.Stages.Assembly.Templates.Load
 
 
 type Image = I.Image I.VS I.RGBA Word8
@@ -119,44 +119,6 @@ makeImage startingColor Template{..} =
 mkTemplate :: ByteString -> Color -> Image
 mkTemplate template color = makeImage color $ readTemplate template
 
-
-functionTemplate =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Function.tmp")
-
-instructionTemplate =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Instruction.tmp")
-
-entranceTemplate =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Entrance.tmp")
-
-exitTemplate =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Exit.tmp")
-
-blankTemplate =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Blank.tmp")
-
-terminateTemplate =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Terminate.tmp")
-
-branchTemplate =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Branch.tmp")
-
-push1Template =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Push1.tmp")
-
-push2Template =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Push2.tmp")
-
-push3Template =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Push3.tmp")
+$(generateTemplates 'mkTemplate)
 
 push4Template = instructionTemplate
-
-cornerTemplate =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Corner.tmp")
-
-strip0Template =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Strip0.tmp")
-
-strip1Template =
-  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Strip1.tmp")
