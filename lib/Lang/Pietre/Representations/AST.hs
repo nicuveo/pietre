@@ -550,3 +550,61 @@ prettyBlock = braces . enclose hardline hardline . indent 2 . vsep . map pretty
 
 prettyPrint :: Module Parsed -> Text
 prettyPrint = renderStrict . layoutPretty defaultLayoutOptions . pretty
+
+
+--------------------------------------------------------------------------------
+-- Lenses
+
+makeLenses ''Module
+makeLenses ''Import
+makeLenses ''PathInfo
+makeLenses ''TypeAliasInfo
+makeLenses ''EnumInfo
+makeLenses ''StructInfo
+makeLenses ''ConstInfo
+makeLenses ''FunctionInfo
+makeLenses ''IfInfo
+makeLenses ''ForInfo
+makeLenses ''WhileInfo
+makeLenses ''LetInfo
+
+makePrisms ''ImportType
+makePrisms ''Declaration
+makePrisms ''FunctionArgType
+makePrisms ''Statement
+makePrisms ''ElseInfo
+makePrisms ''Expression
+
+instance Plated (Expression p) where
+  plate f = \case
+    FieldAccessExpr              x e i   -> liftA3 FieldAccessExpr              (pure x) (f e) (pure i)
+    CallExpr                     x p es  -> liftA3 CallExpr                     (pure x) (pure p) (traverse f es)
+    ArrayExpr                    x es    -> liftA2 ArrayExpr                    (pure x) (traverse f es)
+    IndexExpr                    x e1 e2 -> liftA3 IndexExpr                    (pure x) (f e1) (f e2)
+    StructExpr                   x p fs  -> liftA3 StructExpr                   (pure x) (pure p) (traverse (traverse f) fs)
+    NegationExpr                 x e     -> liftA2 NegationExpr                 (pure x) (f e)
+    CastExpr                     x e t   -> liftA3 CastExpr                     (pure x) (f e) (pure t)
+    AdditionExpr                 x e1 e2 -> liftA3 AdditionExpr                 (pure x) (f e1) (f e2)
+    SubtractionExpr              x e1 e2 -> liftA3 SubtractionExpr              (pure x) (f e1) (f e2)
+    MultiplicationExpr           x e1 e2 -> liftA3 MultiplicationExpr           (pure x) (f e1) (f e2)
+    DivisionExpr                 x e1 e2 -> liftA3 DivisionExpr                 (pure x) (f e1) (f e2)
+    ModuloExpr                   x e1 e2 -> liftA3 ModuloExpr                   (pure x) (f e1) (f e2)
+    ExponentiationExpr           x e1 e2 -> liftA3 ExponentiationExpr           (pure x) (f e1) (f e2)
+    EqualityExpr                 x e1 e2 -> liftA3 EqualityExpr                 (pure x) (f e1) (f e2)
+    DifferenceExpr               x e1 e2 -> liftA3 DifferenceExpr               (pure x) (f e1) (f e2)
+    GreaterExpr                  x e1 e2 -> liftA3 GreaterExpr                  (pure x) (f e1) (f e2)
+    LesserExpr                   x e1 e2 -> liftA3 LesserExpr                   (pure x) (f e1) (f e2)
+    GreaterEqExpr                x e1 e2 -> liftA3 GreaterEqExpr                (pure x) (f e1) (f e2)
+    LesserEqExpr                 x e1 e2 -> liftA3 LesserEqExpr                 (pure x) (f e1) (f e2)
+    BoolAndExpr                  x e1 e2 -> liftA3 BoolAndExpr                  (pure x) (f e1) (f e2)
+    BoolOrExpr                   x e1 e2 -> liftA3 BoolOrExpr                   (pure x) (f e1) (f e2)
+    RangeInclusiveExpr           x e1 e2 -> liftA3 RangeInclusiveExpr           (pure x) (f e1) (f e2)
+    RangeExclusiveExpr           x e1 e2 -> liftA3 RangeExclusiveExpr           (pure x) (f e1) (f e2)
+    AssignmentExpr               x e1 e2 -> liftA3 AssignmentExpr               (pure x) (f e1) (f e2)
+    AdditionAssignmentExpr       x e1 e2 -> liftA3 AdditionAssignmentExpr       (pure x) (f e1) (f e2)
+    SubtractionAssignmentExpr    x e1 e2 -> liftA3 SubtractionAssignmentExpr    (pure x) (f e1) (f e2)
+    MultiplicationAssignmentExpr x e1 e2 -> liftA3 MultiplicationAssignmentExpr (pure x) (f e1) (f e2)
+    DivisionAssignmentExpr       x e1 e2 -> liftA3 DivisionAssignmentExpr       (pure x) (f e1) (f e2)
+    ModuloAssignmentExpr         x e1 e2 -> liftA3 ModuloAssignmentExpr         (pure x) (f e1) (f e2)
+    ExponentiationAssignmentExpr x e1 e2 -> liftA3 ExponentiationAssignmentExpr (pure x) (f e1) (f e2)
+    e                                    -> pure e
