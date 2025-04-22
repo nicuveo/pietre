@@ -4,7 +4,8 @@ module Lang.Pietre.Stages.Parsing.Parser where
 import "this" Prelude
 
 import Control.Lens (over)
-import Data.List.NonEmpty ((<|))
+import Data.List.NonEmpty ((<|), singleton)
+import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Location
@@ -118,9 +119,9 @@ use_decl :: { Import }
   : "use" use_tree ";" { $2 }
 
 use_tree :: { Import }
-  : IDENTIFIER optional(use_alias)                 { Import [getIdentifierLiteral $1] (Qualified $2) }
-  | IDENTIFIER "::" "*"                            { Import [getIdentifierLiteral $1] Exhaustive }
-  | IDENTIFIER "::" "{" comma_list(IDENTIFIER) "}" { Import [getIdentifierLiteral $1] (Specific (map getIdentifierLiteral $4)) }
+  : IDENTIFIER optional(use_alias)                 { Import (singleton $ getIdentifierLiteral $1) (Qualified $2) }
+  | IDENTIFIER "::" "*"                            { Import (singleton $ getIdentifierLiteral $1) Exhaustive }
+  | IDENTIFIER "::" "{" comma_list(IDENTIFIER) "}" { Import (singleton $ getIdentifierLiteral $1) (Specific (NE.fromList $ map getIdentifierLiteral $4)) }
   | IDENTIFIER "::" use_tree                       { prependImport (getIdentifierLiteral $1) $3 }
 
 use_alias :: { Identifier }
@@ -137,7 +138,7 @@ enum_item :: { Identifier }
   : IDENTIFIER { getIdentifierLiteral $1 }
 
 struct_decl :: { Declaration Parsed }
-  : "struct" IDENTIFIER optional(generic_params) "{" comma_list(struct_field) "}" { StructDecl $1 (StructInfo (getIdentifierLiteral $2) (fold $3) $5) }
+  : "struct" IDENTIFIER optional(generic_params) "{" comma_list(struct_field) "}" { StructDecl $1 (StructInfo (getIdentifierLiteral $2) (fold $3) (NE.fromList $5)) }
 
 struct_field :: { (Identifier, TypeExpr Parsed) }
   : IDENTIFIER ":" type_expr { (getIdentifierLiteral $1, $3) }
@@ -387,7 +388,7 @@ prependPathInfo :: Identifier -> PathInfo Parsed -> PathInfo Parsed
 prependPathInfo prepend = over pathName (prepend <|)
 
 prependImport :: Identifier -> Import -> Import
-prependImport prepend = over importPath (prepend :)
+prependImport prepend = over importPath (prepend <|)
 
 binaryExpr
   :: (Location -> Expression Parsed -> Expression Parsed -> Expression Parsed)

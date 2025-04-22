@@ -6,6 +6,7 @@ import "this" Prelude
 
 import Control.Lens
 import Data.Kind
+import Data.List.NonEmpty                   qualified as NE
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
 import Text.Builder                         qualified as TB
@@ -174,7 +175,7 @@ instance Monoid (Module p) where
 
 
 data Import = Import
-  { _importPath :: [Identifier]
+  { _importPath :: NonEmpty Identifier
   , _importType :: ImportType
   }
   deriving Show
@@ -182,7 +183,7 @@ data Import = Import
 
 data ImportType
   = Qualified  (Maybe Identifier)
-  | Specific   [Identifier]
+  | Specific   (NonEmpty Identifier)
   | Exhaustive
   deriving Show
 
@@ -217,7 +218,7 @@ deriving instance ASTRepresentation p => Show (EnumInfo p)
 data StructInfo (p :: ASTPhase) = StructInfo
   { _structName   :: Identifier
   , _structParams :: [Identifier]
-  , _structValues :: [(Identifier, TypeExpr p)]
+  , _structValues :: NonEmpty (Identifier, TypeExpr p)
   }
 
 deriving instance ASTRepresentation p => Show (StructInfo p)
