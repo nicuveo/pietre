@@ -13,8 +13,6 @@ import Lang.Pietre.Representations.Bytecode
 import Lang.Pietre.Stages.Assembly.Color
 import Lang.Pietre.Stages.Assembly.Templates
 
-import Debug.Trace
-
 
 data AssemblyState = AssemblyState
   { _asCurrentColor :: Color
@@ -82,12 +80,11 @@ appendInstruction size instruction =
     expand offset f = do
       prevColor <- use asCurrentColor
       prevImage <- use asCurrentImage
-      let newColor = traceShowId $ nextColor prevColor instruction
+      let newColor = nextColor prevColor instruction
           template = f newColor
           newImage = prevImage
             & I.canvasSize I.Edge (I.rows prevImage + I.rows template - offset, 10)
             & applyTemplate (I.rows prevImage - offset, 0) template
-      traceShowM $ I.dims template
       asCurrentColor .= newColor
       asCurrentImage .= newImage
 
