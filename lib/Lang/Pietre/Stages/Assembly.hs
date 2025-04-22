@@ -26,8 +26,17 @@ data AssemblyState = AssemblyState
 initialState :: Color -> Image -> AssemblyState
 initialState color image = AssemblyState color image mempty
 
-addFunction :: Image -> (Int, a) -> Image
-addFunction = undefined
+addFunction :: (Int, Image) -> (Int, (Int, Image)) -> (Int, Image)
+addFunction (stripHeight, baseImage) (fcount, (entrances, function)) =
+  (stripHeight, appEndo (mconcat allTransforms) baseImage)
+  where
+    referenceColumn = 10 * fcount + 1
+    allTransforms = map Endo $
+      [ applyTemplate (stripHeight + 1, referenceColumn) function
+      , applyTemplate (1, referenceColumn + 4) (strip0Template Red)
+      ] ++ do
+        stripIndex <- [2..entrances]
+        pure $ applyTemplate (stripIndex, referenceColumn + 4) (strip1Template Red)
 
 makeLenses 'AssemblyState
 
@@ -123,9 +132,15 @@ generateFunctionImage instructions = _asCurrentImage $
         go (j:l)
 
 assemble :: [(Int, [Instruction Resolved])] -> Image
-assemble functions = foldl' addFunction initialImage $ zip [0..] images
+assemble functions = snd
+  $ foldl' addFunction (stripHeight, initialImage)
+  $ zip [0..] images
   where
     images = map (fmap generateFunctionImage) functions
-    -- maxHeight = maximum $ map (I.rows . snd) images
-    -- maxWidth = 10 * length functions + 2
-    initialImage = undefined
+    stripHeight = maximum (map fst images)
+    maxHeight = maximum (map (I.rows . snd) images) + stripHeight + 2
+    maxWidth = 10 * length functions + 4
+    initialImage = applyTemplate (0,0) (cornerTemplate Red)
+      $ I.makeImage (maxHeight, maxWidth)
+      $ const
+      $ I.PixelRGBA 0xFF 0xFF 0xFF 0xFF

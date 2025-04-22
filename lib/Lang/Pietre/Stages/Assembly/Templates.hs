@@ -88,7 +88,7 @@ makeImage :: Color -> Template -> Image
 makeImage startingColor Template{..} =
   I.makeImage (templateRows, templateColumns) \(r, c) ->
     case (templateData V.! (templateColumns * r + c)) of
-      Transparent        -> I.PixelRGBA 1 1 1 0
+      Transparent        -> I.PixelRGBA 0 0 0 0
       Absolute color     -> convert color
       Relative hue light -> convert $ step hue light startingColor
       Start              -> convert startingColor
@@ -151,3 +151,12 @@ push3Template =
   mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Push3.tmp")
 
 push4Template = instructionTemplate
+
+cornerTemplate =
+  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Corner.tmp")
+
+strip0Template =
+  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Strip0.tmp")
+
+strip1Template =
+  mkTemplate $(embedFileRelative "lib/Lang/Pietre/Stages/Assembly/Templates/Strip1.tmp")
