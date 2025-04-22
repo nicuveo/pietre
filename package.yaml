@@ -52,9 +52,12 @@ default-extensions:
 dependencies:
   - base
   - array
+  - bytestring
   - containers
   - extra
+  - file-embed
   - hashable
+  - hip
   - lens
   - monad-loops
   - mtl
@@ -63,6 +66,7 @@ dependencies:
   - text-builder
   - transformers
   - unordered-containers
+  - vector
 
 library:
   source-dirs: [common, lib]

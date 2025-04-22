@@ -38,6 +38,8 @@ library
       Lang.Pietre.Representations.Tokens
       Lang.Pietre.Stages.Analysis
       Lang.Pietre.Stages.Assembly
+      Lang.Pietre.Stages.Assembly.Color
+      Lang.Pietre.Stages.Assembly.Templates
       Lang.Pietre.Stages.Generation
       Lang.Pietre.Stages.Linking
       Lang.Pietre.Stages.Lowering
@@ -79,16 +81,21 @@ library
   build-depends:
       array
     , base
+    , bytestring
     , containers
     , extra
+    , file-embed
     , hashable
+    , hip
     , lens
     , monad-loops
     , mtl
+    , prettyprinter
     , text
     , text-builder
     , transformers
     , unordered-containers
+    , vector
   default-language: GHC2021
 
 executable gramviz
@@ -124,18 +131,23 @@ executable gramviz
   build-depends:
       array
     , base
+    , bytestring
     , containers
     , extra
+    , file-embed
     , graphwiz
     , hashable
+    , hip
     , lens
     , megaparsec
     , monad-loops
     , mtl
+    , prettyprinter
     , text
     , text-builder
     , transformers
     , unordered-containers
+    , vector
   default-language: GHC2021
 
 executable pc
@@ -171,17 +183,22 @@ executable pc
   build-depends:
       array
     , base
+    , bytestring
     , containers
     , extra
+    , file-embed
     , hashable
+    , hip
     , lens
     , monad-loops
     , mtl
     , pietre
+    , prettyprinter
     , text
     , text-builder
     , transformers
     , unordered-containers
+    , vector
   default-language: GHC2021
 
 test-suite tests
@@ -191,7 +208,7 @@ test-suite tests
       Prelude
       Arbitrary
       Compile
-      E2E.Whitespace
+      Integration.Parsing
       Locate
       Unit.Encode
       Paths_pietre
@@ -225,17 +242,22 @@ test-suite tests
   build-depends:
       array
     , base
+    , bytestring
     , containers
     , directory
     , extra
+    , file-embed
     , filepath
     , hashable
+    , hip
     , lens
     , monad-loops
     , mtl
     , pietre
+    , prettyprinter
     , tasty
     , tasty-autocollect
+    , tasty-golden
     , tasty-hunit
     , tasty-quickcheck
     , template-haskell
@@ -243,4 +265,5 @@ test-suite tests
     , text-builder
     , transformers
     , unordered-containers
+    , vector
   default-language: GHC2021

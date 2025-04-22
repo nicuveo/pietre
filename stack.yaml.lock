@@ -11,6 +11,27 @@ packages:
       size: 968
   original:
     hackage: graphwiz-1.0.0
+- completed:
+    hackage: alex-3.5.3.0@sha256:f6fde8ff59e7e38f9e95eca8f5154fb611c9789d1d9538aa9745c6c3cd9495b4,4502
+    pantry-tree:
+      sha256: bb26eb1163ec8e99df57b4fe8036d10fa474390274e8395d543daadfaad25d48
+      size: 4710
+  original:
+    hackage: alex-3.5.3.0
+- completed:
+    hackage: hip-1.5.6.0@sha256:296c55622f62485422c0a593c7306af1a5abf8ba9f866dcdffc281b01eba65d7,6988
+    pantry-tree:
+      sha256: d79395e6ec9caf1132a7e001f6fe9b8ebada31e0e52087a4a1a971e3f295a7f4
+      size: 7456
+  original:
+    hackage: hip-1.5.6.0
+- completed:
+    hackage: repa-3.4.2.0@sha256:7fc52911966c64cc1676843f5fee1777931d0161e2e55581bf925feac4ac30c2,3694
+    pantry-tree:
+      sha256: 172907dae968143cb7ae30e969ec96d92f881b2dec05bd590477eb3c4c1b21f0
+      size: 2965
+  original:
+    hackage: repa-3.4.2.0
 snapshots:
 - completed:
     sha256: 04c9d37f2a00c2bd51bf6b25eb98872059bc58f225d50b5f306ac58f760a178c
