@@ -1,10 +1,10 @@
 module Main where
 
-import "this" Prelude
+import "this" Prelude hiding (getContents, putStrLn)
 
+import Data.Text.IO   (getContents, putStrLn)
+import Lang.Pietre
 import System.Exit
-
--- import Lang.Pietre
 
 
 help :: IO a
@@ -20,4 +20,7 @@ help = do
   exitFailure
 
 main :: IO ()
-main = help
+main = do
+  source <- getContents
+  ast <- parseModule "<interactive>" source `onLeft` const help
+  putStrLn $ prettyPrint ast
