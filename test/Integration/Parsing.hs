@@ -32,7 +32,7 @@ test_batch = do
       $ either (error . show) prettyPrint
       $ parseModule testInputFile source
 
-test_prop :: Module Parsed -> Property
+test_prop :: Module -> Property
 test_prop "round-trip" m =
   let print1 = prettyPrint m
       print2 = prettyPrint <$> parseModule "" print1

@@ -11,6 +11,7 @@ struct Customer<T> {
 }
 
 fn main<T,U>() -> T {
+  let s = Customer::<Int> @{ uniqueID: 0 };
   if true {
     if false {
       if 42 {

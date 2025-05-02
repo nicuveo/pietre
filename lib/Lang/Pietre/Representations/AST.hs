@@ -1,10 +1,10 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Lang.Pietre.Representations.AST where
 
 import "this" Prelude
 
-import Control.Applicative                  (liftA3)
 import Control.Lens
 import Data.Kind
 import Data.List.NonEmpty                   qualified as NE
@@ -12,175 +12,94 @@ import Prettyprinter
 import Prettyprinter.Render.Text
 
 import Lang.Pietre.Representations.Location
+import Lang.Pietre.Representations.Name
 import Lang.Pietre.Representations.Tokens
 
 
 --------------------------------------------------------------------------------
 -- AST Phase
 
-data ASTPhase = Parsed
+data ASTPhase = Parsed | Resolved
 
-class
-  ( Show (XTypeAlias                p)
-  , Show (XEnum                     p)
-  , Show (XStructDecl               p)
-  , Show (XConst                    p)
-  , Show (XFunction                 p)
-  , Show (XIf                       p)
-  , Show (XFor                      p)
-  , Show (XWhile                    p)
-  , Show (XLet                      p)
-  , Show (XReturn                   p)
-  , Show (XContinue                 p)
-  , Show (XBreak                    p)
-  , Show (XEpression                p)
-  , Show (XPath                     p)
-  , Show (XFieldAccess              p)
-  , Show (XCall                     p)
-  , Show (XArray                    p)
-  , Show (XIndex                    p)
-  , Show (XStructExpr               p)
-  , Show (XLiteral                  p)
-  , Show (XReference                p)
-  , Show (XNegation                 p)
-  , Show (XAddition                 p)
-  , Show (XSubtraction              p)
-  , Show (XMultiplication           p)
-  , Show (XDivision                 p)
-  , Show (XModulo                   p)
-  , Show (XExponentiation           p)
-  , Show (XEquality                 p)
-  , Show (XDifference               p)
-  , Show (XGreater                  p)
-  , Show (XLesser                   p)
-  , Show (XGreaterEq                p)
-  , Show (XLesserEq                 p)
-  , Show (XBoolAnd                  p)
-  , Show (XBoolOr                   p)
-  , Show (XCast                     p)
-  , Show (XInclusiveRange           p)
-  , Show (XExclusiveRange           p)
-  , Show (XAssignment               p)
-  , Show (XAdditionAssignment       p)
-  , Show (XSubtractionAssignment    p)
-  , Show (XMultiplicationAssignment p)
-  , Show (XDivisionAssignment       p)
-  , Show (XModuloAssignment         p)
-  , Show (XExponentiationAssignment p)
-  ) => ASTRepresentation (p :: ASTPhase) where
-  type XTypeAlias                p :: Type
-  type XEnum                     p :: Type
-  type XStructDecl               p :: Type
-  type XConst                    p :: Type
-  type XFunction                 p :: Type
-  type XIf                       p :: Type
-  type XFor                      p :: Type
-  type XWhile                    p :: Type
-  type XLet                      p :: Type
-  type XReturn                   p :: Type
-  type XContinue                 p :: Type
-  type XBreak                    p :: Type
-  type XEpression                p :: Type
-  type XPath                     p :: Type
-  type XFieldAccess              p :: Type
-  type XCall                     p :: Type
-  type XArray                    p :: Type
-  type XIndex                    p :: Type
-  type XStructExpr               p :: Type
-  type XLiteral                  p :: Type
-  type XReference                p :: Type
-  type XNegation                 p :: Type
-  type XAddition                 p :: Type
-  type XSubtraction              p :: Type
-  type XMultiplication           p :: Type
-  type XDivision                 p :: Type
-  type XModulo                   p :: Type
-  type XExponentiation           p :: Type
-  type XEquality                 p :: Type
-  type XDifference               p :: Type
-  type XGreater                  p :: Type
-  type XLesser                   p :: Type
-  type XGreaterEq                p :: Type
-  type XLesserEq                 p :: Type
-  type XBoolAnd                  p :: Type
-  type XBoolOr                   p :: Type
-  type XCast                     p :: Type
-  type XInclusiveRange           p :: Type
-  type XExclusiveRange           p :: Type
-  type XAssignment               p :: Type
-  type XAdditionAssignment       p :: Type
-  type XSubtractionAssignment    p :: Type
-  type XMultiplicationAssignment p :: Type
-  type XDivisionAssignment       p :: Type
-  type XModuloAssignment         p :: Type
-  type XExponentiationAssignment p :: Type
+class Annotation (inner :: ASTPhase -> Type) (phase :: ASTPhase) where
+  type Annotated inner phase
+  within :: Lens' (Annotated inner phase) (inner phase)
+
+
+instance Annotation Declaration Parsed where
+  type Annotated Declaration Parsed = WithLocation (Declaration Parsed)
+  within = located
+
+instance Annotation Statement Parsed where
+  type Annotated Statement Parsed = WithLocation (Statement Parsed)
+  within = located
+
+instance Annotation Expression Parsed where
+  type Annotated Expression Parsed = WithLocation (Expression Parsed)
+  within = located
+
+
+instance Annotation Declaration Resolved where
+  type Annotated Declaration Resolved = Declaration Resolved
+  within = id
+
+instance Annotation Statement Resolved where
+  type Annotated Statement Resolved = Statement Resolved
+  within = id
+
+instance Annotation Expression Resolved where
+  type Annotated Expression Resolved = Expression Resolved
+  within = id
+
+
+class ASTRepresentation (p :: ASTPhase) where
+  type NameType p :: Type
 
 instance ASTRepresentation Parsed where
-  type XTypeAlias                Parsed = Location
-  type XEnum                     Parsed = Location
-  type XStructDecl               Parsed = Location
-  type XConst                    Parsed = Location
-  type XFunction                 Parsed = Location
-  type XIf                       Parsed = Location
-  type XFor                      Parsed = Location
-  type XWhile                    Parsed = Location
-  type XLet                      Parsed = Location
-  type XReturn                   Parsed = Location
-  type XContinue                 Parsed = Location
-  type XBreak                    Parsed = Location
-  type XEpression                Parsed = Location
-  type XPath                     Parsed = Location
-  type XFieldAccess              Parsed = Location
-  type XCall                     Parsed = Location
-  type XArray                    Parsed = Location
-  type XIndex                    Parsed = Location
-  type XStructExpr               Parsed = Location
-  type XLiteral                  Parsed = Location
-  type XReference                Parsed = Location
-  type XNegation                 Parsed = Location
-  type XAddition                 Parsed = Location
-  type XSubtraction              Parsed = Location
-  type XMultiplication           Parsed = Location
-  type XDivision                 Parsed = Location
-  type XModulo                   Parsed = Location
-  type XExponentiation           Parsed = Location
-  type XEquality                 Parsed = Location
-  type XDifference               Parsed = Location
-  type XGreater                  Parsed = Location
-  type XLesser                   Parsed = Location
-  type XGreaterEq                Parsed = Location
-  type XLesserEq                 Parsed = Location
-  type XBoolAnd                  Parsed = Location
-  type XBoolOr                   Parsed = Location
-  type XCast                     Parsed = Location
-  type XInclusiveRange           Parsed = Location
-  type XExclusiveRange           Parsed = Location
-  type XAssignment               Parsed = Location
-  type XAdditionAssignment       Parsed = Location
-  type XSubtractionAssignment    Parsed = Location
-  type XMultiplicationAssignment Parsed = Location
-  type XDivisionAssignment       Parsed = Location
-  type XModuloAssignment         Parsed = Location
-  type XExponentiationAssignment Parsed = Location
+  type NameType Parsed = PathInfo
+
+instance ASTRepresentation Resolved where
+  type NameType Resolved = Name
+
+
+type ASTConstraints p =
+  ( Show (Annotated Declaration p)
+  , Show (Annotated Statement   p)
+  , Show (Annotated Expression  p)
+  , Show (NameType p)
+  , Pretty (NameType p)
+  , Annotation Declaration p
+  , Annotation Statement   p
+  , Annotation Expression  p
+  )
 
 
 --------------------------------------------------------------------------------
--- AST
+-- Parsed phase
 
-data Module (p :: ASTPhase) = Module
+data Module = Module
   { _modImports      :: [Import]
-  , _modDeclarations :: [Declaration p]
+  , _modDeclarations :: [Annotated Declaration Parsed]
   }
 
-deriving instance ASTRepresentation p => Show (Module p)
+deriving instance Show Module
 
-instance Semigroup (Module p) where
+instance Semigroup Module where
   Module imports1 decls1 <> Module imports2 decls2 =
     Module (imports1 <> imports2) (decls1 <> decls2)
 
-instance Monoid (Module p) where
+instance Monoid Module where
   mempty = Module [] []
 
+
+data PathInfo = PathInfo
+  { _pathName   :: NonEmpty Identifier
+  , _pathParams :: [PathInfo]
+  } deriving Show
+
+
+--------------------------------------------------------------------------------
+-- Generic AST
 
 data Import = Import
   { _importPath :: NonEmpty Identifier
@@ -197,22 +116,22 @@ data ImportType
 
 
 data Declaration (p :: ASTPhase)
-  = TypeAliasDecl (XTypeAlias  p) (TypeAliasInfo p)
-  | EnumDecl      (XEnum       p) (EnumInfo      p)
-  | StructDecl    (XStructDecl p) (StructInfo    p)
-  | ConstDecl     (XConst      p) (ConstInfo     p)
-  | FunctionDecl  (XFunction   p) (FunctionInfo  p)
+  = TypeAliasDecl (TypeAliasInfo p)
+  | EnumDecl      (EnumInfo      p)
+  | StructDecl    (StructInfo    p)
+  | ConstDecl     (ConstInfo     p)
+  | FunctionDecl  (FunctionInfo  p)
 
-deriving instance ASTRepresentation p => Show (Declaration p)
+deriving instance ASTConstraints p => Show (Declaration p)
 
 
 data TypeAliasInfo (p :: ASTPhase) = TypeAliasInfo
   { _aliasName   :: Identifier
   , _aliasParams :: [Identifier]
-  , _aliasValue  :: TypeExpr p
+  , _aliasValue  :: NameType p
   }
 
-deriving instance ASTRepresentation p => Show (TypeAliasInfo p)
+deriving instance ASTConstraints p => Show (TypeAliasInfo p)
 
 
 data EnumInfo (p :: ASTPhase) = EnumInfo
@@ -220,156 +139,152 @@ data EnumInfo (p :: ASTPhase) = EnumInfo
   , _enumValues :: [Identifier]
   }
 
-deriving instance ASTRepresentation p => Show (EnumInfo p)
+deriving instance ASTConstraints p => Show (EnumInfo p)
 
 
 data StructInfo (p :: ASTPhase) = StructInfo
   { _structName   :: Identifier
   , _structParams :: [Identifier]
-  , _structValues :: NonEmpty (Identifier, TypeExpr p)
+  , _structValues :: NonEmpty (Identifier, NameType p)
   }
 
-deriving instance ASTRepresentation p => Show (StructInfo p)
+deriving instance ASTConstraints p => Show (StructInfo p)
 
 
 data ConstInfo (p :: ASTPhase) = ConstInfo
   { _constName :: Identifier
-  , _constType :: TypeExpr p
-  , _constExpr :: Expression p
+  , _constType :: NameType p
+  , _constExpr :: Annotated Expression p
   }
 
-deriving instance ASTRepresentation p => Show (ConstInfo p)
+deriving instance ASTConstraints p => Show (ConstInfo p)
 
 
 data FunctionInfo (p :: ASTPhase) = FunctionInfo
   { _funName   :: Identifier
   , _funParams :: [Identifier]
   , _funArgs   :: [(Identifier, FunctionArgType p)]
-  , _funType   :: Maybe (TypeExpr p)
-  , _funBody   :: [Statement p]
+  , _funType   :: Maybe (NameType p)
+  , _funBody   :: [Annotated Statement p]
   }
 
-deriving instance ASTRepresentation p => Show (FunctionInfo p)
+deriving instance ASTConstraints p => Show (FunctionInfo p)
 
 
 data FunctionArgType (p :: ASTPhase)
-  = ByValue     (TypeExpr p)
-  | ByReference (TypeExpr p)
+  = ByValue     (NameType p)
+  | ByReference (NameType p)
 
-deriving instance ASTRepresentation p => Show (FunctionArgType p)
+deriving instance ASTConstraints p => Show (FunctionArgType p)
 
 
 data Statement (p :: ASTPhase)
-  = IfStmt         (XIf        p) (IfInfo    p)
-  | ForStmt        (XFor       p) (ForInfo   p)
-  | WhileStmt      (XWhile     p) (WhileInfo p)
-  | LetStmt        (XLet       p) (LetInfo   p)
-  | ReturnStmt     (XReturn    p) (Maybe (Expression p))
-  | ContinueStmt   (XContinue  p)
-  | BreakStmt      (XBreak     p)
-  | ExpressionStmt (XEpression p) (Expression p)
+  = IfStmt         (IfInfo    p)
+  | ForStmt        (ForInfo   p)
+  | WhileStmt      (WhileInfo p)
+  | LetStmt        (LetInfo   p)
+  | ReturnStmt     (Maybe (Annotated Expression p))
+  | ContinueStmt
+  | BreakStmt
+  | ExpressionStmt (Annotated Expression p)
 
-deriving instance ASTRepresentation p => Show (Statement p)
+deriving instance ASTConstraints p => Show (Statement p)
 
 
 data IfInfo (p :: ASTPhase) = IfInfo
-  { _ifExpr :: Expression p
-  , _ifBody :: [Statement p]
+  { _ifExpr :: Annotated Expression p
+  , _ifBody :: [Annotated Statement p]
   , _ifElse :: Maybe (ElseInfo p)
   }
 
-deriving instance ASTRepresentation p => Show (IfInfo p)
+deriving instance ASTConstraints p => Show (IfInfo p)
 
 
 data ElseInfo (p :: ASTPhase)
   = ElseIf    (IfInfo p)
-  | ElseBlock [Statement p]
+  | ElseBlock [Annotated Statement p]
 
-deriving instance ASTRepresentation p => Show (ElseInfo p)
+deriving instance ASTConstraints p => Show (ElseInfo p)
 
 
 data ForInfo (p :: ASTPhase) = ForInfo
   { _forVariableName :: Identifier
-  , _forRangeExpr    :: Expression p
-  , _forBody         :: [Statement p]
+  , _forRangeExpr    :: Annotated Expression p
+  , _forBody         :: [Annotated Statement p]
   }
 
-deriving instance ASTRepresentation p => Show (ForInfo p)
+deriving instance ASTConstraints p => Show (ForInfo p)
 
 
 data WhileInfo (p :: ASTPhase) = WhileInfo
-  { _whileExpr :: Expression p
-  , _whileBody :: [Statement p]
+  { _whileExpr :: Annotated Expression p
+  , _whileBody :: [Annotated Statement p]
   }
 
-deriving instance ASTRepresentation p => Show (WhileInfo p)
+deriving instance ASTConstraints p => Show (WhileInfo p)
 
 
 data LetInfo (p :: ASTPhase) = LetInfo
   { _letName :: Identifier
-  , _letType :: Maybe (TypeExpr p)
-  , _letExpr :: Expression p
+  , _letType :: Maybe (NameType p)
+  , _letExpr :: Annotated Expression p
   }
 
-deriving instance ASTRepresentation p => Show (LetInfo p)
+deriving instance ASTConstraints p => Show (LetInfo p)
 
 
 data Expression (p :: ASTPhase)
-  = PathExpr                     (XPath                     p) (PathInfo p)
-  | FieldAccessExpr              (XFieldAccess              p) (Expression p) Identifier
-  | CallExpr                     (XCall                     p) (PathInfo p)   [Expression p]
-  | ArrayExpr                    (XArray                    p) [Expression p]
-  | IndexExpr                    (XIndex                    p) (Expression p) (Expression p)
-  | StructExpr                   (XStructExpr               p) (PathInfo p)   [(Identifier, Expression p)]
-  | BoolLiteralExpr              (XLiteral                  p) Bool
-  | IntLiteralExpr               (XLiteral                  p) Int
-  | CharLiteralExpr              (XLiteral                  p) Char
-  | StringLiteralExpr            (XLiteral                  p) Text
-  | ReferenceExpr                (XReference                p) (PathInfo p)
-  | NegationExpr                 (XNegation                 p) (Expression p)
-  | AdditionExpr                 (XAddition                 p) (Expression p) (Expression p)
-  | SubtractionExpr              (XSubtraction              p) (Expression p) (Expression p)
-  | MultiplicationExpr           (XMultiplication           p) (Expression p) (Expression p)
-  | DivisionExpr                 (XDivision                 p) (Expression p) (Expression p)
-  | ModuloExpr                   (XModulo                   p) (Expression p) (Expression p)
-  | ExponentiationExpr           (XExponentiation           p) (Expression p) (Expression p)
-  | EqualityExpr                 (XEquality                 p) (Expression p) (Expression p)
-  | DifferenceExpr               (XDifference               p) (Expression p) (Expression p)
-  | GreaterExpr                  (XGreater                  p) (Expression p) (Expression p)
-  | LesserExpr                   (XLesser                   p) (Expression p) (Expression p)
-  | GreaterEqExpr                (XGreaterEq                p) (Expression p) (Expression p)
-  | LesserEqExpr                 (XLesserEq                 p) (Expression p) (Expression p)
-  | BoolAndExpr                  (XBoolAnd                  p) (Expression p) (Expression p)
-  | BoolOrExpr                   (XBoolOr                   p) (Expression p) (Expression p)
-  | CastExpr                     (XCast                     p) (Expression p) (TypeExpr p)
-  | RangeInclusiveExpr           (XInclusiveRange           p) (Expression p) (Expression p)
-  | RangeExclusiveExpr           (XExclusiveRange           p) (Expression p) (Expression p)
-  | AssignmentExpr               (XAssignment               p) (Expression p) (Expression p)
-  | AdditionAssignmentExpr       (XAdditionAssignment       p) (Expression p) (Expression p)
-  | SubtractionAssignmentExpr    (XSubtractionAssignment    p) (Expression p) (Expression p)
-  | MultiplicationAssignmentExpr (XMultiplicationAssignment p) (Expression p) (Expression p)
-  | DivisionAssignmentExpr       (XDivisionAssignment       p) (Expression p) (Expression p)
-  | ModuloAssignmentExpr         (XModuloAssignment         p) (Expression p) (Expression p)
-  | ExponentiationAssignmentExpr (XExponentiationAssignment p) (Expression p) (Expression p)
+  = PathExpr                     (NameType p)
+  | FieldAccessExpr              (Annotated Expression p) Identifier
+  | CallExpr                     (NameType p) [Annotated Expression p]
+  | ArrayExpr                    [Annotated Expression p]
+  | IndexExpr                    (Annotated Expression p) (Annotated Expression p)
+  | StructExpr                   (NameType p) (NonEmpty (Identifier, Annotated Expression p))
+  | BoolLiteralExpr              Bool
+  | IntLiteralExpr               Int
+  | CharLiteralExpr              Char
+  | StringLiteralExpr            Text
+  | ReferenceExpr                (NameType p)
+  | NegationExpr                 (Annotated Expression p)
+  | AdditionExpr                 (Annotated Expression p) (Annotated Expression p)
+  | SubtractionExpr              (Annotated Expression p) (Annotated Expression p)
+  | MultiplicationExpr           (Annotated Expression p) (Annotated Expression p)
+  | DivisionExpr                 (Annotated Expression p) (Annotated Expression p)
+  | ModuloExpr                   (Annotated Expression p) (Annotated Expression p)
+  | ExponentiationExpr           (Annotated Expression p) (Annotated Expression p)
+  | EqualityExpr                 (Annotated Expression p) (Annotated Expression p)
+  | DifferenceExpr               (Annotated Expression p) (Annotated Expression p)
+  | GreaterExpr                  (Annotated Expression p) (Annotated Expression p)
+  | LesserExpr                   (Annotated Expression p) (Annotated Expression p)
+  | GreaterEqExpr                (Annotated Expression p) (Annotated Expression p)
+  | LesserEqExpr                 (Annotated Expression p) (Annotated Expression p)
+  | BoolAndExpr                  (Annotated Expression p) (Annotated Expression p)
+  | BoolOrExpr                   (Annotated Expression p) (Annotated Expression p)
+  | CastExpr                     (Annotated Expression p) (NameType p)
+  | RangeInclusiveExpr           (Annotated Expression p) (Annotated Expression p)
+  | RangeExclusiveExpr           (Annotated Expression p) (Annotated Expression p)
+  | AssignmentExpr               (Annotated Expression p) (Annotated Expression p)
+  | AdditionAssignmentExpr       (Annotated Expression p) (Annotated Expression p)
+  | SubtractionAssignmentExpr    (Annotated Expression p) (Annotated Expression p)
+  | MultiplicationAssignmentExpr (Annotated Expression p) (Annotated Expression p)
+  | DivisionAssignmentExpr       (Annotated Expression p) (Annotated Expression p)
+  | ModuloAssignmentExpr         (Annotated Expression p) (Annotated Expression p)
+  | ExponentiationAssignmentExpr (Annotated Expression p) (Annotated Expression p)
 
-deriving instance ASTRepresentation p => Show (Expression p)
-
-
-data PathInfo (p :: ASTPhase) = PathInfo
-  { _pathName   :: NonEmpty Identifier
-  , _pathParams :: [TypeExpr p]
-  }
-
-type TypeExpr (p :: ASTPhase) = PathInfo p
-
-deriving instance ASTRepresentation p => Show (TypeExpr p)
+deriving instance ASTConstraints p => Show (Expression p)
 
 
 --------------------------------------------------------------------------------
 -- Pretty print
 
-instance Pretty (Module p) where
-  pretty Module {..} = vsep $ map pretty _modImports ++ map pretty _modDeclarations
+instance Pretty Module where
+  pretty Module {..} =
+    vsep $ map pretty _modImports ++ map (pretty . view located) _modDeclarations
+
+instance Pretty PathInfo where
+  pretty PathInfo {..} = hcat (intersperse "::" (toList $ fmap pretty _pathName)) <> case _pathParams of
+    [] -> mempty
+    _  -> encloseSep "::<" ">" "," $ map pretty _pathParams
 
 instance Pretty Import where
   pretty Import {..} = hsep
@@ -382,15 +297,15 @@ instance Pretty Import where
         Exhaustive            -> "::*"
     ] <> ";"
 
-instance Pretty (Declaration p) where
+instance (ASTConstraints p) => Pretty (Declaration p) where
   pretty = \case
-    TypeAliasDecl _ tai -> pretty tai
-    EnumDecl      _ ei  -> pretty ei
-    StructDecl    _ si  -> pretty si
-    ConstDecl     _ ci  -> pretty ci
-    FunctionDecl  _ fi  -> pretty fi
+    TypeAliasDecl tai -> pretty tai
+    EnumDecl      ei  -> pretty ei
+    StructDecl    si  -> pretty si
+    ConstDecl     ci  -> pretty ci
+    FunctionDecl  fi  -> pretty fi
 
-instance Pretty (TypeAliasInfo p) where
+instance (ASTConstraints p) => Pretty (TypeAliasInfo p) where
   pretty TypeAliasInfo {..} = hsep
     [ "type"
     , pretty _aliasName
@@ -399,14 +314,14 @@ instance Pretty (TypeAliasInfo p) where
     , pretty _aliasValue
     ] <> ";"
 
-instance Pretty (EnumInfo p) where
+instance (ASTConstraints p) => Pretty (EnumInfo p) where
   pretty EnumInfo {..} = hsep
     [ "enum"
     , pretty _enumName
     , encloseSep "{" "}" "," $ map pretty _enumValues
     ]
 
-instance Pretty (StructInfo p) where
+instance (ASTConstraints p) => Pretty (StructInfo p) where
   pretty StructInfo {..} = hsep
     [ "struct"
     , pretty _structName
@@ -420,17 +335,17 @@ instance Pretty (StructInfo p) where
           ]
     ]
 
-instance Pretty (ConstInfo p) where
+instance (ASTConstraints p) => Pretty (ConstInfo p) where
   pretty (ConstInfo {..}) = hsep
     [ "const"
     , pretty _constName
     , ":"
     , pretty _constType
     , "="
-    , pretty _constExpr
+    , pretty (_constExpr ^. within @Expression @p)
     ] <> ";"
 
-instance Pretty (FunctionInfo p) where
+instance (ASTConstraints p) => Pretty (FunctionInfo p) where
   pretty FunctionInfo {..} = hsep
     [ "fn"
     , pretty _funName
@@ -445,110 +360,106 @@ instance Pretty (FunctionInfo p) where
               ByReference te -> "&" <+> pretty te
           ]
     , foldMap (\t -> "->" <+> pretty t) _funType
-    , prettyBlock _funBody
+    , prettyBlock @p _funBody
     ]
 
-instance Pretty (Statement p) where
+instance (ASTConstraints p) => Pretty (Statement p) where
   pretty = \case
-    IfStmt         _ ii -> pretty ii
-    ForStmt        _ fi -> pretty fi
-    WhileStmt      _ wi -> pretty wi
-    LetStmt        _ li -> pretty li
-    ReturnStmt     _ rs -> "return" <+> foldMap pretty rs <> ";"
-    ContinueStmt   _    -> "continue;"
-    BreakStmt      _    -> "break;"
-    ExpressionStmt _  e -> pretty e <> ";"
+    IfStmt         ii -> pretty ii
+    ForStmt        fi -> pretty fi
+    WhileStmt      wi -> pretty wi
+    LetStmt        li -> pretty li
+    ReturnStmt     rs -> "return" <+> foldMap (pretty . (^. within @Expression @p)) rs <> ";"
+    ContinueStmt      -> "continue;"
+    BreakStmt         -> "break;"
+    ExpressionStmt  e -> pretty (e ^. within @Expression @p) <> ";"
 
-instance Pretty (IfInfo p) where
+instance (ASTConstraints p) => Pretty (IfInfo p) where
   pretty IfInfo {..} = hsep
     [ "if"
-    , pretty _ifExpr
-    , prettyBlock _ifBody
+    , pretty (_ifExpr ^. within @Expression @p)
+    , prettyBlock @p _ifBody
     , case _ifElse of
         Nothing             -> mempty
         Just (ElseIf    ii) -> "else" <+> pretty ii
-        Just (ElseBlock  b) -> "else" <+> prettyBlock b
+        Just (ElseBlock  b) -> "else" <+> prettyBlock @p b
     ]
 
-instance Pretty (ForInfo p) where
+instance (ASTConstraints p) => Pretty (ForInfo p) where
   pretty ForInfo {..} = hsep
     [ "for"
     , pretty _forVariableName
     , "in"
-    , pretty _forRangeExpr
-    , prettyBlock _forBody
+    , pretty (_forRangeExpr ^. within @Expression @p)
+    , prettyBlock @p _forBody
     ]
 
-instance Pretty (WhileInfo p) where
+instance (ASTConstraints p) => Pretty (WhileInfo p) where
   pretty WhileInfo {..} = hsep
     [ "while"
-    , pretty _whileExpr
-    , prettyBlock _whileBody
+    , pretty (_whileExpr ^. within @Expression @p)
+    , prettyBlock @p _whileBody
     ]
 
-instance Pretty (LetInfo p) where
+instance (ASTConstraints p) => Pretty (LetInfo p) where
   pretty LetInfo {..} = hsep
     [ "let"
     , pretty _letName
     , foldMap (\t -> ":" <+> pretty t) _letType
     , "="
-    , pretty _letExpr
+    , pretty (_letExpr ^. within @Expression @p)
     ] <> ";"
 
-instance Pretty (Expression p) where
+instance (ASTConstraints p) => Pretty (Expression p) where
   pretty = \case
-    PathExpr                     _ p     -> pretty p
-    CastExpr                     _ e  t  -> parens (pretty e) <+> "as" <+> parens (pretty t)
-    FieldAccessExpr              _ e  i  -> parens (pretty e) <> "." <> pretty i
-    CallExpr                     _ f  as -> parens (pretty f) <> encloseSep "(" ")" "," (map pretty as)
-    ArrayExpr                    _ vs    -> list $ map pretty vs
-    IndexExpr                    _ e1 e2 -> parens (pretty e1) <> brackets (pretty e2)
-    StructExpr                   _ p  fs -> parens (pretty p) <> encloseSep "{" "}" "," [pretty name <+> ":" <+> pretty value | (name, value) <- fs]
-    BoolLiteralExpr              _ b     -> if b then "true" else "false"
-    IntLiteralExpr               _ i     -> viaShow i
-    CharLiteralExpr              _ c     -> viaShow c
-    StringLiteralExpr            _ s     -> viaShow s
-    ReferenceExpr                _ e     -> "&" <> parens (pretty e)
-    NegationExpr                 _ e     -> "!" <> parens (pretty e)
-    AdditionExpr                 _ e1 e2 -> parens (pretty e1) <+> "+"   <+> parens (pretty e2)
-    SubtractionExpr              _ e1 e2 -> parens (pretty e1) <+> "-"   <+> parens (pretty e2)
-    MultiplicationExpr           _ e1 e2 -> parens (pretty e1) <+> "*"   <+> parens (pretty e2)
-    DivisionExpr                 _ e1 e2 -> parens (pretty e1) <+> "/"   <+> parens (pretty e2)
-    ModuloExpr                   _ e1 e2 -> parens (pretty e1) <+> "%"   <+> parens (pretty e2)
-    ExponentiationExpr           _ e1 e2 -> parens (pretty e1) <+> "^"   <+> parens (pretty e2)
-    EqualityExpr                 _ e1 e2 -> parens (pretty e1) <+> "=="  <+> parens (pretty e2)
-    DifferenceExpr               _ e1 e2 -> parens (pretty e1) <+> "!="  <+> parens (pretty e2)
-    GreaterExpr                  _ e1 e2 -> parens (pretty e1) <+> "> "  <+> parens (pretty e2)
-    LesserExpr                   _ e1 e2 -> parens (pretty e1) <+> "< "  <+> parens (pretty e2)
-    GreaterEqExpr                _ e1 e2 -> parens (pretty e1) <+> ">="  <+> parens (pretty e2)
-    LesserEqExpr                 _ e1 e2 -> parens (pretty e1) <+> "<="  <+> parens (pretty e2)
-    BoolAndExpr                  _ e1 e2 -> parens (pretty e1) <+> "&&"  <+> parens (pretty e2)
-    BoolOrExpr                   _ e1 e2 -> parens (pretty e1) <+> "||"  <+> parens (pretty e2)
-    RangeInclusiveExpr           _ e1 e2 -> parens (pretty e1) <+> "..=" <+> parens (pretty e2)
-    RangeExclusiveExpr           _ e1 e2 -> parens (pretty e1) <+> ".."  <+> parens (pretty e2)
-    AssignmentExpr               _ e1 e2 -> parens (pretty e1) <+> "="   <+> parens (pretty e2)
-    AdditionAssignmentExpr       _ e1 e2 -> parens (pretty e1) <+> "+="  <+> parens (pretty e2)
-    SubtractionAssignmentExpr    _ e1 e2 -> parens (pretty e1) <+> "-="  <+> parens (pretty e2)
-    MultiplicationAssignmentExpr _ e1 e2 -> parens (pretty e1) <+> "*="  <+> parens (pretty e2)
-    DivisionAssignmentExpr       _ e1 e2 -> parens (pretty e1) <+> "/="  <+> parens (pretty e2)
-    ModuloAssignmentExpr         _ e1 e2 -> parens (pretty e1) <+> "%="  <+> parens (pretty e2)
-    ExponentiationAssignmentExpr _ e1 e2 -> parens (pretty e1) <+> "^="  <+> parens (pretty e2)
-
-
-instance Pretty (PathInfo p) where
-  pretty PathInfo {..} = hcat (intersperse "::" (toList $ fmap pretty _pathName)) <> case _pathParams of
-    [] -> mempty
-    _  -> encloseSep "::<" ">" "," $ map pretty _pathParams
+    PathExpr                     p     -> pretty p
+    CastExpr                     e  t  -> parens (go e) <+> "as" <+> pretty t
+    FieldAccessExpr              e  i  -> parens (go e) <> "." <> pretty i
+    CallExpr                     f  as -> pretty f <> encloseSep "(" ")" "," (map go as)
+    ArrayExpr                    vs    -> list $ map go vs
+    IndexExpr                    e1 e2 -> parens (go e1) <> brackets (go e2)
+    StructExpr                   p  fs -> pretty p <+> encloseSep "@{" "}" "," [pretty name <+> ":" <+> go value | (name, value) <- NE.toList fs]
+    BoolLiteralExpr              b     -> if b then "true" else "false"
+    IntLiteralExpr               i     -> viaShow i
+    CharLiteralExpr              c     -> viaShow c
+    StringLiteralExpr            s     -> viaShow s
+    ReferenceExpr                e     -> "&" <> pretty e
+    NegationExpr                 e     -> "!" <> parens (go e)
+    AdditionExpr                 e1 e2 -> parens (go e1) <+> "+"   <+> parens (go e2)
+    SubtractionExpr              e1 e2 -> parens (go e1) <+> "-"   <+> parens (go e2)
+    MultiplicationExpr           e1 e2 -> parens (go e1) <+> "*"   <+> parens (go e2)
+    DivisionExpr                 e1 e2 -> parens (go e1) <+> "/"   <+> parens (go e2)
+    ModuloExpr                   e1 e2 -> parens (go e1) <+> "%"   <+> parens (go e2)
+    ExponentiationExpr           e1 e2 -> parens (go e1) <+> "^"   <+> parens (go e2)
+    EqualityExpr                 e1 e2 -> parens (go e1) <+> "=="  <+> parens (go e2)
+    DifferenceExpr               e1 e2 -> parens (go e1) <+> "!="  <+> parens (go e2)
+    GreaterExpr                  e1 e2 -> parens (go e1) <+> "> "  <+> parens (go e2)
+    LesserExpr                   e1 e2 -> parens (go e1) <+> "< "  <+> parens (go e2)
+    GreaterEqExpr                e1 e2 -> parens (go e1) <+> ">="  <+> parens (go e2)
+    LesserEqExpr                 e1 e2 -> parens (go e1) <+> "<="  <+> parens (go e2)
+    BoolAndExpr                  e1 e2 -> parens (go e1) <+> "&&"  <+> parens (go e2)
+    BoolOrExpr                   e1 e2 -> parens (go e1) <+> "||"  <+> parens (go e2)
+    RangeInclusiveExpr           e1 e2 -> parens (go e1) <+> "..=" <+> parens (go e2)
+    RangeExclusiveExpr           e1 e2 -> parens (go e1) <+> ".."  <+> parens (go e2)
+    AssignmentExpr               e1 e2 -> parens (go e1) <+> "="   <+> parens (go e2)
+    AdditionAssignmentExpr       e1 e2 -> parens (go e1) <+> "+="  <+> parens (go e2)
+    SubtractionAssignmentExpr    e1 e2 -> parens (go e1) <+> "-="  <+> parens (go e2)
+    MultiplicationAssignmentExpr e1 e2 -> parens (go e1) <+> "*="  <+> parens (go e2)
+    DivisionAssignmentExpr       e1 e2 -> parens (go e1) <+> "/="  <+> parens (go e2)
+    ModuloAssignmentExpr         e1 e2 -> parens (go e1) <+> "%="  <+> parens (go e2)
+    ExponentiationAssignmentExpr e1 e2 -> parens (go e1) <+> "^="  <+> parens (go e2)
+    where
+      go = pretty . (^. within @Expression @p)
 
 
 prettyParams :: Pretty p => [p] -> Doc ann
 prettyParams []     = mempty
 prettyParams params = encloseSep "<" ">" "," $ map pretty params
 
-prettyBlock :: Pretty p => [p] -> Doc ann
-prettyBlock = braces . enclose hardline hardline . indent 2 . vsep . map pretty
+prettyBlock :: forall p ann. ASTConstraints p => [Annotated Statement p] -> Doc ann
+prettyBlock = braces . enclose hardline hardline . indent 2 . vsep . map (pretty . (^. within @Statement @p))
 
-prettyPrint :: Module Parsed -> Text
+prettyPrint :: Pretty p => p -> Text
 prettyPrint = renderStrict . layoutPretty defaultLayoutOptions . pretty
 
 
@@ -575,36 +486,36 @@ makePrisms ''Statement
 makePrisms ''ElseInfo
 makePrisms ''Expression
 
-instance Plated (Expression p) where
+instance Annotation Expression p => Plated (Expression p) where
   plate f = \case
-    FieldAccessExpr              x e i   -> liftA3 FieldAccessExpr              (pure x) (f e) (pure i)
-    CallExpr                     x p es  -> liftA3 CallExpr                     (pure x) (pure p) (traverse f es)
-    ArrayExpr                    x es    -> liftA2 ArrayExpr                    (pure x) (traverse f es)
-    IndexExpr                    x e1 e2 -> liftA3 IndexExpr                    (pure x) (f e1) (f e2)
-    StructExpr                   x p fs  -> liftA3 StructExpr                   (pure x) (pure p) (traverse (traverse f) fs)
-    NegationExpr                 x e     -> liftA2 NegationExpr                 (pure x) (f e)
-    CastExpr                     x e t   -> liftA3 CastExpr                     (pure x) (f e) (pure t)
-    AdditionExpr                 x e1 e2 -> liftA3 AdditionExpr                 (pure x) (f e1) (f e2)
-    SubtractionExpr              x e1 e2 -> liftA3 SubtractionExpr              (pure x) (f e1) (f e2)
-    MultiplicationExpr           x e1 e2 -> liftA3 MultiplicationExpr           (pure x) (f e1) (f e2)
-    DivisionExpr                 x e1 e2 -> liftA3 DivisionExpr                 (pure x) (f e1) (f e2)
-    ModuloExpr                   x e1 e2 -> liftA3 ModuloExpr                   (pure x) (f e1) (f e2)
-    ExponentiationExpr           x e1 e2 -> liftA3 ExponentiationExpr           (pure x) (f e1) (f e2)
-    EqualityExpr                 x e1 e2 -> liftA3 EqualityExpr                 (pure x) (f e1) (f e2)
-    DifferenceExpr               x e1 e2 -> liftA3 DifferenceExpr               (pure x) (f e1) (f e2)
-    GreaterExpr                  x e1 e2 -> liftA3 GreaterExpr                  (pure x) (f e1) (f e2)
-    LesserExpr                   x e1 e2 -> liftA3 LesserExpr                   (pure x) (f e1) (f e2)
-    GreaterEqExpr                x e1 e2 -> liftA3 GreaterEqExpr                (pure x) (f e1) (f e2)
-    LesserEqExpr                 x e1 e2 -> liftA3 LesserEqExpr                 (pure x) (f e1) (f e2)
-    BoolAndExpr                  x e1 e2 -> liftA3 BoolAndExpr                  (pure x) (f e1) (f e2)
-    BoolOrExpr                   x e1 e2 -> liftA3 BoolOrExpr                   (pure x) (f e1) (f e2)
-    RangeInclusiveExpr           x e1 e2 -> liftA3 RangeInclusiveExpr           (pure x) (f e1) (f e2)
-    RangeExclusiveExpr           x e1 e2 -> liftA3 RangeExclusiveExpr           (pure x) (f e1) (f e2)
-    AssignmentExpr               x e1 e2 -> liftA3 AssignmentExpr               (pure x) (f e1) (f e2)
-    AdditionAssignmentExpr       x e1 e2 -> liftA3 AdditionAssignmentExpr       (pure x) (f e1) (f e2)
-    SubtractionAssignmentExpr    x e1 e2 -> liftA3 SubtractionAssignmentExpr    (pure x) (f e1) (f e2)
-    MultiplicationAssignmentExpr x e1 e2 -> liftA3 MultiplicationAssignmentExpr (pure x) (f e1) (f e2)
-    DivisionAssignmentExpr       x e1 e2 -> liftA3 DivisionAssignmentExpr       (pure x) (f e1) (f e2)
-    ModuloAssignmentExpr         x e1 e2 -> liftA3 ModuloAssignmentExpr         (pure x) (f e1) (f e2)
-    ExponentiationAssignmentExpr x e1 e2 -> liftA3 ExponentiationAssignmentExpr (pure x) (f e1) (f e2)
-    e                                    -> pure e
+    FieldAccessExpr              e i   -> liftA2 FieldAccessExpr              (within f e) (pure i)
+    CallExpr                     p es  -> liftA2 CallExpr                     (pure p) (traverse (within f) es)
+    ArrayExpr                    es    -> fmap   ArrayExpr                    (traverse (within f) es)
+    IndexExpr                    e1 e2 -> liftA2 IndexExpr                    (within f e1) (within f e2)
+    StructExpr                   p fs  -> liftA2 StructExpr                   (pure p) (traverse (traverse (within f)) fs)
+    NegationExpr                 e     -> fmap   NegationExpr                 (within f e)
+    CastExpr                     e t   -> liftA2 CastExpr                     (within f e) (pure t)
+    AdditionExpr                 e1 e2 -> liftA2 AdditionExpr                 (within f e1) (within f e2)
+    SubtractionExpr              e1 e2 -> liftA2 SubtractionExpr              (within f e1) (within f e2)
+    MultiplicationExpr           e1 e2 -> liftA2 MultiplicationExpr           (within f e1) (within f e2)
+    DivisionExpr                 e1 e2 -> liftA2 DivisionExpr                 (within f e1) (within f e2)
+    ModuloExpr                   e1 e2 -> liftA2 ModuloExpr                   (within f e1) (within f e2)
+    ExponentiationExpr           e1 e2 -> liftA2 ExponentiationExpr           (within f e1) (within f e2)
+    EqualityExpr                 e1 e2 -> liftA2 EqualityExpr                 (within f e1) (within f e2)
+    DifferenceExpr               e1 e2 -> liftA2 DifferenceExpr               (within f e1) (within f e2)
+    GreaterExpr                  e1 e2 -> liftA2 GreaterExpr                  (within f e1) (within f e2)
+    LesserExpr                   e1 e2 -> liftA2 LesserExpr                   (within f e1) (within f e2)
+    GreaterEqExpr                e1 e2 -> liftA2 GreaterEqExpr                (within f e1) (within f e2)
+    LesserEqExpr                 e1 e2 -> liftA2 LesserEqExpr                 (within f e1) (within f e2)
+    BoolAndExpr                  e1 e2 -> liftA2 BoolAndExpr                  (within f e1) (within f e2)
+    BoolOrExpr                   e1 e2 -> liftA2 BoolOrExpr                   (within f e1) (within f e2)
+    RangeInclusiveExpr           e1 e2 -> liftA2 RangeInclusiveExpr           (within f e1) (within f e2)
+    RangeExclusiveExpr           e1 e2 -> liftA2 RangeExclusiveExpr           (within f e1) (within f e2)
+    AssignmentExpr               e1 e2 -> liftA2 AssignmentExpr               (within f e1) (within f e2)
+    AdditionAssignmentExpr       e1 e2 -> liftA2 AdditionAssignmentExpr       (within f e1) (within f e2)
+    SubtractionAssignmentExpr    e1 e2 -> liftA2 SubtractionAssignmentExpr    (within f e1) (within f e2)
+    MultiplicationAssignmentExpr e1 e2 -> liftA2 MultiplicationAssignmentExpr (within f e1) (within f e2)
+    DivisionAssignmentExpr       e1 e2 -> liftA2 DivisionAssignmentExpr       (within f e1) (within f e2)
+    ModuloAssignmentExpr         e1 e2 -> liftA2 ModuloAssignmentExpr         (within f e1) (within f e2)
+    ExponentiationAssignmentExpr e1 e2 -> liftA2 ExponentiationAssignmentExpr (within f e1) (within f e2)
+    e                                  -> pure e
