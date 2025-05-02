@@ -35,8 +35,11 @@ library
       Lang.Pietre.Representations.Image
       Lang.Pietre.Representations.IR
       Lang.Pietre.Representations.Location
+      Lang.Pietre.Representations.Name
       Lang.Pietre.Representations.Tokens
       Lang.Pietre.Stages.Analysis
+      Lang.Pietre.Stages.Analysis.Diagnostic
+      Lang.Pietre.Stages.Analysis.Monad
       Lang.Pietre.Stages.Assembly
       Lang.Pietre.Stages.Assembly.Color
       Lang.Pietre.Stages.Assembly.Templates
