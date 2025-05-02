@@ -39,6 +39,7 @@ tokens :-
   "type"     / @keyword_border { mkToken TKeywordType            }
   "use"      / @keyword_border { mkToken TKeywordUse             }
   "while"    / @keyword_border { mkToken TKeywordWhile           }
+  "@"                          { mkToken TOperatorAt             }
   ";"                          { mkToken TOperatorSemicolon      }
   "::"                         { mkToken TOperatorType           }
   "*"                          { mkToken TOperatorStar           }

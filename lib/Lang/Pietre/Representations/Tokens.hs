@@ -24,6 +24,7 @@ data Token
   | TKeywordUse
   | TKeywordWhile
 
+  | TOperatorAt
   | TOperatorSemicolon
   | TOperatorType
   | TOperatorStar

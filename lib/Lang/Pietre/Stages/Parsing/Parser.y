@@ -58,6 +58,7 @@ import Lang.Pietre.Stages.Parsing.Monad
 "type"     { ($$, TKeywordType)            }
 "use"      { ($$, TKeywordUse)             }
 "while"    { ($$, TKeywordWhile)           }
+"@"        { ($$, TOperatorAt)             }
 ";"        { ($$, TOperatorSemicolon)      }
 "::"       { ($$, TOperatorType)           }
 "*"        { ($$, TOperatorStar)           }
@@ -263,7 +264,7 @@ index_expr :: { (Location, Expression Parsed) }
   : expression "[" expression "]" { (fst $1, IndexExpr (fst $1) (snd $1) (snd $3)) }
 
 struct_expr :: { (Location, Expression Parsed) }
-  : path_expr "{" comma_list(field_expr) "}" { (fst $1, StructExpr (fst $1) (snd $1) $3) }
+  : path_expr "@" "{" comma_list(field_expr) "}" { (fst $1, StructExpr (fst $1) (snd $1) $3) }
 
 field_expr :: { (Identifier, Expression Parsed) }
   : IDENTIFIER ":" expression { (getIdentifierLiteral $1, snd $3) }
