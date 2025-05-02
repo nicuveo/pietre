@@ -15,7 +15,15 @@ data Location = Location
   }
   deriving (Show, Eq, Ord)
 
+data WithLocation a = WithLocation
+  { _location :: Location
+  , _located  :: a
+  }
+  deriving (Show, Functor)
+
 makeLenses ''Location
+makeLenses ''WithLocation
+
 
 initialLocation :: FilePath -> Location
 initialLocation f = Location f 0 1 1

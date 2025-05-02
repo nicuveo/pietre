@@ -9,7 +9,7 @@ import Control.Monad.Loops (whileM, unfoldM)
 import Data.Char (digitToInt)
 import Data.Text qualified as T
 import Data.Text.Read qualified as T
-import Lang.Pietre.Representations.Location
+import Lang.Pietre.Representations.Location hiding (location)
 import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Parsing.Monad
 
