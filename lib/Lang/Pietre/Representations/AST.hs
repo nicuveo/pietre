@@ -40,37 +40,41 @@ instance Annotation Expression Parsed where
 
 
 instance Annotation Declaration Resolved where
-  type Annotated Declaration Resolved = Declaration Resolved
-  within = id
+  type Annotated Declaration Resolved = WithLocation (Declaration Resolved)
+  within = located
 
 instance Annotation Statement Resolved where
   type Annotated Statement Resolved = Statement Resolved
   within = id
 
-instance Annotation Expression Resolved where
-  type Annotated Expression Resolved = Expression Resolved
-  within = id
 
 
 class ASTRepresentation (p :: ASTPhase) where
   type NameType p :: Type
 
 instance ASTRepresentation Parsed where
-  type NameType Parsed = PathInfo
+  type NameType Parsed = Path
 
 instance ASTRepresentation Resolved where
   type NameType Resolved = Name
 
 
-type ASTConstraints p =
+type ShowConstraints p =
   ( Show (Annotated Declaration p)
   , Show (Annotated Statement   p)
   , Show (Annotated Expression  p)
   , Show (NameType p)
-  , Pretty (NameType p)
-  , Annotation Declaration p
-  , Annotation Statement   p
-  , Annotation Expression  p
+  )
+
+type EqConstraints p =
+  ( Eq (NameType p)
+  , Eq (Annotated Expression p)
+  )
+
+type OrdConstraints p =
+  ( EqConstraints p
+  , Ord (NameType p)
+  , Ord (Annotated Expression p)
   )
 
 
@@ -92,21 +96,11 @@ instance Monoid Module where
   mempty = Module [] []
 
 
-data PathInfo = PathInfo
-  { _pathName   :: NonEmpty Identifier
-  , _pathParams :: [PathInfo]
-  } deriving Show
-
-
---------------------------------------------------------------------------------
--- Generic AST
-
 data Import = Import
   { _importPath :: NonEmpty Identifier
   , _importType :: ImportType
   }
   deriving Show
-
 
 data ImportType
   = Qualified  (Maybe Identifier)
@@ -115,67 +109,90 @@ data ImportType
   deriving Show
 
 
+type Path = NonEmpty Identifier
+
+
+data TypedExpression = TypedExpression
+  { _exprType  :: PathInfo Resolved
+  , _exprValue :: Expression Resolved
+  }
+
+deriving instance ShowConstraints Resolved => Show TypedExpression
+deriving instance EqConstraints   Resolved => Eq   TypedExpression
+deriving instance OrdConstraints  Resolved => Ord  TypedExpression
+
+
+--------------------------------------------------------------------------------
+-- Generic AST
+
 data Declaration (p :: ASTPhase)
   = TypeAliasDecl (TypeAliasInfo p)
-  | EnumDecl      (EnumInfo      p)
+  | EnumDecl      EnumInfo
   | StructDecl    (StructInfo    p)
   | ConstDecl     (ConstInfo     p)
   | FunctionDecl  (FunctionInfo  p)
 
-deriving instance ASTConstraints p => Show (Declaration p)
+deriving instance ShowConstraints p => Show (Declaration p)
+
+declarationIdentifier :: Declaration p -> Identifier
+declarationIdentifier = \case
+  ConstDecl     ConstInfo     {..} -> _constName
+  TypeAliasDecl TypeAliasInfo {..} -> _aliasName
+  EnumDecl      EnumInfo      {..} -> _enumName
+  StructDecl    StructInfo    {..} -> _structName
+  FunctionDecl  FunctionInfo  {..} -> _funName
 
 
 data TypeAliasInfo (p :: ASTPhase) = TypeAliasInfo
   { _aliasName   :: Identifier
   , _aliasParams :: [Identifier]
-  , _aliasValue  :: NameType p
+  , _aliasValue  :: PathInfo p
   }
 
-deriving instance ASTConstraints p => Show (TypeAliasInfo p)
+deriving instance ShowConstraints p => Show (TypeAliasInfo p)
 
 
-data EnumInfo (p :: ASTPhase) = EnumInfo
+data EnumInfo = EnumInfo
   { _enumName   :: Identifier
   , _enumValues :: [Identifier]
   }
-
-deriving instance ASTConstraints p => Show (EnumInfo p)
+  deriving (Show)
 
 
 data StructInfo (p :: ASTPhase) = StructInfo
   { _structName   :: Identifier
   , _structParams :: [Identifier]
-  , _structValues :: NonEmpty (Identifier, NameType p)
+  , _structValues :: NonEmpty (Identifier, PathInfo p)
   }
 
-deriving instance ASTConstraints p => Show (StructInfo p)
+deriving instance ShowConstraints p => Show (StructInfo p)
 
 
 data ConstInfo (p :: ASTPhase) = ConstInfo
   { _constName :: Identifier
-  , _constType :: NameType p
+  , _constType :: PathInfo p
   , _constExpr :: Annotated Expression p
   }
 
-deriving instance ASTConstraints p => Show (ConstInfo p)
+deriving instance ShowConstraints p => Show (ConstInfo p)
 
 
 data FunctionInfo (p :: ASTPhase) = FunctionInfo
   { _funName   :: Identifier
   , _funParams :: [Identifier]
   , _funArgs   :: [(Identifier, FunctionArgType p)]
-  , _funType   :: Maybe (NameType p)
+  , _funType   :: Maybe (PathInfo p)
   , _funBody   :: [Annotated Statement p]
   }
 
-deriving instance ASTConstraints p => Show (FunctionInfo p)
+deriving instance ShowConstraints p => Show (FunctionInfo p)
 
 
 data FunctionArgType (p :: ASTPhase)
-  = ByValue     (NameType p)
-  | ByReference (NameType p)
+  = ByValue     (PathInfo p)
+  | ByReference (PathInfo p)
 
-deriving instance ASTConstraints p => Show (FunctionArgType p)
+deriving instance ShowConstraints p => Show (FunctionArgType p)
 
 
 data Statement (p :: ASTPhase)
@@ -188,7 +205,7 @@ data Statement (p :: ASTPhase)
   | BreakStmt
   | ExpressionStmt (Annotated Expression p)
 
-deriving instance ASTConstraints p => Show (Statement p)
+deriving instance ShowConstraints p => Show (Statement p)
 
 
 data IfInfo (p :: ASTPhase) = IfInfo
@@ -197,14 +214,14 @@ data IfInfo (p :: ASTPhase) = IfInfo
   , _ifElse :: Maybe (ElseInfo p)
   }
 
-deriving instance ASTConstraints p => Show (IfInfo p)
+deriving instance ShowConstraints p => Show (IfInfo p)
 
 
 data ElseInfo (p :: ASTPhase)
   = ElseIf    (IfInfo p)
   | ElseBlock [Annotated Statement p]
 
-deriving instance ASTConstraints p => Show (ElseInfo p)
+deriving instance ShowConstraints p => Show (ElseInfo p)
 
 
 data ForInfo (p :: ASTPhase) = ForInfo
@@ -213,7 +230,7 @@ data ForInfo (p :: ASTPhase) = ForInfo
   , _forBody         :: [Annotated Statement p]
   }
 
-deriving instance ASTConstraints p => Show (ForInfo p)
+deriving instance ShowConstraints p => Show (ForInfo p)
 
 
 data WhileInfo (p :: ASTPhase) = WhileInfo
@@ -221,31 +238,32 @@ data WhileInfo (p :: ASTPhase) = WhileInfo
   , _whileBody :: [Annotated Statement p]
   }
 
-deriving instance ASTConstraints p => Show (WhileInfo p)
+deriving instance ShowConstraints p => Show (WhileInfo p)
 
 
 data LetInfo (p :: ASTPhase) = LetInfo
   { _letName :: Identifier
-  , _letType :: Maybe (NameType p)
+  , _letType :: Maybe (PathInfo p)
   , _letExpr :: Annotated Expression p
   }
 
-deriving instance ASTConstraints p => Show (LetInfo p)
+deriving instance ShowConstraints p => Show (LetInfo p)
 
 
 data Expression (p :: ASTPhase)
-  = PathExpr                     (NameType p)
+  = PathExpr                     (PathInfo p)
   | FieldAccessExpr              (Annotated Expression p) Identifier
-  | CallExpr                     (NameType p) [Annotated Expression p]
+  | CallExpr                     (PathInfo p) [Annotated Expression p]
   | ArrayExpr                    [Annotated Expression p]
   | IndexExpr                    (Annotated Expression p) (Annotated Expression p)
-  | StructExpr                   (NameType p) (NonEmpty (Identifier, Annotated Expression p))
+  | StructExpr                   (PathInfo p) (NonEmpty (Identifier, Annotated Expression p))
   | BoolLiteralExpr              Bool
   | IntLiteralExpr               Int
   | CharLiteralExpr              Char
   | StringLiteralExpr            Text
-  | ReferenceExpr                (NameType p)
-  | NegationExpr                 (Annotated Expression p)
+  | ReferenceExpr                (PathInfo p)
+  | IntNegationExpr              (Annotated Expression p)
+  | BoolNegationExpr             (Annotated Expression p)
   | AdditionExpr                 (Annotated Expression p) (Annotated Expression p)
   | SubtractionExpr              (Annotated Expression p) (Annotated Expression p)
   | MultiplicationExpr           (Annotated Expression p) (Annotated Expression p)
@@ -260,7 +278,7 @@ data Expression (p :: ASTPhase)
   | LesserEqExpr                 (Annotated Expression p) (Annotated Expression p)
   | BoolAndExpr                  (Annotated Expression p) (Annotated Expression p)
   | BoolOrExpr                   (Annotated Expression p) (Annotated Expression p)
-  | CastExpr                     (Annotated Expression p) (NameType p)
+  | CastExpr                     (Annotated Expression p) (PathInfo p)
   | RangeInclusiveExpr           (Annotated Expression p) (Annotated Expression p)
   | RangeExclusiveExpr           (Annotated Expression p) (Annotated Expression p)
   | AssignmentExpr               (Annotated Expression p) (Annotated Expression p)
@@ -271,7 +289,19 @@ data Expression (p :: ASTPhase)
   | ModuloAssignmentExpr         (Annotated Expression p) (Annotated Expression p)
   | ExponentiationAssignmentExpr (Annotated Expression p) (Annotated Expression p)
 
-deriving instance ASTConstraints p => Show (Expression p)
+deriving instance ShowConstraints p => Show (Expression p)
+deriving instance EqConstraints   p => Eq   (Expression p)
+deriving instance OrdConstraints  p => Ord  (Expression p)
+
+
+data PathInfo (p :: ASTPhase) = PathInfo
+  { _pathName   :: NameType p
+  , _pathParams :: [PathInfo p]
+  }
+
+deriving instance ShowConstraints p => Show (PathInfo p)
+deriving instance EqConstraints   p => Eq   (PathInfo p)
+deriving instance OrdConstraints  p => Ord  (PathInfo p)
 
 
 --------------------------------------------------------------------------------
@@ -280,11 +310,6 @@ deriving instance ASTConstraints p => Show (Expression p)
 instance Pretty Module where
   pretty Module {..} =
     vsep $ map pretty _modImports ++ map (pretty . view located) _modDeclarations
-
-instance Pretty PathInfo where
-  pretty PathInfo {..} = hcat (intersperse "::" (toList $ fmap pretty _pathName)) <> case _pathParams of
-    [] -> mempty
-    _  -> encloseSep "::<" ">" "," $ map pretty _pathParams
 
 instance Pretty Import where
   pretty Import {..} = hsep
@@ -297,7 +322,7 @@ instance Pretty Import where
         Exhaustive            -> "::*"
     ] <> ";"
 
-instance (ASTConstraints p) => Pretty (Declaration p) where
+instance Pretty (Declaration Parsed) where
   pretty = \case
     TypeAliasDecl tai -> pretty tai
     EnumDecl      ei  -> pretty ei
@@ -305,7 +330,7 @@ instance (ASTConstraints p) => Pretty (Declaration p) where
     ConstDecl     ci  -> pretty ci
     FunctionDecl  fi  -> pretty fi
 
-instance (ASTConstraints p) => Pretty (TypeAliasInfo p) where
+instance Pretty (TypeAliasInfo Parsed) where
   pretty TypeAliasInfo {..} = hsep
     [ "type"
     , pretty _aliasName
@@ -314,14 +339,14 @@ instance (ASTConstraints p) => Pretty (TypeAliasInfo p) where
     , pretty _aliasValue
     ] <> ";"
 
-instance (ASTConstraints p) => Pretty (EnumInfo p) where
+instance Pretty EnumInfo where
   pretty EnumInfo {..} = hsep
     [ "enum"
     , pretty _enumName
     , encloseSep "{" "}" "," $ map pretty _enumValues
     ]
 
-instance (ASTConstraints p) => Pretty (StructInfo p) where
+instance Pretty (StructInfo Parsed) where
   pretty StructInfo {..} = hsep
     [ "struct"
     , pretty _structName
@@ -335,17 +360,17 @@ instance (ASTConstraints p) => Pretty (StructInfo p) where
           ]
     ]
 
-instance (ASTConstraints p) => Pretty (ConstInfo p) where
+instance Pretty (ConstInfo Parsed) where
   pretty (ConstInfo {..}) = hsep
     [ "const"
     , pretty _constName
     , ":"
     , pretty _constType
     , "="
-    , pretty (_constExpr ^. within @Expression @p)
+    , pretty (_constExpr ^. within @Expression @Parsed)
     ] <> ";"
 
-instance (ASTConstraints p) => Pretty (FunctionInfo p) where
+instance Pretty (FunctionInfo Parsed) where
   pretty FunctionInfo {..} = hsep
     [ "fn"
     , pretty _funName
@@ -360,57 +385,57 @@ instance (ASTConstraints p) => Pretty (FunctionInfo p) where
               ByReference te -> "&" <+> pretty te
           ]
     , foldMap (\t -> "->" <+> pretty t) _funType
-    , prettyBlock @p _funBody
+    , prettyBlock _funBody
     ]
 
-instance (ASTConstraints p) => Pretty (Statement p) where
+instance Pretty (Statement Parsed) where
   pretty = \case
     IfStmt         ii -> pretty ii
     ForStmt        fi -> pretty fi
     WhileStmt      wi -> pretty wi
     LetStmt        li -> pretty li
-    ReturnStmt     rs -> "return" <+> foldMap (pretty . (^. within @Expression @p)) rs <> ";"
+    ReturnStmt     rs -> "return" <+> foldMap (pretty . (^. within @Expression @Parsed)) rs <> ";"
     ContinueStmt      -> "continue;"
     BreakStmt         -> "break;"
-    ExpressionStmt  e -> pretty (e ^. within @Expression @p) <> ";"
+    ExpressionStmt  e -> pretty (e ^. within @Expression @Parsed) <> ";"
 
-instance (ASTConstraints p) => Pretty (IfInfo p) where
+instance Pretty (IfInfo Parsed) where
   pretty IfInfo {..} = hsep
     [ "if"
-    , pretty (_ifExpr ^. within @Expression @p)
-    , prettyBlock @p _ifBody
+    , pretty (_ifExpr ^. within @Expression @Parsed)
+    , prettyBlock _ifBody
     , case _ifElse of
         Nothing             -> mempty
         Just (ElseIf    ii) -> "else" <+> pretty ii
-        Just (ElseBlock  b) -> "else" <+> prettyBlock @p b
+        Just (ElseBlock  b) -> "else" <+> prettyBlock b
     ]
 
-instance (ASTConstraints p) => Pretty (ForInfo p) where
+instance Pretty (ForInfo Parsed) where
   pretty ForInfo {..} = hsep
     [ "for"
     , pretty _forVariableName
     , "in"
-    , pretty (_forRangeExpr ^. within @Expression @p)
-    , prettyBlock @p _forBody
+    , pretty (_forRangeExpr ^. within @Expression @Parsed)
+    , prettyBlock _forBody
     ]
 
-instance (ASTConstraints p) => Pretty (WhileInfo p) where
+instance Pretty (WhileInfo Parsed) where
   pretty WhileInfo {..} = hsep
     [ "while"
-    , pretty (_whileExpr ^. within @Expression @p)
-    , prettyBlock @p _whileBody
+    , pretty (_whileExpr ^. within @Expression @Parsed)
+    , prettyBlock _whileBody
     ]
 
-instance (ASTConstraints p) => Pretty (LetInfo p) where
+instance Pretty (LetInfo Parsed) where
   pretty LetInfo {..} = hsep
     [ "let"
     , pretty _letName
     , foldMap (\t -> ":" <+> pretty t) _letType
     , "="
-    , pretty (_letExpr ^. within @Expression @p)
+    , pretty (_letExpr ^. within @Expression @Parsed)
     ] <> ";"
 
-instance (ASTConstraints p) => Pretty (Expression p) where
+instance Pretty (Expression Parsed) where
   pretty = \case
     PathExpr                     p     -> pretty p
     CastExpr                     e  t  -> parens (go e) <+> "as" <+> pretty t
@@ -424,7 +449,8 @@ instance (ASTConstraints p) => Pretty (Expression p) where
     CharLiteralExpr              c     -> viaShow c
     StringLiteralExpr            s     -> viaShow s
     ReferenceExpr                e     -> "&" <> pretty e
-    NegationExpr                 e     -> "!" <> parens (go e)
+    IntNegationExpr              e     -> "-" <> parens (go e)
+    BoolNegationExpr             e     -> "!" <> parens (go e)
     AdditionExpr                 e1 e2 -> parens (go e1) <+> "+"   <+> parens (go e2)
     SubtractionExpr              e1 e2 -> parens (go e1) <+> "-"   <+> parens (go e2)
     MultiplicationExpr           e1 e2 -> parens (go e1) <+> "*"   <+> parens (go e2)
@@ -449,15 +475,20 @@ instance (ASTConstraints p) => Pretty (Expression p) where
     ModuloAssignmentExpr         e1 e2 -> parens (go e1) <+> "%="  <+> parens (go e2)
     ExponentiationAssignmentExpr e1 e2 -> parens (go e1) <+> "^="  <+> parens (go e2)
     where
-      go = pretty . (^. within @Expression @p)
+      go = pretty . (^. within @Expression @Parsed)
+
+instance Pretty (PathInfo Parsed) where
+  pretty PathInfo {..} = hcat (intersperse "::" (toList $ fmap pretty _pathName)) <> case _pathParams of
+    [] -> mempty
+    _  -> encloseSep "::<" ">" "," $ map pretty _pathParams
 
 
 prettyParams :: Pretty p => [p] -> Doc ann
 prettyParams []     = mempty
 prettyParams params = encloseSep "<" ">" "," $ map pretty params
 
-prettyBlock :: forall p ann. ASTConstraints p => [Annotated Statement p] -> Doc ann
-prettyBlock = braces . enclose hardline hardline . indent 2 . vsep . map (pretty . (^. within @Statement @p))
+prettyBlock :: [Annotated Statement Parsed] -> Doc ann
+prettyBlock = braces . enclose hardline hardline . indent 2 . vsep . map (pretty . (^. within @Statement @Parsed))
 
 prettyPrint :: Pretty p => p -> Text
 prettyPrint = renderStrict . layoutPretty defaultLayoutOptions . pretty
@@ -478,6 +509,7 @@ makeLenses ''IfInfo
 makeLenses ''ForInfo
 makeLenses ''WhileInfo
 makeLenses ''LetInfo
+makeLenses ''TypedExpression
 
 makePrisms ''ImportType
 makePrisms ''Declaration
@@ -493,7 +525,8 @@ instance Annotation Expression p => Plated (Expression p) where
     ArrayExpr                    es    -> fmap   ArrayExpr                    (traverse (within f) es)
     IndexExpr                    e1 e2 -> liftA2 IndexExpr                    (within f e1) (within f e2)
     StructExpr                   p fs  -> liftA2 StructExpr                   (pure p) (traverse (traverse (within f)) fs)
-    NegationExpr                 e     -> fmap   NegationExpr                 (within f e)
+    IntNegationExpr              e     -> fmap   IntNegationExpr              (within f e)
+    BoolNegationExpr             e     -> fmap   BoolNegationExpr             (within f e)
     CastExpr                     e t   -> liftA2 CastExpr                     (within f e) (pure t)
     AdditionExpr                 e1 e2 -> liftA2 AdditionExpr                 (within f e1) (within f e2)
     SubtractionExpr              e1 e2 -> liftA2 SubtractionExpr              (within f e1) (within f e2)
@@ -519,3 +552,14 @@ instance Annotation Expression p => Plated (Expression p) where
     ModuloAssignmentExpr         e1 e2 -> liftA2 ModuloAssignmentExpr         (within f e1) (within f e2)
     ExponentiationAssignmentExpr e1 e2 -> liftA2 ExponentiationAssignmentExpr (within f e1) (within f e2)
     e                                  -> pure e
+
+
+--------------------------------------------------------------------------------
+-- Order-dependent declarations
+
+-- Due to lenses, some declarations must be put at the end of the file, *after*
+-- the corresponding lens declaration.
+
+instance Annotation Expression Resolved where
+  type Annotated Expression Resolved = TypedExpression
+  within = exprValue

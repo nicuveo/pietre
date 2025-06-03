@@ -141,7 +141,7 @@ enum_item :: { Identifier }
 struct_decl :: { WithLocation (Declaration Parsed) }
   : "struct" IDENTIFIER optional(generic_params) "{" comma_list(struct_field) "}" { WithLocation $1 (StructDecl (StructInfo (getIdentifierLiteral $2) (fold $3) (NE.fromList $5))) }
 
-struct_field :: { (Identifier, PathInfo) }
+struct_field :: { (Identifier, PathInfo Parsed) }
   : IDENTIFIER ":" type_expr { (getIdentifierLiteral $1, $3) }
 
 
@@ -159,7 +159,7 @@ fun_arg_type :: { FunctionArgType Parsed }
   : type_expr { ByValue     $1 }
   | reference { ByReference $1 }
 
-fun_return :: { PathInfo }
+fun_return :: { PathInfo Parsed }
   : "->" type_expr { $2 }
 
 
@@ -210,7 +210,7 @@ for_stmt :: { WithLocation (Statement Parsed) }
 let_stmt :: { WithLocation (Statement Parsed) }
   : "let" IDENTIFIER optional(let_type) "=" expression { WithLocation $1 (LetStmt (LetInfo (getIdentifierLiteral $2) $3 $5)) }
 
-let_type :: { PathInfo }
+let_type :: { PathInfo Parsed }
   : ":" type_expr { $2 }
 
 return_stmt :: { WithLocation (Statement Parsed) }
@@ -240,7 +240,7 @@ expression :: { WithLocation (Expression Parsed) }
 grouped_expr :: { WithLocation (Expression Parsed) }
   : "(" expression ")" { $2 }
 
-path_expr :: { (Location, PathInfo) }
+path_expr :: { (Location, PathInfo Parsed) }
   : IDENTIFIER                   { (fst $1, PathInfo (pure $ getIdentifierLiteral $1) []) }
   | IDENTIFIER "::" generic_args { (fst $1, PathInfo (pure $ getIdentifierLiteral $1) $3) }
   | IDENTIFIER "::" path_expr    { (fst $1, prependPathInfo (getIdentifierLiteral $1) (snd $3)) }
@@ -291,8 +291,8 @@ reference_expr :: { WithLocation (Expression Parsed) }
   : "&" path_expr %prec UNARY { WithLocation $1 (ReferenceExpr (snd $2)) }
 
 negation_expr :: { WithLocation (Expression Parsed) }
-  : "!" expression %prec UNARY { WithLocation $1 (NegationExpr $2) }
-  | "-" expression %prec UNARY { WithLocation $1 (NegationExpr $2) }
+  : "!" expression %prec UNARY { WithLocation $1 (BoolNegationExpr $2) }
+  | "-" expression %prec UNARY { WithLocation $1 (IntNegationExpr  $2) }
 
 arithmetic_expr :: { WithLocation (Expression Parsed) }
   : expression "+" expression { binaryExpr AdditionExpr       $1 $3 }
@@ -333,15 +333,15 @@ compound_assignment_expr :: { WithLocation (Expression Parsed) }
   | expression "^=" expression { binaryExpr ExponentiationAssignmentExpr $1 $3 }
 
 
-reference :: { PathInfo }
+reference :: { PathInfo Parsed }
   : "&" type_expr { $2 }
 
-type_expr :: { PathInfo }
+type_expr :: { PathInfo Parsed }
   : IDENTIFIER                   { PathInfo (pure $ getIdentifierLiteral $1) [] }
   | IDENTIFIER "::" generic_args { PathInfo (pure $ getIdentifierLiteral $1) $3 }
   | IDENTIFIER "::" type_expr    { prependPathInfo (getIdentifierLiteral $1) $3 }
 
-generic_args :: { [PathInfo] }
+generic_args :: { [PathInfo Parsed] }
   : "<" comma_list(type_expr) ">" { $2 }
 
 
@@ -385,7 +385,7 @@ getStringLiteral (_, tok) = case tok of
   TLiteralString i -> i
   _                -> error "ICE: not a string"
 
-prependPathInfo :: Identifier -> PathInfo -> PathInfo
+prependPathInfo :: Identifier -> PathInfo Parsed -> PathInfo Parsed
 prependPathInfo prepend = over pathName (prepend <|)
 
 prependImport :: Identifier -> Import -> Import

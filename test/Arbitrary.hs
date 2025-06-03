@@ -78,7 +78,7 @@ instance Arbitrary (TypeAliasInfo Parsed) where
     , [TypeAliasInfo name params x     | x <- shrink value ]
     ]
 
-instance Arbitrary (EnumInfo Parsed) where
+instance Arbitrary EnumInfo where
   arbitrary = liftA2 EnumInfo arbitrary arbitrary
   shrink (EnumInfo name values) = concat
     [ EnumInfo
@@ -237,7 +237,8 @@ instance Arbitrary (Expression Parsed) where
         , DivisionAssignmentExpr       <$> arbitrary <*> arbitrary
         , ModuloAssignmentExpr         <$> arbitrary <*> arbitrary
         , ExponentiationAssignmentExpr <$> arbitrary <*> arbitrary
-        , NegationExpr                 <$> arbitrary
+        , IntNegationExpr              <$> arbitrary
+        , BoolNegationExpr             <$> arbitrary
         ]
   shrink = \case
      PathExpr          e -> PathExpr          <$> shrink e
@@ -247,7 +248,8 @@ instance Arbitrary (Expression Parsed) where
      CharLiteralExpr   e -> CharLiteralExpr   <$> shrink e
      StringLiteralExpr e -> StringLiteralExpr <$> shrink e
      ReferenceExpr     e -> ReferenceExpr     <$> shrink e
-     NegationExpr      e -> NegationExpr      <$> shrink e
+     IntNegationExpr   e -> IntNegationExpr   <$> shrink e
+     BoolNegationExpr  e -> BoolNegationExpr  <$> shrink e
 
      FieldAccessExpr              e1 e2 ->
        [FieldAccessExpr              x e2 | x <- shrink e1] <>
@@ -334,7 +336,7 @@ instance Arbitrary (Expression Parsed) where
        [ExponentiationAssignmentExpr x e2 | x <- shrink e1] <>
        [ExponentiationAssignmentExpr e1 x | x <- shrink e2]
 
-instance Arbitrary PathInfo where
+instance Arbitrary (PathInfo Parsed) where
   arbitrary = sized path
     where
       path 0 =

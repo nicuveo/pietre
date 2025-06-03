@@ -6,36 +6,42 @@ import "this" Prelude
 
 import Control.Lens                           (makeLenses)
 import Control.Monad.RWS.Strict
+import Data.HashMap.Strict                    qualified as M
+import Data.HashSet                           qualified as S
 import Data.Tuple
 
+import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Analysis.Diagnostic
 
 
-type AnalyzeM = MaybeT (RWS Context [Diagnostic] Scope)
+type AnalysisM = RWS AnalysisInfo [Diagnostic] AnalysisContext
 
-data Context = Context
-  { _contextModuleName :: ModuleName
-  , _contextLocation   :: Location
+data AnalysisInfo = AnalysisInfo
+  { _infoModuleName    :: ModuleName
+  , _infoLocation      :: Location
+  , _infoNames         :: HashMap Path (NonEmpty Name)
+  , _infoStack         :: HashSet Name
+  , _infoTopLevelNames :: HashMap Path (NonEmpty Name)
   }
 
-data Scope = Scope
-  { _scopeNames :: HashMap Identifier (NonEmpty (Name, Maybe (Declaration Resolved)))
+data AnalysisContext = AnalysisContext
+  { _contextLocals       :: HashMap Name (WithLocation (Declaration Parsed))
+  , _contextDeclarations :: HashMap Name (WithLocation (Declaration Resolved))
   }
+  deriving Show
 
 runAnalysis
   :: ModuleName
-  -> Scope
-  -> AnalyzeM a
-  -> ([Diagnostic], Maybe a)
-runAnalysis moduleName scope action = swap $ evalRWS
-  (runMaybeT action)
-  (Context moduleName $ initialLocation "")
-  scope
+  -> AnalysisM a
+  -> ([Diagnostic], a)
+runAnalysis moduleName action = swap $ evalRWS
+  action
+  (AnalysisInfo moduleName (initialLocation "") M.empty S.empty (M.map pure $ M.fromList builtins))
+  (AnalysisContext M.empty M.empty)
 
 
-makeLenses ''Context
-makeLenses ''Scope
+makeLenses ''AnalysisInfo
+makeLenses ''AnalysisContext
