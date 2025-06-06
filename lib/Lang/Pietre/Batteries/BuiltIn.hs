@@ -14,9 +14,12 @@ import Lang.Pietre.Representations.Tokens
 
 builtins :: [(Path, Name)]
 builtins =
-  [ (pure "int",  _pathName IntType)
-  , (pure "char", _pathName CharType)
-  , (pure "bool", _pathName BoolType)
+  [ (pure "int",   _pathName IntType)
+  , (pure "char",  _pathName CharType)
+  , (pure "bool",  _pathName BoolType)
+  , (pure "()",    _pathName UnitType)
+  , (pure "!void", _pathName VoidType)
+  , (pure "_",     Placeholder)
   ]
 
 reserved :: HashSet Identifier
@@ -31,3 +34,9 @@ pattern CharType :: PathInfo Resolved
 pattern CharType = PathInfo (BuiltinType "char") []
 pattern BoolType :: PathInfo Resolved
 pattern BoolType = PathInfo (BuiltinType "bool") []
+pattern UnitType :: PathInfo Resolved
+pattern UnitType = PathInfo (BuiltinType "()") []
+pattern VoidType :: PathInfo Resolved
+pattern VoidType = PathInfo (BuiltinType "!void") []
+pattern PlaceholderType :: PathInfo Resolved
+pattern PlaceholderType = PathInfo Placeholder []
