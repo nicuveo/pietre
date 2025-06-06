@@ -4,7 +4,7 @@ module Lang.Pietre.Stages.Analysis where
 
 import "this" Prelude
 
-import Control.Lens                           hiding (op)
+import Control.Lens                           hiding (mapping, op)
 import Control.Monad.RWS.Strict
 import Data.HashMap.Strict                    qualified as M
 import Data.HashSet                           qualified as S
@@ -137,11 +137,17 @@ initLocalNames declarations = do
           & M.insert (moduleName <> pure identifier) (pure name)
 
 
-reportFatal
+reportWarning
+  :: MonadWriter [Diagnostic] m
+  => Diagnostic
+  -> m ()
+reportWarning = tell . pure
+
+reportError
   :: MonadWriter [Diagnostic] m
   => Diagnostic
   -> MaybeT m a
-reportFatal = (>> mzero) . tell . pure
+reportError = (>> mzero) . tell . pure
 
 
 handleMaybe
@@ -150,7 +156,7 @@ handleMaybe
   -> Maybe a
   -> MaybeT m a
 handleMaybe diagnostic = \case
-  Nothing -> reportFatal diagnostic
+  Nothing -> reportError diagnostic
   Just x  -> pure x
 
 
@@ -165,15 +171,16 @@ type ResolveCallback r
   -> MaybeT AnalysisM r
 
 resolvePath
-  :: ResolveCallback r
+  :: TypeResolutionMode
+  -> ResolveCallback r
   -> PathInfo Parsed
   -> MaybeT AnalysisM r
-resolvePath processDeclaration PathInfo {..} = do
+resolvePath mode processDeclaration PathInfo {..} = do
   names@(name :| others) <- handleMaybe (ErrorNameNotFound _pathName) =<<
     views infoNames (M.lookup _pathName)
   when (not $ null others) $
-    reportFatal $ ErrorAmbiguousPath _pathName names
-  params <- traverse resolveType _pathParams
+    reportError $ ErrorAmbiguousPath _pathName names
+  params <- traverse (resolveType mode) _pathParams
   resolveName processDeclaration $ PathInfo name params
 
 resolveName
@@ -190,20 +197,20 @@ resolveName processDeclaration resolvedPathInfo =
 resolveConstValue
   :: PathInfo Parsed
   -> MaybeT AnalysisM TypedExpression
-resolveConstValue pathInfo = resolvePath go pathInfo
+resolveConstValue pathInfo = resolvePath AllowPlaceholder go pathInfo
   where
     originalPath = _pathName pathInfo
     go :: ResolveCallback TypedExpression
     go resolvedPath@PathInfo {..} = \case
-      Nothing   -> reportFatal undefined
+      Nothing   -> reportError undefined
       Just decl -> case _located decl of
-        TypeAliasDecl _ -> reportFatal $ ErrorNotAConst originalPath _pathName
-        FunctionDecl  _ -> reportFatal $ ErrorNotAConst originalPath _pathName
-        StructDecl    _ -> reportFatal $ ErrorNotAConst originalPath _pathName
+        TypeAliasDecl _ -> reportError $ ErrorNotAConst originalPath _pathName
+        FunctionDecl  _ -> reportError $ ErrorNotAConst originalPath _pathName
+        StructDecl    _ -> reportError $ ErrorNotAConst originalPath _pathName
         EnumDecl      enumInfo -> do
           let identifier = NE.last originalPath
           if identifier == _enumName enumInfo
-            then reportFatal $ ErrorNotAConst originalPath _pathName
+            then reportError $ ErrorNotAConst originalPath _pathName
             else
               case L.elemIndex identifier (_enumValues enumInfo) of
                 Nothing -> error "ICE"
@@ -213,15 +220,37 @@ resolveConstValue pathInfo = resolvePath go pathInfo
             ConstDecl cInfo -> _constExpr cInfo
             _ -> error "ICE"
 
+resolveTypeMaybe
+  :: Path
+  -> MaybeT AnalysisM [Name]
+resolveTypeMaybe path = do
+  names <- maybe [] NE.toList <$> views infoNames (M.lookup path)
+  catMaybes <$> for names \name ->
+    resolveName go $ PathInfo name []
+  where
+    go :: ResolveCallback (Maybe Name)
+    go PathInfo {..} = \case
+      Nothing   -> pure $ Just _pathName
+      Just decl -> case _located decl of
+        TypeAliasDecl _ -> pure $ Just _pathName
+        EnumDecl      _ -> pure $ Just _pathName
+        StructDecl    _ -> pure $ Just _pathName
+        ConstDecl     _ -> pure Nothing
+        FunctionDecl  _ -> pure Nothing
+
 resolveType
-  :: PathInfo Parsed
+  :: TypeResolutionMode
+  -> PathInfo Parsed
   -> MaybeT AnalysisM (PathInfo Resolved)
-resolveType pathInfo = resolvePath go pathInfo
+resolveType mode pathInfo = resolvePath mode go pathInfo
   where
     originalPath = _pathName pathInfo
     go :: ResolveCallback (PathInfo Resolved)
     go path@PathInfo {..} = \case
-      Nothing   -> pure path
+      Nothing   -> case (_pathName, mode) of
+        (Placeholder, ForbidPlaceholder context) ->
+          reportError $ ErrorPlaceholder context
+        _ -> pure path
       Just decl -> case _located decl of
         TypeAliasDecl info -> do
           resolvedInfo <- resolveDeclaration _pathName decl <&> \case
@@ -230,36 +259,39 @@ resolveType pathInfo = resolvePath go pathInfo
           let expected = length (_aliasParams info)
               actual   = length _pathParams
           when (expected /= actual) $
-            reportFatal $ ErrorIncorrectTypeParameterCount _pathName expected actual
+            reportError $ ErrorIncorrectTypeParameterCount _pathName expected actual
           let typeArguments = M.fromList $ zip (_aliasParams resolvedInfo) _pathParams
           resultPathInfo <- substituteTypes typeArguments $ _aliasValue resolvedInfo
           pure resultPathInfo
-        ConstDecl     _ -> reportFatal (ErrorNotAType originalPath _pathName)
-        FunctionDecl  _ -> reportFatal (ErrorNotAType originalPath _pathName)
+        ConstDecl     _ -> reportError (ErrorNotAType originalPath _pathName)
+        FunctionDecl  _ -> reportError (ErrorNotAType originalPath _pathName)
         EnumDecl      _ -> do
           when (not $ null _pathParams) $
-            reportFatal $ ErrorIncorrectTypeParameterCount _pathName 0 (length _pathParams)
+            reportError $ ErrorIncorrectTypeParameterCount _pathName 0 (length _pathParams)
           pure path
         StructDecl info -> do
           let expected = length (_structParams info)
               actual   = length _pathParams
           when (expected /= actual) $
-            reportFatal $ ErrorIncorrectTypeParameterCount _pathName expected actual
+            reportError $ ErrorIncorrectTypeParameterCount _pathName expected actual
           pure path
 
 resolveStruct
   :: PathInfo Parsed
-  -> MaybeT AnalysisM (PathInfo Resolved, StructInfo Resolved)
-resolveStruct pathInfo = resolvePath go pathInfo
+  -> MaybeT AnalysisM (PathInfo Resolved, StructInfo Resolved, HashMap Identifier (PathInfo Resolved))
+resolveStruct pathInfo = resolvePath AllowPlaceholder go pathInfo
   where
     originalPath = _pathName pathInfo
-    go :: ResolveCallback (PathInfo Resolved, StructInfo Resolved)
+    go :: ResolveCallback (PathInfo Resolved, StructInfo Resolved, HashMap Identifier (PathInfo Resolved))
     go path@PathInfo {..} = \case
-      Nothing   -> reportFatal $ ErrorNotAStruct originalPath _pathName
+      Nothing -> do
+        when (_pathName == Placeholder) $
+          reportError $ ErrorPlaceholder "struct name in struct expression"
+        reportError $ ErrorNotAStruct originalPath _pathName
       Just decl -> case _located decl of
-        ConstDecl     _ -> reportFatal $ ErrorNotAStruct originalPath _pathName
-        FunctionDecl  _ -> reportFatal $ ErrorNotAStruct originalPath _pathName
-        EnumDecl      _ -> reportFatal $ ErrorNotAStruct originalPath _pathName
+        ConstDecl     _ -> reportError $ ErrorNotAStruct originalPath _pathName
+        FunctionDecl  _ -> reportError $ ErrorNotAStruct originalPath _pathName
+        EnumDecl      _ -> reportError $ ErrorNotAStruct originalPath _pathName
         TypeAliasDecl info -> do
           resolvedInfo <- resolveDeclaration _pathName decl <&> \case
             TypeAliasDecl taInfo -> taInfo
@@ -267,7 +299,7 @@ resolveStruct pathInfo = resolvePath go pathInfo
           let expected = length (_aliasParams info)
               actual   = length _pathParams
           when (expected /= actual) $
-            reportFatal $ ErrorIncorrectTypeParameterCount _pathName expected actual
+            reportError $ ErrorIncorrectTypeParameterCount _pathName expected actual
           let typeArguments = M.fromList $ zip (_aliasParams resolvedInfo) _pathParams
           resultPathInfo <- substituteTypes typeArguments $ _aliasValue resolvedInfo
           resolveName go resultPathInfo
@@ -275,11 +307,16 @@ resolveStruct pathInfo = resolvePath go pathInfo
           resolvedInfo <- resolveDeclaration _pathName decl <&> \case
             StructDecl sInfo -> sInfo
             _ -> error "ICE"
-          let expected = length (_structParams resolvedInfo)
-              actual   = length _pathParams
-          when (expected /= actual) $
-            reportFatal $ ErrorIncorrectTypeParameterCount _pathName expected actual
-          pure (path, resolvedInfo)
+          let expectedParams = _structParams resolvedInfo
+              expectedCount  = length expectedParams
+              givenCount     = length _pathParams
+          when (expectedCount /= givenCount && givenCount > 0) $
+            reportError $ ErrorIncorrectTypeParameterCount _pathName expectedCount givenCount
+          let mapping = M.fromList $
+                if null _pathParams
+                then [(paramName, PlaceholderType) | paramName <- expectedParams]
+                else zip expectedParams _pathParams
+          pure (path, resolvedInfo, mapping)
 
 tryResolveEnumFromName
   :: PathInfo Resolved
@@ -298,6 +335,63 @@ substituteTypes
 substituteTypes mappings info@PathInfo {..} = case _pathName of
   TypeParameter name -> M.lookup name mappings `onNothing` error "ICE"
   _                  -> pathParams (traverse $ substituteTypes mappings) info
+
+withTypeParameters
+  :: Name
+  -> [Identifier]
+  -> MaybeT AnalysisM a
+  -> MaybeT AnalysisM a
+withTypeParameters typeName parameters action = do
+  typeNames <-
+    fmap M.fromList $
+      for (group $ sort parameters) \case
+        []               -> error "ICE"
+        (identifier:_:_) -> reportError $ ErrorDuplicateTypeParameter typeName identifier
+        [identifier]     -> do
+          when (isReserved identifier) $
+            reportError $ ErrorReservedIdentifier typeName identifier
+          let parameterName = TypeParameter identifier
+          matchingTypes <- resolveTypeMaybe (pure identifier)
+          unless (null matchingTypes) $
+            reportWarning $ WarningTypeShadow matchingTypes parameterName
+          pure (pure identifier, pure parameterName)
+  local (infoNames %~ M.union typeNames) action
+
+typeDiff
+  :: PathInfo Resolved
+  -> PathInfo Resolved
+  -> [(PathInfo Resolved, PathInfo Resolved)]
+typeDiff p1 p2
+  | _pathName p1 /= _pathName p2 = [(p1, p2)]
+  | otherwise = concatMap (uncurry typeDiff) $ zip (_pathParams p1) (_pathParams p2)
+
+typeMatches
+  :: PathInfo Resolved
+  -> PathInfo Resolved
+  -> Bool
+typeMatches p1 p2 = case (_pathName p1, _pathName p2) of
+  (TypeParameter _, _) -> True
+  (_, TypeParameter _) -> True
+  (Placeholder, _) -> True
+  (_, Placeholder) -> True
+  (name1, name2) -> name1 == name2 && and (zipWith typeMatches (_pathParams p1) (_pathParams p2))
+
+typesAllMatch
+  :: [PathInfo Resolved]
+  -> Bool
+typesAllMatch types = and do
+  (headType : remainingTypes) <- L.tails types
+  otherType <- remainingTypes
+  pure $ headType `typeMatches` otherType
+
+mostSpecificType
+  :: NonEmpty (PathInfo Resolved)
+  -> PathInfo Resolved
+mostSpecificType = NE.head . NE.sortWith numberOfParameters
+  where
+    numberOfParameters PathInfo {..} = case _pathName of
+      TypeParameter _ -> 1 :: Int
+      _               -> sum $ map numberOfParameters _pathParams
 
 
 --------------------------------------------------------------------------------
@@ -323,8 +417,11 @@ analyzeDeclaration thisName declaration = do
     Nothing -> local setScope do
       declCycle <- views infoStack (S.member thisName)
       if declCycle
-      then reportFatal (ErrorCyclicDefinition thisName)
+      then reportError (ErrorCyclicDefinition thisName)
       else local (infoStack %~ S.insert thisName) do
+        let declIdentifier = declarationIdentifier $ _located declaration
+        when (isReserved declIdentifier) $
+          reportError $ ErrorReservedIdentifier thisName declIdentifier
         resolvedDeclaration <- case _located declaration of
           TypeAliasDecl info -> TypeAliasDecl <$> analyzeTypeAlias thisName info
           StructDecl    info -> StructDecl    <$> analyzeStruct    thisName info
@@ -344,26 +441,18 @@ analyzeTypeAlias
   :: Name
   -> TypeAliasInfo Parsed
   -> MaybeT AnalysisM (TypeAliasInfo Resolved)
-analyzeTypeAlias _thisName TypeAliasInfo {..} = do
-  let typeNames = M.fromList do
-        identifier <- _aliasParams
-        pure (pure identifier, pure (TypeParameter identifier))
-  -- TODO: emit warning if type name shadows existing type
-  local (infoNames %~ M.union typeNames) do
-    resolved <- resolveType _aliasValue
+analyzeTypeAlias thisName TypeAliasInfo {..} =
+  withTypeParameters thisName _aliasParams do
+    resolved <- resolveType (ForbidPlaceholder "type alias declaration") _aliasValue
     pure $ TypeAliasInfo _aliasName _aliasParams resolved
 
 analyzeStruct
   :: Name
   -> StructInfo Parsed
   -> MaybeT AnalysisM (StructInfo Resolved)
-analyzeStruct _thisName info = do
-  let typeNames = M.fromList do
-        identifier <- _structParams info
-        pure (pure identifier, pure (TypeParameter identifier))
-  -- TODO: emit warning if type name shadows existing type
-  local (infoNames %~ M.union typeNames) $
-    structValues (traverse (traverse resolveType)) info
+analyzeStruct thisName info =
+  withTypeParameters thisName (_structParams info) $
+    structValues ((traverse . traverse) (resolveType $ ForbidPlaceholder "struct fields declaration")) info
 
 analyzeEnum
   :: Name
@@ -380,31 +469,15 @@ analyzeEnum thisName info = do
   when failed mzero
   pure info
 
-typeMatches
-  :: PathInfo Resolved
-  -> PathInfo Resolved
-  -> Bool
-typeMatches p1 p2 = case (_pathName p1, _pathName p2) of
-  (TypeParameter _, _) -> True
-  (_, TypeParameter _) -> True
-  (TopLevelDeclaration m1 i1, TopLevelDeclaration m2 i2) ->
-    m1 == m2 && i1 == i2 && argumentsMatch
-  (BuiltinType t1, BuiltinType t2) ->
-    t1 == t2 && argumentsMatch
-  _ -> False
-  where
-    argumentsMatch = and $ zipWith typeMatches (_pathParams p1) (_pathParams p2)
-
-
 analyzeConst
   :: Name
   -> ConstInfo Parsed
   -> MaybeT AnalysisM (ConstInfo Resolved)
 analyzeConst _thisName ConstInfo {..} = do
-  resolvedType <- resolveType _constType
+  resolvedType <- resolveType (ForbidPlaceholder "const declaration") _constType
   resolvedExpr <- go _constExpr
-  unless (resolvedType `typeMatches` _exprType resolvedExpr) $
-    reportFatal $ ErrorWrongType [resolvedType] (_exprType resolvedExpr)
+  when (resolvedType /= _exprType resolvedExpr) $
+    reportError $ ErrorWrongType [resolvedType] (_exprType resolvedExpr)
   pure $ ConstInfo _constName resolvedType resolvedExpr
   where
     binaryIntExpression
@@ -413,13 +486,15 @@ analyzeConst _thisName ConstInfo {..} = do
       -> WithLocation (Expression Parsed)
       -> MaybeT AnalysisM TypedExpression
     binaryIntExpression f e1 e2 = do
-      TypedExpression t1 r1 <- go e1
-      TypedExpression t2 r2 <- go e2
-      case r1 of
-        IntLiteralExpr x -> case r2 of
-          IntLiteralExpr y -> pure $ IntExpression (f x y)
-          _                -> reportFatal $ ErrorWrongType [IntType] t2
-        _ -> reportFatal $ ErrorWrongType [IntType] t1
+      lhs <- go e1 >>= \case
+        TypedExpression IntType (IntLiteralExpr x) -> pure x
+        TypedExpression e1t _ ->
+          reportError $ ErrorWrongType [IntType] e1t
+      rhs <- go e2 >>= \case
+        TypedExpression IntType (IntLiteralExpr x) -> pure x
+        TypedExpression e2t _ ->
+          reportError $ ErrorWrongType [IntType] e2t
+      pure $ IntExpression (f lhs rhs)
 
     binaryBoolExpression
       :: (Bool -> Bool -> Bool)
@@ -427,13 +502,15 @@ analyzeConst _thisName ConstInfo {..} = do
       -> WithLocation (Expression Parsed)
       -> MaybeT AnalysisM TypedExpression
     binaryBoolExpression f e1 e2 = do
-      TypedExpression t1 r1 <- go e1
-      TypedExpression t2 r2 <- go e2
-      case r1 of
-        BoolLiteralExpr x -> case r2 of
-          BoolLiteralExpr y -> pure $ BoolExpression (f x y)
-          _                 -> reportFatal $ ErrorWrongType [BoolType] t2
-        _ -> reportFatal $ ErrorWrongType [BoolType] t1
+      lhs <- go e1 >>= \case
+        TypedExpression BoolType (BoolLiteralExpr x) -> pure x
+        TypedExpression e1t _ ->
+          reportError $ ErrorWrongType [BoolType] e1t
+      rhs <- go e2 >>= \case
+        TypedExpression BoolType (BoolLiteralExpr x) -> pure x
+        TypedExpression e2t _ ->
+          reportError $ ErrorWrongType [BoolType] e2t
+      pure $ BoolExpression (f lhs rhs)
 
     comparisonExpression
       :: (Expression Resolved -> Expression Resolved -> Bool)
@@ -444,7 +521,7 @@ analyzeConst _thisName ConstInfo {..} = do
       TypedExpression t1 r1 <- go e1
       TypedExpression t2 r2 <- go e2
       when (t1 /= t2) $
-        reportFatal $ ErrorWrongType [t1] t2
+        reportError $ ErrorWrongType [t1] t2
       pure $ BoolExpression $ compareExpressions op r1 r2
 
     compareExpressions
@@ -470,10 +547,10 @@ analyzeConst _thisName ConstInfo {..} = do
             resolveConstValue p
           CastExpr e t  -> do
             resolvedExpr <- go e
-            resolvedTargetType <- resolveType t
+            resolvedTargetType <- resolveType (ForbidPlaceholder "cast expression") t
             let resolvedSourceType = _exprType resolvedExpr
                 reportCastError :: forall a. MaybeT AnalysisM a
-                reportCastError = reportFatal $ ErrorWrongCast resolvedSourceType resolvedTargetType
+                reportCastError = reportError $ ErrorWrongCast resolvedSourceType resolvedTargetType
             targetEnum <- tryResolveEnumFromName resolvedTargetType
             sourceEnum <- tryResolveEnumFromName resolvedSourceType
             case (sourceEnum, targetEnum) of
@@ -482,7 +559,7 @@ analyzeConst _thisName ConstInfo {..} = do
                   IntLiteralExpr  i -> pure i
                   _                 -> error "ICE"
                 when (intValue < 0 || intValue >= length (_enumValues destEnum)) $
-                  reportFatal $ ErrorEnumOutOfBounds destEnum intValue
+                  reportError $ ErrorEnumOutOfBounds destEnum intValue
                 pure $ TypedExpression resolvedTargetType $ IntLiteralExpr intValue
               (Nothing, Just destEnum) -> do
                 intValue <- case _exprValue resolvedExpr of
@@ -491,7 +568,7 @@ analyzeConst _thisName ConstInfo {..} = do
                   BoolLiteralExpr b -> pure $ fromEnum b
                   _                 -> reportCastError
                 when (intValue < 0 || intValue >= length (_enumValues destEnum)) $
-                  reportFatal $ ErrorEnumOutOfBounds destEnum intValue
+                  reportError $ ErrorEnumOutOfBounds destEnum intValue
                 pure $ TypedExpression resolvedTargetType $ IntLiteralExpr intValue
               (Just _, Nothing) -> do
                 intValue <- case _exprValue resolvedExpr of
@@ -519,35 +596,41 @@ analyzeConst _thisName ConstInfo {..} = do
               StructExpr _ fields -> do
                 fmap snd $
                   find ((field ==) . fst) fields `onNothing`
-                    reportFatal (ErrorFieldAccessFieldNotFound structType field)
-              _                   -> reportFatal $ ErrorFieldAccessNotAStruct structType
-          CallExpr _ _  -> reportFatal undefined
+                    reportError (ErrorFieldAccessFieldNotFound structType field)
+              _                   -> reportError $ ErrorFieldAccessNotAStruct structType
+          CallExpr _ _  -> reportError undefined
           ArrayExpr _ -> undefined
           IndexExpr _ _ -> undefined
           StructExpr path fields -> do
-            (resolvedType, structInfo) <- resolveStruct path
+            (resolvedType, structInfo, paramMapping) <- resolveStruct path
             resolvedFields <- (traverse . traverse) go fields
-            analyzeStructFields resolvedType (_structValues structInfo) resolvedFields
-            pure $ TypedExpression resolvedType $ StructExpr resolvedType resolvedFields
+            fullyResolvedType <- analyzeStructFields resolvedType structInfo paramMapping resolvedFields
+            pure $ TypedExpression fullyResolvedType $ StructExpr fullyResolvedType resolvedFields
           IntLiteralExpr    i -> pure $ IntExpression  i
           BoolLiteralExpr   b -> pure $ BoolExpression b
           CharLiteralExpr   c -> pure $ CharExpression c
           StringLiteralExpr s -> pure $ TypedExpression undefined $ StringLiteralExpr s
-          ReferenceExpr _ -> reportFatal undefined
+          ReferenceExpr _ -> reportError undefined
           BoolNegationExpr e -> go e >>= \case
             BoolExpression x -> pure $ BoolExpression (not x)
-            TypedExpression t _ -> reportFatal $ ErrorWrongType [BoolType] t
+            TypedExpression t _ -> reportError $ ErrorWrongType [BoolType] t
           IntNegationExpr e -> go e >>= \case
             IntExpression x -> pure $ IntExpression (-x)
-            TypedExpression t _ -> reportFatal $ ErrorWrongType [IntType] t
+            TypedExpression t _ -> reportError $ ErrorWrongType [IntType] t
           AdditionExpr e1 e2 -> do
-            TypedExpression t1 r1 <- go e1
-            TypedExpression t2 r2 <- go e2
-            case r1 of
-              IntLiteralExpr x -> case r2 of
-                IntLiteralExpr y -> pure $ IntExpression (x + y)
-                _                -> reportFatal $ ErrorWrongType [IntType] t2
-              _                -> reportFatal $ ErrorWrongType [IntType] t1
+            lhs <- go e1
+            case lhs of
+              TypedExpression IntType (IntLiteralExpr _) -> pure ()
+              TypedExpression e1t _ -> reportError $ ErrorWrongType [IntType] e1t
+            rhs <- go e2
+            case rhs of
+              TypedExpression IntType (IntLiteralExpr _) -> pure ()
+              TypedExpression e2t _ -> reportError $ ErrorWrongType [IntType] e2t
+            when (_exprType lhs /= _exprType rhs) $
+              reportError $ ErrorWrongType [_exprType lhs] (_exprType rhs)
+            case (_exprValue lhs, _exprValue rhs) of
+              (IntLiteralExpr x, IntLiteralExpr y) -> pure $ IntExpression (x + y)
+              _ -> error "ICE"
           SubtractionExpr    e1 e2 -> binaryIntExpression subtract e1 e2
           MultiplicationExpr e1 e2 -> binaryIntExpression (*) e1 e2
           DivisionExpr       e1 e2 -> binaryIntExpression div e1 e2
@@ -563,38 +646,58 @@ analyzeConst _thisName ConstInfo {..} = do
           BoolOrExpr         e1 e2 -> binaryBoolExpression (||) e1 e2
           RangeInclusiveExpr           _ _ -> undefined
           RangeExclusiveExpr           _ _ -> undefined
-          AssignmentExpr               _ _ -> reportFatal undefined
-          AdditionAssignmentExpr       _ _ -> reportFatal undefined
-          SubtractionAssignmentExpr    _ _ -> reportFatal undefined
-          MultiplicationAssignmentExpr _ _ -> reportFatal undefined
-          DivisionAssignmentExpr       _ _ -> reportFatal undefined
-          ModuloAssignmentExpr         _ _ -> reportFatal undefined
-          ExponentiationAssignmentExpr _ _ -> reportFatal undefined
+          AssignmentExpr               _ _ -> reportError undefined
+          AdditionAssignmentExpr       _ _ -> reportError undefined
+          SubtractionAssignmentExpr    _ _ -> reportError undefined
+          MultiplicationAssignmentExpr _ _ -> reportError undefined
+          DivisionAssignmentExpr       _ _ -> reportError undefined
+          ModuloAssignmentExpr         _ _ -> reportError undefined
+          ExponentiationAssignmentExpr _ _ -> reportError undefined
 
 analyzeStructFields
   :: PathInfo Resolved
-  -> NonEmpty (Identifier, PathInfo Resolved)
+  -> StructInfo Resolved
+  -> HashMap Identifier (PathInfo Resolved)
   -> NonEmpty (Identifier, TypedExpression)
-  -> MaybeT AnalysisM ()
-analyzeStructFields typeName reference values = do
-  let referenceMap = M.fromList $ NE.toList reference
+  -> MaybeT AnalysisM (PathInfo Resolved)
+analyzeStructFields typeName StructInfo {..} paramMapping values = do
+  let referenceMap = M.fromList $ NE.toList _structValues
       valuesMap    = M.fromListWith (<>) $ NE.toList $ (fmap . fmap) pure values
-  for_ reference \(identifier, typePath) -> do
-    case fold $ M.lookup identifier valuesMap of
-      []  -> reportFatal $ ErrorStructMissingField typeName identifier
-      [x] -> when (_exprType x /= typePath) $ reportFatal $ ErrorWrongType [typePath] (_exprType x)
-      _   -> reportFatal $ ErrorStructDuplicatedField typeName identifier
   for_ values \(identifier, _) -> do
     when (not $ M.member identifier referenceMap) $
-      reportFatal $ ErrorStructUnknownField typeName identifier
+      reportError $ ErrorStructUnknownField typeName identifier
+  allDiffs <- for _structValues \(fieldName, fieldType) -> do
+    case fold $ M.lookup fieldName valuesMap of
+      []      -> reportError $ ErrorStructMissingField typeName fieldName
+      (_:_:_) -> reportError $ ErrorStructDuplicatedField typeName fieldName
+      [expr]  -> do
+        catMaybes <$>
+          for (typeDiff fieldType (_exprType expr)) \(lhs, rhs) -> do
+            case (_pathName lhs, _pathName rhs) of
+              (TypeParameter paramName, _) -> do
+                typePattern <- M.lookup paramName paramMapping `onNothing` error "ICE"
+                unless (typePattern `typeMatches` rhs) $
+                  reportError $ ErrorWrongType [typePattern] rhs
+                pure $ Just (paramName, pure rhs)
+              (_, TypeParameter _) -> pure Nothing
+              _ -> reportError $ ErrorWrongType [fieldType] (_exprType expr)
+  let tempMapping :: HashMap Identifier (NonEmpty (PathInfo Resolved)) = M.fromListWith (<>) $ concat $ NE.toList allDiffs
+  resolvedTypeParams <- for _structParams \paramName -> do
+    possibleTypes <- M.lookup paramName tempMapping `onNothing`
+      reportError (ErrorStructAmbiguousType typeName paramName)
+    unless (typesAllMatch $ NE.toList possibleTypes) $
+      reportError $ ErrorStructIncompatibleTypes typeName paramName possibleTypes
+    pure $ mostSpecificType possibleTypes
+  pure (typeName & pathParams .~ resolvedTypeParams)
 
 analyzeFunction
   :: Name
   -> FunctionInfo Parsed
   -> MaybeT AnalysisM (FunctionInfo Resolved)
-analyzeFunction _thisName FunctionInfo {..} = do
-  resolvedType <- traverse resolveType _funType
-  pure $ FunctionInfo _funName _funParams [] resolvedType []
+analyzeFunction thisName FunctionInfo {..} = do
+  withTypeParameters thisName _funParams do
+    resolvedType <- traverse (resolveType $ ForbidPlaceholder "function declaration") _funType
+    pure $ FunctionInfo _funName _funParams [] resolvedType []
 
 
 --------------------------------------------------------------------------------

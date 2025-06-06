@@ -19,6 +19,7 @@ data Diagnostic
   | ErrorAmbiguousPath Path (NonEmpty Name)
   | ErrorCyclicDefinition Name
   | ErrorIncorrectTypeParameterCount Name Int Int
+  | ErrorDuplicateTypeParameter Name Identifier
   | ErrorEnumDuplicateEntries Name Identifier
   | ErrorWrongType [PathInfo Resolved] (PathInfo Resolved)
   | ErrorWrongCast (PathInfo Resolved) (PathInfo Resolved)
@@ -26,6 +27,11 @@ data Diagnostic
   | ErrorStructMissingField (PathInfo Resolved) Identifier
   | ErrorStructDuplicatedField (PathInfo Resolved) Identifier
   | ErrorStructUnknownField (PathInfo Resolved) Identifier
+  | ErrorStructAmbiguousType (PathInfo Resolved) Identifier
+  | ErrorStructIncompatibleTypes (PathInfo Resolved) Identifier (NonEmpty (PathInfo Resolved))
   | ErrorFieldAccessNotAStruct (PathInfo Resolved)
   | ErrorFieldAccessFieldNotFound (PathInfo Resolved) Identifier
+  | ErrorReservedIdentifier Name Identifier
+  | ErrorPlaceholder Text
+  | WarningTypeShadow [Name] Name
   deriving Show
