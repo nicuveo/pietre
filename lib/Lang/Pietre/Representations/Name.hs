@@ -12,6 +12,7 @@ data Name
   | BuiltinType Identifier
   | BuiltinFunction Identifier
   | TypeParameter Identifier
+  | Placeholder
   deriving (Show, Eq, Ord, Generic)
 
 instance Hashable Name
