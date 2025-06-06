@@ -297,11 +297,13 @@ deriving instance OrdConstraints  p => Ord  (Expression p)
 data PathInfo (p :: ASTPhase) = PathInfo
   { _pathName   :: NameType p
   , _pathParams :: [PathInfo p]
-  }
+  } deriving Generic
 
 deriving instance ShowConstraints p => Show (PathInfo p)
 deriving instance EqConstraints   p => Eq   (PathInfo p)
 deriving instance OrdConstraints  p => Ord  (PathInfo p)
+
+instance (EqConstraints p, Hashable (NameType p)) => Hashable (PathInfo p)
 
 
 --------------------------------------------------------------------------------
