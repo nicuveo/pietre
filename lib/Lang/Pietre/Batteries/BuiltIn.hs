@@ -12,6 +12,12 @@ import Lang.Pietre.Representations.Name
 import Lang.Pietre.Representations.Tokens
 
 
+data TypeResolutionMode
+  = AllowPlaceholder
+  | ForbidPlaceholder Text
+  deriving (Show)
+
+
 builtins :: [(Path, Name)]
 builtins =
   [ (pure "int",   _pathName IntType)
