@@ -590,19 +590,19 @@ analyzeConst _thisName ConstInfo {..} = do
               case resolvedTargetType of
                 IntType  -> pure $ IntExpression intValue
                 CharType -> pure $ CharExpression $ chr intValue
-                BoolType -> pure $ BoolExpression $ toEnum intValue
+                BoolType -> pure $ BoolExpression $ intValue /= 0
                 _        -> reportCastError
             (Nothing, Nothing) -> do
-              intValue <- case _exprValue resolvedExpr of
-                IntLiteralExpr  i -> pure i
-                CharLiteralExpr c -> pure $ ord c
-                BoolLiteralExpr b -> pure $ fromEnum b
-                _                 -> reportCastError
-              case resolvedTargetType of
-                IntType  -> pure $ IntExpression intValue
-                CharType -> pure $ CharExpression $ chr intValue
-                BoolType -> pure $ BoolExpression $ toEnum intValue
-                _        -> reportCastError
+              case (resolvedTargetType, _exprValue resolvedExpr) of
+                (IntType,  IntLiteralExpr  i) -> pure $ IntExpression i
+                (IntType,  CharLiteralExpr c) -> pure $ IntExpression $ ord c
+                (IntType,  BoolLiteralExpr b) -> pure $ IntExpression $ fromEnum b
+                (CharType, IntLiteralExpr  i) -> pure $ CharExpression $ chr i
+                (CharType, CharLiteralExpr c) -> pure $ CharExpression c
+                (BoolType, IntLiteralExpr  i) -> pure $ BoolExpression $ i /= 0
+                (BoolType, CharLiteralExpr c) -> pure $ BoolExpression $ ord c > 0
+                (BoolType, BoolLiteralExpr b) -> pure $ BoolExpression b
+                _ -> reportCastError
         FieldAccessExpr expr field -> do
           TypedExpression structType structValue <- go expr
           case structValue of
@@ -767,7 +767,215 @@ analyzeFunctionExpression
 analyzeFunctionExpression expr = do
   contextLocation .= _location expr
   case _located expr of
+    CastExpr e t -> do
+      resolvedExpr <- analyzeFunctionExpression e
+      resolvedTargetType <- resolveType (ForbidPlaceholder "cast expression") t
+      let resolvedSourceType = _exprType resolvedExpr
+          reportCastError :: forall a. MaybeT AnalysisM a
+          reportCastError = reportError $ ErrorWrongCast resolvedSourceType resolvedTargetType
+      targetEnum <- tryResolveEnumFromName resolvedTargetType
+      sourceEnum <- tryResolveEnumFromName resolvedSourceType
+      case (sourceEnum, targetEnum) of
+        (Just _, Just destEnum) -> do
+          case _exprValue resolvedExpr of
+            IntLiteralExpr i ->
+              compileTimeEnumCast resolvedTargetType destEnum i
+            _ -> do
+              -- TODO: insert runtime cast
+              undefined
+        (Nothing, Just destEnum) -> do
+          case ( _exprType resolvedExpr
+               , _exprValue resolvedExpr
+               ) of
+            (_, IntLiteralExpr  i) ->
+              compileTimeEnumCast resolvedTargetType destEnum i
+            (_, CharLiteralExpr c) ->
+              compileTimeEnumCast resolvedTargetType destEnum $ ord c
+            (_, BoolLiteralExpr b) ->
+              compileTimeEnumCast resolvedTargetType destEnum $ fromEnum b
+            (IntType, _) -> do
+              -- TODO: insert runtime cast
+              undefined
+            (CharType, _) -> do
+              -- TODO: insert runtime cast
+              undefined
+            (BoolType, _) -> do
+              -- TODO: insert runtime cast
+              undefined
+            (VoidType, value) -> do
+              pure $ TypedExpression VoidType value
+            _ -> case _pathName $ _exprType resolvedExpr of
+              TypeParameter _ ->
+                pure resolvedExpr
+              _ -> do
+                reportCastError
+        (Just _, Nothing) -> do
+          case (resolvedTargetType, _exprValue resolvedExpr) of
+            (IntType, IntLiteralExpr i) ->
+              pure $ IntExpression i
+            (IntType, value) ->
+              pure $ TypedExpression IntType value
+            (CharType, IntLiteralExpr i) ->
+              pure $ IntExpression i
+            (CharType, value) ->
+              pure $ TypedExpression IntType value
+            (BoolType, IntLiteralExpr i) ->
+              pure $ IntExpression i
+            (BoolType, value) ->
+              pure $ TypedExpression IntType value
+            _ -> reportCastError
+        (Nothing, Nothing) -> do
+          case (resolvedTargetType, resolvedSourceType, _exprValue resolvedExpr) of
+            (IntType,  _, IntLiteralExpr  i) -> pure $ IntExpression i
+            (IntType,  _, CharLiteralExpr c) -> pure $ IntExpression $ ord c
+            (IntType,  _, BoolLiteralExpr b) -> pure $ IntExpression $ fromEnum b
+            (IntType,  IntType,  value)      -> pure $ TypedExpression IntType value
+            (IntType,  CharType, value)      -> pure $ TypedExpression IntType value
+            (IntType,  BoolType, value)      -> pure $ TypedExpression IntType value
+            (CharType, _, IntLiteralExpr  i) -> pure $ CharExpression $ chr i
+            (CharType, _, CharLiteralExpr c) -> pure $ CharExpression c
+            (CharType, IntType,  value)      -> pure $ TypedExpression CharType value
+            (CharType, CharType, value)      -> pure $ TypedExpression CharType value
+            (BoolType, _, IntLiteralExpr  i) -> pure $ BoolExpression $ i /= 0
+            (BoolType, _, CharLiteralExpr c) -> pure $ BoolExpression $ ord c > 0
+            (BoolType, _, BoolLiteralExpr b) -> pure $ BoolExpression b
+            (BoolType, IntType,  value)      -> pure $ TypedExpression BoolType value
+            (BoolType, CharType, value)      -> pure $ TypedExpression BoolType value
+            (BoolType, BoolType, value)      -> pure $ TypedExpression BoolType value
+            _ -> reportCastError
+
+    {-
+    PathExpr p ->
+      resolveValue p -}
     _ -> undefined
+  where
+    compileTimeEnumCast enumType enumInfo intValue = do
+      when (intValue < 0 || intValue >= length (_enumValues enumInfo)) $
+        reportError $ ErrorEnumOutOfBounds enumInfo intValue
+      pure $ TypedExpression enumType $ IntLiteralExpr intValue
+
+{-
+    FieldAccessExpr expr field -> do
+      TypedExpression structType structValue <- go expr
+      case structValue of
+        StructExpr _ fields -> do
+          fmap snd $
+            find ((field ==) . fst) fields `onNothing`
+              reportError (ErrorFieldAccessFieldNotFound structType field)
+        _                   -> reportError $ ErrorFieldAccessNotAStruct structType
+    CallExpr _ _  -> reportError undefined
+    ArrayExpr _ -> undefined
+    IndexExpr _ _ -> undefined
+    StructExpr path fields -> do
+      (resolvedType, structInfo, paramMapping) <- resolveStruct path
+      resolvedFields <- (traverse . traverse) go fields
+      fullyResolvedType <- analyzeStructFields resolvedType structInfo paramMapping resolvedFields
+      pure $ TypedExpression fullyResolvedType $ StructExpr fullyResolvedType resolvedFields
+    IntLiteralExpr    i -> pure $ IntExpression  i
+    BoolLiteralExpr   b -> pure $ BoolExpression b
+    CharLiteralExpr   c -> pure $ CharExpression c
+    StringLiteralExpr s -> pure $ TypedExpression undefined $ StringLiteralExpr s
+    ReferenceExpr _ -> reportError undefined
+    BoolNegationExpr e -> go e >>= \case
+      BoolExpression x -> pure $ BoolExpression (not x)
+      TypedExpression t _ -> reportError $ ErrorWrongType [BoolType] t
+    IntNegationExpr e -> go e >>= \case
+      IntExpression x -> pure $ IntExpression (-x)
+      TypedExpression t _ -> reportError $ ErrorWrongType [IntType] t
+    AdditionExpr e1 e2 -> do
+      lhs <- go e1
+      case lhs of
+        TypedExpression IntType (IntLiteralExpr _) -> pure ()
+        TypedExpression e1t _ -> reportError $ ErrorWrongType [IntType] e1t
+      rhs <- go e2
+      case rhs of
+        TypedExpression IntType (IntLiteralExpr _) -> pure ()
+        TypedExpression e2t _ -> reportError $ ErrorWrongType [IntType] e2t
+      when (_exprType lhs /= _exprType rhs) $
+        reportError $ ErrorWrongType [_exprType lhs] (_exprType rhs)
+      case (_exprValue lhs, _exprValue rhs) of
+        (IntLiteralExpr x, IntLiteralExpr y) -> pure $ IntExpression (x + y)
+        _                                    -> error "ICE"
+    SubtractionExpr    e1 e2 -> binaryIntExpression subtract e1 e2
+    MultiplicationExpr e1 e2 -> binaryIntExpression (*) e1 e2
+    DivisionExpr       e1 e2 -> binaryIntExpression div e1 e2
+    ModuloExpr         e1 e2 -> binaryIntExpression mod e1 e2
+    ExponentiationExpr e1 e2 -> binaryIntExpression (^) e1 e2
+    EqualityExpr       e1 e2 -> comparisonExpression (==) e1 e2
+    DifferenceExpr     e1 e2 -> comparisonExpression (/=) e1 e2
+    GreaterExpr        e1 e2 -> comparisonExpression (>)  e1 e2
+    LesserExpr         e1 e2 -> comparisonExpression (<)  e1 e2
+    GreaterEqExpr      e1 e2 -> comparisonExpression (>=) e1 e2
+    LesserEqExpr       e1 e2 -> comparisonExpression (<=) e1 e2
+    BoolAndExpr        e1 e2 -> binaryBoolExpression (&&) e1 e2
+    BoolOrExpr         e1 e2 -> binaryBoolExpression (||) e1 e2
+    RangeInclusiveExpr           _ _ -> undefined
+    RangeExclusiveExpr           _ _ -> undefined
+    AssignmentExpr               _ _ -> reportError undefined
+    AdditionAssignmentExpr       _ _ -> reportError undefined
+    SubtractionAssignmentExpr    _ _ -> reportError undefined
+    MultiplicationAssignmentExpr _ _ -> reportError undefined
+    DivisionAssignmentExpr       _ _ -> reportError undefined
+    ModuloAssignmentExpr         _ _ -> reportError undefined
+    ExponentiationAssignmentExpr _ _ -> reportError undefined
+  where
+    binaryIntExpression
+      :: (Int -> Int -> Int)
+      -> WithLocation (Expression Parsed)
+      -> WithLocation (Expression Parsed)
+      -> MaybeT AnalysisM TypedExpression
+    binaryIntExpression f e1 e2 = do
+      lhs <- go e1 >>= \case
+        TypedExpression IntType (IntLiteralExpr x) -> pure x
+        TypedExpression e1t _ ->
+          reportError $ ErrorWrongType [IntType] e1t
+      rhs <- go e2 >>= \case
+        TypedExpression IntType (IntLiteralExpr x) -> pure x
+        TypedExpression e2t _ ->
+          reportError $ ErrorWrongType [IntType] e2t
+      pure $ IntExpression (f lhs rhs)
+
+    binaryBoolExpression
+      :: (Bool -> Bool -> Bool)
+      -> WithLocation (Expression Parsed)
+      -> WithLocation (Expression Parsed)
+      -> MaybeT AnalysisM TypedExpression
+    binaryBoolExpression f e1 e2 = do
+      lhs <- go e1 >>= \case
+        TypedExpression BoolType (BoolLiteralExpr x) -> pure x
+        TypedExpression e1t _ ->
+          reportError $ ErrorWrongType [BoolType] e1t
+      rhs <- go e2 >>= \case
+        TypedExpression BoolType (BoolLiteralExpr x) -> pure x
+        TypedExpression e2t _ ->
+          reportError $ ErrorWrongType [BoolType] e2t
+      pure $ BoolExpression (f lhs rhs)
+
+    comparisonExpression
+      :: (Expression Resolved -> Expression Resolved -> Bool)
+      -> WithLocation (Expression Parsed)
+      -> WithLocation (Expression Parsed)
+      -> MaybeT AnalysisM TypedExpression
+    comparisonExpression op e1 e2 = do
+      TypedExpression t1 r1 <- go e1
+      TypedExpression t2 r2 <- go e2
+      when (t1 /= t2) $
+        reportError $ ErrorWrongType [t1] t2
+      pure $ BoolExpression $ compareExpressions op r1 r2
+
+    compareExpressions
+      :: (Expression Resolved -> Expression Resolved -> Bool)
+      -> Expression Resolved
+      -> Expression Resolved
+      -> Bool
+    compareExpressions op e1 e2 = do
+      case (e1, e2) of
+        (StructExpr _ f1, StructExpr _ f2) ->
+          let sortedF1 = map (_exprValue . snd) $ L.sortOn fst $ NE.toList f1
+              sortedF2 = map (_exprValue . snd) $ L.sortOn fst $ NE.toList f2
+          in all (uncurry $ compareExpressions op) $ zip sortedF1 sortedF2
+        _ -> op e1 e2
+-}
 
 
 --------------------------------------------------------------------------------
