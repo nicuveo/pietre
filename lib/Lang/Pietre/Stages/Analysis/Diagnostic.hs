@@ -33,5 +33,8 @@ data Diagnostic
   | ErrorFieldAccessFieldNotFound (PathInfo Resolved) Identifier
   | ErrorReservedIdentifier Name Identifier
   | ErrorPlaceholder Text
-  | WarningTypeShadow [Name] Name
+  | ErrorFunctionDuplicatedArg Identifier
+  | ErrorBreakNotInLoop
+  | ErrorContinueNotInLoop
+  | WarningNameShadow (NonEmpty Name) Name
   deriving Show

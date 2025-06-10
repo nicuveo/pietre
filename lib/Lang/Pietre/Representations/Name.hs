@@ -13,6 +13,7 @@ data Name
   | BuiltinFunction Identifier
   | TypeParameter Identifier
   | Placeholder
+  | FunctionArgument Identifier
   deriving (Show, Eq, Ord, Generic)
 
 instance Hashable Name
