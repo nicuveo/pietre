@@ -14,7 +14,6 @@ import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Analysis.Diagnostic
 
 
@@ -32,7 +31,6 @@ data AnalysisContext = AnalysisContext
   , _contextNames        :: HashMap Path (NonEmpty Name)
   , _contextLocation     :: Location
   , _contextFunType      :: PathInfo Resolved
-  , _contextFunArgs      :: HashMap Identifier (FunctionArgType Resolved)
   , _contextWithinLoop   :: Bool
   }
   deriving Show
@@ -44,7 +42,7 @@ runAnalysis
 runAnalysis moduleName action = swap $ evalRWS
   action
   (AnalysisInfo moduleName S.empty (M.map pure $ M.fromList builtins) M.empty)
-  (AnalysisContext M.empty M.empty (initialLocation "") UnitType M.empty False)
+  (AnalysisContext M.empty M.empty (initialLocation "") UnitType False)
 
 
 makeLenses ''AnalysisInfo
@@ -56,5 +54,4 @@ resetState = do
   topLevelNames <- view infoTopLevelNames
   contextNames      .= topLevelNames
   contextFunType    .= UnitType
-  contextFunArgs    .= M.empty
   contextWithinLoop .= False

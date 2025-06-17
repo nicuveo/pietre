@@ -734,7 +734,6 @@ analyzeFunction thisName FunctionInfo {..} = do
       let resolvedName = FunctionArgument argName resolvedType
       whenJustM (lookupIdentifier argName) \names ->
         reportWarning $ WarningNameShadow names resolvedName
-      contextFunArgs %= M.insert argName resolvedType
       contextNames %= M.insert (pure argName) (pure resolvedName)
       pure (argName, resolvedType)
 
