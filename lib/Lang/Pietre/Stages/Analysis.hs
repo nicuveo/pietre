@@ -731,7 +731,7 @@ analyzeFunction thisName FunctionInfo {..} = do
           resolveType (ForbidPlaceholder "function declaration") t
       when (isReserved argName) $
         reportError $ ErrorReservedIdentifier thisName argName
-      let resolvedName = FunctionArgument argName
+      let resolvedName = FunctionArgument argName resolvedType
       whenJustM (lookupIdentifier argName) \names ->
         reportWarning $ WarningNameShadow names resolvedName
       contextFunArgs %= M.insert argName resolvedType

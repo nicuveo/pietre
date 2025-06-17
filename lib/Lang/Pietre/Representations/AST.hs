@@ -3,17 +3,17 @@
 
 module Lang.Pietre.Representations.AST where
 
-import "this" Prelude
+import                "this" Prelude
 
-import Control.Lens
-import Data.Kind
-import Data.List.NonEmpty                   qualified as NE
-import Prettyprinter
-import Prettyprinter.Render.Text
+import                Control.Lens
+import                Data.Kind
+import                Data.List.NonEmpty                   qualified as NE
+import                Prettyprinter
+import                Prettyprinter.Render.Text
 
-import Lang.Pietre.Representations.Location
-import Lang.Pietre.Representations.Name
-import Lang.Pietre.Representations.Tokens
+import                Lang.Pietre.Representations.Location
+import {-# SOURCE #-} Lang.Pietre.Representations.Name
+import                Lang.Pietre.Representations.Tokens
 
 
 --------------------------------------------------------------------------------
@@ -191,8 +191,13 @@ deriving instance ShowConstraints p => Show (FunctionInfo p)
 data FunctionArgType (p :: ASTPhase)
   = ByValue     (PathInfo p)
   | ByReference (PathInfo p)
+  deriving Generic
 
 deriving instance ShowConstraints p => Show (FunctionArgType p)
+deriving instance EqConstraints   p => Eq   (FunctionArgType p)
+deriving instance OrdConstraints  p => Ord  (FunctionArgType p)
+
+instance (EqConstraints p, Hashable (NameType p)) => Hashable (FunctionArgType p)
 
 
 data Statement (p :: ASTPhase)

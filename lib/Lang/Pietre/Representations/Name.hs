@@ -2,6 +2,7 @@ module Lang.Pietre.Representations.Name where
 
 import "this" Prelude
 
+import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Tokens
 
 
@@ -13,7 +14,8 @@ data Name
   | BuiltinFunction Identifier
   | TypeParameter Identifier
   | Placeholder
-  | FunctionArgument Identifier
+  | FunctionArgument Identifier (FunctionArgType Resolved)
+  | LetVariable Identifier (PathInfo Resolved)
   deriving (Show, Eq, Ord, Generic)
 
 instance Hashable Name
