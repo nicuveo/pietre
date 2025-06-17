@@ -222,6 +222,7 @@ resolveConstValue pathInfo = resolvePath AllowPlaceholder go pathInfo
         FunctionDecl  _ -> reportError $ ErrorNotAConst originalPath _pathName
         StructDecl    _ -> reportError $ ErrorNotAConst originalPath _pathName
         EnumDecl      enumInfo -> do
+          -- TODO: reject type parameters
           let identifier = NE.last originalPath
           if identifier == _enumName enumInfo
             then reportError $ ErrorNotAConst originalPath _pathName
@@ -230,6 +231,45 @@ resolveConstValue pathInfo = resolvePath AllowPlaceholder go pathInfo
                 Nothing -> error "ICE"
                 Just i  -> pure $ TypedExpression resolvedPath $ IntLiteralExpr i
         ConstDecl     _ ->
+          -- TODO: reject type parameters
+          resolveDeclaration _pathName decl <&> \case
+            ConstDecl cInfo -> _constExpr cInfo
+            _ -> error "ICE"
+
+resolveValue
+  :: PathInfo Parsed
+  -> MaybeT AnalysisM TypedExpression
+resolveValue pathInfo = resolvePath AllowPlaceholder go pathInfo
+  where
+    originalPath = _pathName pathInfo
+    go :: ResolveCallback TypedExpression
+    go resolvedPath@PathInfo {..} = \case
+      Nothing   -> case _pathName of
+        FunctionArgument _ (ByValue argType) ->
+          pure $ TypedExpression argType $ PathExpr $ resolvedPath
+        FunctionArgument _ (ByReference argType) ->
+          pure $ TypedExpression argType $ PathExpr $ resolvedPath
+        LetVariable _ varType ->
+          pure $ TypedExpression varType $ PathExpr $ resolvedPath
+        TopLevelDeclaration _ _ -> error "ICE"
+        Placeholder -> reportError $ ErrorPlaceholder "function expression path"
+        _ -> reportError $ ErrorNotAValue originalPath _pathName
+
+      Just decl -> case _located decl of
+        TypeAliasDecl _ -> reportError $ ErrorNotAValue originalPath _pathName
+        FunctionDecl  _ -> reportError $ ErrorNotAValue originalPath _pathName
+        StructDecl    _ -> reportError $ ErrorNotAValue originalPath _pathName
+        EnumDecl      enumInfo -> do
+          -- TODO: reject type parameters
+          let identifier = NE.last originalPath
+          if identifier == _enumName enumInfo
+            then reportError $ ErrorNotAValue originalPath _pathName
+            else
+              case L.elemIndex identifier (_enumValues enumInfo) of
+                Nothing -> error "ICE"
+                Just i  -> pure $ TypedExpression resolvedPath $ IntLiteralExpr i
+        ConstDecl     _ ->
+          -- TODO: reject type parameters
           resolveDeclaration _pathName decl <&> \case
             ConstDecl cInfo -> _constExpr cInfo
             _ -> error "ICE"
@@ -266,6 +306,10 @@ resolveType mode pathInfo = resolvePath mode go pathInfo
       Nothing   -> case (_pathName, mode) of
         (Placeholder, ForbidPlaceholder context) ->
           reportError $ ErrorPlaceholder context
+        (FunctionArgument _ _, _) ->
+          reportError $ ErrorNotAType originalPath _pathName
+        (LetVariable _ _, _) ->
+          reportError $ ErrorNotAType originalPath _pathName
         _ -> pure path
       Just decl -> case _located decl of
         TypeAliasDecl info -> do
@@ -720,7 +764,7 @@ analyzeFunction thisName FunctionInfo {..} = do
   unless allValid mzero -- TODO: introduce better error handling
   resolvedArgs <- traverse analyzeArg _funArgs
   contextFunType .= fromMaybe UnitType resolvedType
-  resolvedStatements <- traverse analyzeStatement _funBody
+  resolvedStatements <- analyzeBlock _funBody
   pure $ FunctionInfo _funName _funParams resolvedArgs resolvedType resolvedStatements
   where
     analyzeArg (argName, argType) = do
@@ -736,6 +780,15 @@ analyzeFunction thisName FunctionInfo {..} = do
         reportWarning $ WarningNameShadow names resolvedName
       contextNames %= M.insert (pure argName) (pure resolvedName)
       pure (argName, resolvedType)
+
+analyzeBlock
+  :: [WithLocation (Statement Parsed)]
+  -> MaybeT AnalysisM [Statement Resolved]
+analyzeBlock statements = do
+  previousScope <- use contextNames
+  result <- traverse analyzeStatement statements
+  contextNames .= previousScope
+  pure result
 
 analyzeStatement
   :: WithLocation (Statement Parsed)
@@ -772,6 +825,9 @@ analyzeFunctionExpression expr = do
       let resolvedSourceType = _exprType resolvedExpr
           reportCastError :: forall a. MaybeT AnalysisM a
           reportCastError = reportError $ ErrorWrongCast resolvedSourceType resolvedTargetType
+          resultCast =
+            TypedExpression resolvedTargetType $
+            CastExpr resolvedExpr resolvedTargetType
       targetEnum <- tryResolveEnumFromName resolvedTargetType
       sourceEnum <- tryResolveEnumFromName resolvedSourceType
       case (sourceEnum, targetEnum) of
@@ -779,9 +835,8 @@ analyzeFunctionExpression expr = do
           case _exprValue resolvedExpr of
             IntLiteralExpr i ->
               compileTimeEnumCast resolvedTargetType destEnum i
-            _ -> do
-              -- TODO: insert runtime cast
-              undefined
+            _ ->
+              pure resultCast
         (Nothing, Just destEnum) -> do
           case ( _exprType resolvedExpr
                , _exprValue resolvedExpr
@@ -792,20 +847,17 @@ analyzeFunctionExpression expr = do
               compileTimeEnumCast resolvedTargetType destEnum $ ord c
             (_, BoolLiteralExpr b) ->
               compileTimeEnumCast resolvedTargetType destEnum $ fromEnum b
-            (IntType, _) -> do
-              -- TODO: insert runtime cast
-              undefined
-            (CharType, _) -> do
-              -- TODO: insert runtime cast
-              undefined
-            (BoolType, _) -> do
-              -- TODO: insert runtime cast
-              undefined
+            (IntType, _) ->
+              pure resultCast
+            (CharType, _) ->
+              pure resultCast
+            (BoolType, _) ->
+              pure resultCast
             (VoidType, value) -> do
               pure $ TypedExpression VoidType value
             _ -> case _pathName $ _exprType resolvedExpr of
               TypeParameter _ ->
-                pure resolvedExpr
+                pure resultCast
               _ -> do
                 reportCastError
         (Just _, Nothing) -> do
@@ -815,14 +867,18 @@ analyzeFunctionExpression expr = do
             (IntType, value) ->
               pure $ TypedExpression IntType value
             (CharType, IntLiteralExpr i) ->
-              pure $ IntExpression i
+              pure $ CharExpression $ chr i
             (CharType, value) ->
-              pure $ TypedExpression IntType value
+              pure $ TypedExpression CharType value
             (BoolType, IntLiteralExpr i) ->
-              pure $ IntExpression i
+              pure $ BoolExpression $ i /= 0
             (BoolType, value) ->
-              pure $ TypedExpression IntType value
-            _ -> reportCastError
+              pure $ TypedExpression BoolType value
+            _ -> case _pathName resolvedTargetType of
+                TypeParameter _ ->
+                  pure resultCast
+                _ -> do
+                  reportCastError
         (Nothing, Nothing) -> do
           case (resolvedTargetType, resolvedSourceType, _exprValue resolvedExpr) of
             (IntType,  _, IntLiteralExpr  i) -> pure $ IntExpression i
@@ -841,11 +897,23 @@ analyzeFunctionExpression expr = do
             (BoolType, IntType,  value)      -> pure $ TypedExpression BoolType value
             (BoolType, CharType, value)      -> pure $ TypedExpression BoolType value
             (BoolType, BoolType, value)      -> pure $ TypedExpression BoolType value
-            _ -> reportCastError
-
-    {-
+            _ -> case ( _pathName (_exprType resolvedExpr)
+                      , _pathName resolvedTargetType
+                      ) of
+              (TypeParameter _, _) -> pure resultCast
+              (_, TypeParameter _) -> pure resultCast
+              _                    -> reportCastError
     PathExpr p ->
-      resolveValue p -}
+      resolveValue p
+    FieldAccessExpr subExpr field -> do
+      TypedExpression structType structValue <- analyzeFunctionExpression subExpr
+      case structValue of
+        StructExpr _ fields -> do
+          fmap snd $
+            find ((field ==) . fst) fields `onNothing`
+              reportError (ErrorFieldAccessFieldNotFound structType field)
+        _ -> undefined -- do
+          -- reportError $ ErrorFieldAccessNotAStruct structType
     _ -> undefined
   where
     compileTimeEnumCast enumType enumInfo intValue = do
@@ -854,14 +922,6 @@ analyzeFunctionExpression expr = do
       pure $ TypedExpression enumType $ IntLiteralExpr intValue
 
 {-
-    FieldAccessExpr expr field -> do
-      TypedExpression structType structValue <- go expr
-      case structValue of
-        StructExpr _ fields -> do
-          fmap snd $
-            find ((field ==) . fst) fields `onNothing`
-              reportError (ErrorFieldAccessFieldNotFound structType field)
-        _                   -> reportError $ ErrorFieldAccessNotAStruct structType
     CallExpr _ _  -> reportError undefined
     ArrayExpr _ -> undefined
     IndexExpr _ _ -> undefined

@@ -16,6 +16,7 @@ data Diagnostic
   | ErrorNotAType Path Name
   | ErrorNotAConst Path Name
   | ErrorNotAStruct Path Name
+  | ErrorNotAValue Path Name
   | ErrorAmbiguousPath Path (NonEmpty Name)
   | ErrorCyclicDefinition Name
   | ErrorIncorrectTypeParameterCount Name Int Int
