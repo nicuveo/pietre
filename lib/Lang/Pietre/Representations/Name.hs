@@ -8,14 +8,20 @@ import Lang.Pietre.Representations.Tokens
 
 type ModuleName = NonEmpty Identifier
 
-data Name
-  = TopLevelDeclaration ModuleName Identifier
+data Name = Name
+  { _nameFullPath   :: NonEmpty Identifier
+  , _nameParameters :: [Name]
+  }
+  deriving (Show, Eq, Ord, Generic)
+
+instance Hashable Name
+
+data Role
+  = TopLevelDeclaration Name
   | BuiltinType Identifier
-  | BuiltinFunction Identifier
+  | BuiltinFunction Name
   | TypeParameter Identifier
   | Placeholder
   | FunctionArgument Identifier (FunctionArgType Resolved)
   | LetVariable Identifier (PathInfo Resolved)
-  deriving (Show, Eq, Ord, Generic)
-
-instance Hashable Name
+  deriving (Show, Eq, Ord)

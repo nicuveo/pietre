@@ -129,28 +129,28 @@ use_alias :: { Identifier }
   : "as" IDENTIFIER { getIdentifierLiteral $2 }
 
 
-alias_decl :: { WithLocation (Declaration Parsed) }
-  : "type" IDENTIFIER optional(generic_params) "=" type_expr ";" { WithLocation $1 (TypeAliasDecl (TypeAliasInfo (getIdentifierLiteral $2) (fold $3) $5)) }
+alias_decl :: { WithLocation (Definition Parsed) }
+  : "type" IDENTIFIER optional(generic_params) "=" type_expr ";" { WithLocation $1 (TypeAliasDef (TypeAliasInfo (getIdentifierLiteral $2) (fold $3) $5)) }
 
-enum_decl :: { WithLocation (Declaration Parsed) }
-  : "enum" IDENTIFIER "{" optional(comma_list(enum_item)) "}" { WithLocation $1 (EnumDecl (EnumInfo (getIdentifierLiteral $2) (fold $4))) }
+enum_decl :: { WithLocation (Definition Parsed) }
+  : "enum" IDENTIFIER "{" optional(comma_list(enum_item)) "}" { WithLocation $1 (EnumDef (EnumInfo (getIdentifierLiteral $2) (fold $4))) }
 
 enum_item :: { Identifier }
   : IDENTIFIER { getIdentifierLiteral $1 }
 
-struct_decl :: { WithLocation (Declaration Parsed) }
-  : "struct" IDENTIFIER optional(generic_params) "{" comma_list(struct_field) "}" { WithLocation $1 (StructDecl (StructInfo (getIdentifierLiteral $2) (fold $3) (NE.fromList $5))) }
+struct_decl :: { WithLocation (Definition Parsed) }
+  : "struct" IDENTIFIER optional(generic_params) "{" comma_list(struct_field) "}" { WithLocation $1 (StructDef (StructInfo (getIdentifierLiteral $2) (fold $3) (NE.fromList $5))) }
 
 struct_field :: { (Identifier, PathInfo Parsed) }
   : IDENTIFIER ":" type_expr { (getIdentifierLiteral $1, $3) }
 
 
-const_decl :: { WithLocation (Declaration Parsed) }
-  : "const" IDENTIFIER ":" type_expr "=" expression ";" { WithLocation $1 (ConstDecl (ConstInfo (getIdentifierLiteral $2) $4 $6)) }
+const_decl :: { WithLocation (Definition Parsed) }
+  : "const" IDENTIFIER ":" type_expr "=" expression ";" { WithLocation $1 (ConstDef (ConstInfo (getIdentifierLiteral $2) $4 $6)) }
 
 
-fun_decl :: { WithLocation (Declaration Parsed) }
-  : "fn" IDENTIFIER optional(generic_params) "(" optional(comma_list(fun_arg)) ")" optional(fun_return) block { WithLocation $1 (FunctionDecl (FunctionInfo (getIdentifierLiteral $2) (fold $3) (fold $5) $7 $8)) }
+fun_decl :: { WithLocation (Definition Parsed) }
+  : "fn" IDENTIFIER optional(generic_params) "(" optional(comma_list(fun_arg)) ")" optional(fun_return) block { WithLocation $1 (FunctionDef (FunctionInfo (getIdentifierLiteral $2) (fold $3) (fold $5) $7 $8)) }
 
 fun_arg :: { (Identifier, FunctionArgType Parsed) }
   : IDENTIFIER ":" fun_arg_type { (getIdentifierLiteral $1, $3) }

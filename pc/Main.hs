@@ -14,6 +14,7 @@ import System.FilePath
 
 import Lang.Pietre
 import Lang.Pietre.Representations.Location
+import Lang.Pietre.Representations.Name
 
 
 help :: IO a
@@ -35,21 +36,22 @@ renderPath = intercalate "::" . map T.unpack . NE.toList
 main :: IO ()
 main = do
   filenames <- getArgs
-  symbols <-
-    flip execStateT M.empty $
+  (definitions, _) <-
+    flip execStateT (M.empty, M.empty) $
       for filenames \filename -> do
-        dependencies <- get
+        (defCache, exports) <- get
         let moduleName = pure $ T.pack $ takeBaseName filename
-        source  <- liftIO $ readFile filename
-        ast     <- parseModule filename source `onLeft` (error . show)
-        let (diagnostics, result) = analyzeModule dependencies moduleName ast
+        source <- liftIO $ readFile filename
+        ast    <- parseModule filename source `onLeft` (error . show)
+        let (diagnostics, result) = analyzeModule defCache exports moduleName ast
         when (not $ null diagnostics) $
           liftIO $ print (moduleName, diagnostics)
         case result of
-          Just symbols -> modify $ M.insert moduleName symbols
-          Nothing      -> error "aborting"
-  for_ (M.toList symbols) \(moduleName, decls) -> do
-    putStrLn $ "module " ++ renderPath moduleName
-    for_ (M.toList decls) \(declName, WithLocation _ decl) -> do
-      putStrLn $ "  " ++ T.unpack declName ++ ": " ++ show decl
-    putStrLn ""
+          Nothing -> error "aborting"
+          Just (ResolvedModule exported newDefinitions) -> do
+            put ( defCache <> newDefinitions
+                , M.insert moduleName exported exports
+                )
+  for_ (M.toList definitions) \(name, WithLocation _ decl) -> do
+    let declName = T.intercalate "::" $ NE.toList $ _nameFullPath name
+    putStrLn $ T.unpack declName ++ ": " ++ show decl

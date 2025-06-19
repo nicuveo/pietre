@@ -7,6 +7,7 @@ import "this" Prelude
 import Control.Lens                           hiding (mapping, op)
 import Control.Monad.Extra                    (unlessM, whenJustM)
 import Control.Monad.RWS.Strict
+import Control.Monad.Trans.Maybe              (hoistMaybe)
 import Data.HashMap.Strict                    qualified as M
 import Data.HashSet                           qualified as S
 import Data.List                              qualified as L
@@ -24,28 +25,33 @@ import Lang.Pietre.Stages.Analysis.Monad
 --------------------------------------------------------------------------------
 -- Analysis
 
-type Symbols = HashMap Identifier (WithLocation (Declaration Resolved))
+type DefinitionCache = HashMap Name (WithLocation (Definition Resolved))
+
+data ResolvedModule = ResolvedModule
+  { _resmodExported        :: HashSet Identifier
+  , _resmodDefinitionCache :: DefinitionCache
+  }
 
 analyzeModule
-  :: HashMap ModuleName Symbols
+  :: DefinitionCache
+  -> HashMap ModuleName (HashSet Identifier)
   -> ModuleName
   -> Module
-  -> ([Diagnostic], Maybe Symbols)
-analyzeModule dependencies thisName this@Module {..} = runAnalysis thisName $ runMaybeT do
-  foreignNames <- initImportedContext dependencies this
-  (topLevelNames, locals) <- initLocalNames _modDeclarations
-  let initReaderContext =
-        (infoLocals .~ locals) .
-        (infoTopLevelNames %~ (combineMaps foreignNames . combineMaps topLevelNames))
-  -- TODO: do a runReaderT here instead
-  local initReaderContext $ MaybeT do
-    symbols <- for _modDeclarations \declaration -> runMaybeT do
-      let identifier = declarationIdentifier $ _located declaration
-          declName   = TopLevelDeclaration thisName identifier
-      -- TODO: also export Enum values
-      resolvedDeclaration <- analyzeDeclaration declName declaration
-      pure (identifier, WithLocation (_location declaration) resolvedDeclaration)
-    pure $ M.fromList <$> sequence symbols
+  -> ([Diagnostic], Maybe ResolvedModule)
+analyzeModule foreignDefinitions moduleExports moduleName Module {..} = runMaybeT do
+  (exported, localDefinitions, localScope) <- createLocalScope moduleName _modDefinitions
+  foreignScope <- createForeignScope moduleExports _modImports
+  let builtinScope = M.fromList $ map (fmap pure) builtins
+  let topLevelScope = builtinScope `combineMaps` localScope `combineMaps` foreignScope
+  let analysisInfo = AnalysisInfo moduleName S.empty localDefinitions foreignDefinitions topLevelScope
+  let (diagnostics, resolvedModule) =
+        runAnalysis analysisInfo do
+          result <- sequence <$>
+            traverse (runMaybeT . analyzeDefinition) _modDefinitions
+          cachedDefinitions <- use contextCache
+          pure $ ResolvedModule exported cachedDefinitions <$ result
+  tell diagnostics
+  hoistMaybe resolvedModule
   where
     combineMaps = M.unionWith (<>)
 
@@ -53,37 +59,50 @@ analyzeModule dependencies thisName this@Module {..} = runAnalysis thisName $ ru
 --------------------------------------------------------------------------------
 -- Internals
 
-initImportedContext
-  :: HashMap ModuleName Symbols
-  -> Module
-  -> MaybeT AnalysisM (HashMap Path (NonEmpty Name))
-initImportedContext dependencies Module {..} = do
+definitionIdentifiers :: Definition Parsed -> NonEmpty Identifier
+definitionIdentifiers = \case
+  ConstDef     ConstInfo     {..} -> pure _constName
+  TypeAliasDef TypeAliasInfo {..} -> pure _aliasName
+  StructDef    StructInfo    {..} -> pure _structName
+  FunctionDef  FunctionInfo  {..} -> pure _funName
+  EnumDef      EnumInfo      {..} -> _enumName :| _enumValues
+
+createForeignScope
+  :: MonadWriter [Diagnostic] m
+  => HashMap ModuleName (HashSet Identifier)
+  -> [Import]
+  -> MaybeT m (HashMap Path (NonEmpty Role))
+createForeignScope moduleExports imports = do
   -- for each imported module, we create a hashmap
   -- from module name to hashmap of path to non-empty list:
   -- the hashmap of imported paths, grouped by module
-  knownSymbols :: [HashMap ModuleName (HashMap Path (NonEmpty (Name, WithLocation (Declaration Resolved))))] <-
-    for _modImports \Import {..} -> do
-      symbols <- handleMaybe (ErrorImportPath _importPath) $
-        M.lookup _importPath dependencies
-      let resolved = flip M.mapWithKey symbols \name symbol ->
-            pure (TopLevelDeclaration _importPath name, symbol)
+  knownSymbols :: [HashMap ModuleName (HashMap Path (NonEmpty Role))] <-
+    for imports \Import {..} -> do
+      exportedIdentifiers <- handleMaybe (ErrorImportPath _importPath) $
+        M.lookup _importPath moduleExports
+      let mkRole identifier = pure $ TopLevelDeclaration $ Name (_importPath <> pure identifier) []
       M.singleton _importPath . M.fromListWith (<>) <$> case _importType of
-        Qualified qualifiedName -> pure do
-          (name, symbol) <- M.toList resolved
-          (_importPath <> pure name, symbol) : do
-            qualifier <- maybeToList qualifiedName
-            pure (qualifier :| [name], symbol)
-        Specific names -> concat <$> for names \name -> do
-          symbol <- handleMaybe (ErrorImportSymbol _importPath name) $
-            M.lookup name resolved
-          pure
-            [ (pure name, symbol)
-            , (_importPath <> pure name, symbol)
+        Qualified Nothing ->
+          pure $ S.toList exportedIdentifiers <&> \identifier ->
+            (_importPath <> pure identifier, mkRole identifier)
+        Qualified (Just qualifier) ->
+          pure $ S.toList exportedIdentifiers >>= \identifier ->
+            [ (pure qualifier <> pure identifier, mkRole identifier)
+            , (_importPath <> pure identifier, mkRole identifier)
             ]
-        Exhaustive -> pure $ M.toList resolved >>= \(name, symbol) ->
-          [ (pure name, symbol)
-          , (_importPath <> pure name, symbol)
-          ]
+        Exhaustive ->
+          pure $ S.toList exportedIdentifiers >>= \identifier ->
+            [ (pure identifier, mkRole identifier)
+            , (_importPath <> pure identifier, mkRole identifier)
+            ]
+        Specific identifiers ->
+          concat <$> for identifiers \identifier -> do
+            unless (identifier `S.member` exportedIdentifiers) $
+              reportError $ ErrorImportSymbol _importPath identifier
+            pure
+              [ (pure identifier, mkRole identifier)
+              , (_importPath <> pure identifier, mkRole identifier)
+              ]
 
   -- we group the declarations per module, using (<>) on the hashmap:
   -- this discards duplicates within the same module, as the same
@@ -92,58 +111,46 @@ initImportedContext dependencies Module {..} = do
   -- a union with (<>), but on the non-empty lists.
   -- the result is a hashmap from path to grouped non-empty list of
   -- possible matches across modules
-  let importedScope :: HashMap Path (NonEmpty (Name, WithLocation (Declaration Resolved))) =
-        foldl' (M.unionWith (<>)) M.empty $ M.elems $
-        foldl' (M.unionWith (<>)) M.empty $ knownSymbols
+  pure $
+    foldl' (M.unionWith (<>)) M.empty $ M.elems $
+    foldl' (M.unionWith (<>)) M.empty $ knownSymbols
 
-  contextDeclarations <>= M.fromList (concatMap toList $ M.elems importedScope)
-  pure (M.map (fmap fst) importedScope)
-
-initLocalNames
-  :: [Annotated Declaration Parsed]
-  -> MaybeT AnalysisM
-     ( HashMap Path (NonEmpty Name)
-     , HashMap Name (WithLocation (Declaration Parsed))
+createLocalScope
+  :: MonadWriter [Diagnostic] m
+  => ModuleName
+  -> [Annotated Definition Parsed]
+  -> MaybeT m
+     ( HashSet Identifier
+     , HashMap Name (WithLocation (Definition Parsed))
+     , HashMap Path (NonEmpty Role)
      )
-initLocalNames declarations = do
-  moduleName <- view infoModuleName
-
+createLocalScope moduleName definitions = do
   -- gather all top level names
   -- group them by identifier
-  let topLevelNames = M.fromListWith combineLocations do
-        decl <- declarations
-        let identifier = declarationIdentifier $ _located decl
-            declName = TopLevelDeclaration moduleName identifier
-        case _located decl of
-              EnumDecl enumInfo ->
-                (identifier, (declName, pure decl)) : do
-                  enumValue <- _enumValues enumInfo
-                  pure (enumValue, (declName, pure decl))
-              _ -> pure (identifier, (declName, pure decl))
+  let topLevelNames = M.fromListWith (<>) do
+        definition <- definitions
+        identifier <- NE.toList $ definitionIdentifiers $ _located definition
+        let name  = Name (moduleName <> pure identifier) []
+            role  = TopLevelDeclaration name
+            paths = [pure identifier, moduleName <> pure identifier]
+        pure (identifier, pure ((name, definition), map (, pure role) paths))
 
   -- report an error if any identifier appears more than once
-  failed <- or <$> for (M.toList topLevelNames) \(identifier, (_, annotatedDeclarations)) -> do
-    let hasDuplicates = NE.length annotatedDeclarations > 1
+  failed <- or <$> for (M.toList topLevelNames) \(identifier, entries) -> do
+    let defs = entries <&> \((_, definition), _) -> definition
+    let hasDuplicates = NE.length defs > 1
     when hasDuplicates $
-      tell [ErrorMultipleDeclaration identifier $ fmap _location annotatedDeclarations]
+      tell [ErrorMultipleDeclaration identifier $ fmap _location defs]
     pure hasDuplicates
   when failed mzero
 
-  let locals = M.fromList do
-        (_identifier, (name, declaration :| _)) <- M.toList topLevelNames
-        pure (name, declaration)
-  let localNames = M.foldlWithKey' (makePaths moduleName) M.empty topLevelNames
-  pure (localNames, locals)
-
-  where
-    combineLocations (name1, locations1) (_name2, locations2) =
-      (name1, locations1 <> locations2)
-
-    makePaths moduleName accum identifier (name, _) =
-        accum
-          & M.insert (pure identifier) (pure name)
-          & M.insert (moduleName <> pure identifier) (pure name)
-
+  -- create all local maps
+  let exports = M.keys topLevelNames
+  let (localDefinitions, localScope) = unzip $ map NE.head $ M.elems topLevelNames
+  pure ( S.fromList exports
+       , M.fromList localDefinitions
+       , M.fromList (concat localScope)
+       )
 
 reportWarning
   :: MonadWriter [Diagnostic] m
@@ -175,7 +182,7 @@ type ResolveCallback r
   =  forall (p :: ASTPhase)
   .  Analyzable p
   => PathInfo Resolved
-  -> Maybe (WithLocation (Declaration p))
+  -> Maybe (Name, WithLocation (Definition p))
   -> MaybeT AnalysisM r
 
 resolvePath
@@ -183,30 +190,54 @@ resolvePath
   -> ResolveCallback r
   -> PathInfo Parsed
   -> MaybeT AnalysisM r
-resolvePath mode processDeclaration PathInfo {..} = do
-  names@(name :| others) <- handleMaybe (ErrorNameNotFound _pathName) =<<
-    uses contextNames (M.lookup _pathName)
+resolvePath mode callback PathInfo {..} = do
+  roles@(role :| others) <- handleMaybe (ErrorRoleNotFound _pathName) =<<
+    uses contextScope (M.lookup _pathName)
   when (not $ null others) $
-    reportError $ ErrorAmbiguousPath _pathName names
+    reportError $ ErrorAmbiguousPath _pathName roles
   params <- traverse (resolveType mode) _pathParams
-  resolveName processDeclaration $ PathInfo name params
+  resolveRole callback $ PathInfo role params
 
 lookupIdentifier
   :: Identifier
-  -> MaybeT AnalysisM (Maybe (NonEmpty Name))
+  -> MaybeT AnalysisM (Maybe (NonEmpty Role))
 lookupIdentifier identifier =
-  uses contextNames (M.lookup $ pure identifier)
+  uses contextScope (M.lookup $ pure identifier)
 
-resolveName
-  :: ResolveCallback r
+resolveRole
+  :: forall r
+   . ResolveCallback r
   -> PathInfo Resolved
   -> MaybeT AnalysisM r
-resolveName processDeclaration resolvedPathInfo =
-  uses contextDeclarations (M.lookup name) >>= \case
-    Just decl -> processDeclaration resolvedPathInfo (Just decl)
-    Nothing   -> views infoLocals (M.lookup name) >>= processDeclaration resolvedPathInfo
+resolveRole callback resolvedPathInfo = do
+  case getName (_pathName resolvedPathInfo) of
+    Nothing   -> callback @Resolved resolvedPathInfo Nothing
+    Just name -> do
+      let
+        call :: forall (p :: ASTPhase)
+             .  Analyzable p
+             => WithLocation (Definition p)
+             -> MaybeT AnalysisM r
+        call = callback resolvedPathInfo . Just . (name,)
+      foreignDefinition <- views infoForeignDefinitions (M.lookup name)
+      cachedDefinition  <- uses contextCache (M.lookup name)
+      localDefinition   <- views infoLocalDefinitions (M.lookup name)
+      let action = asum [ call <$> foreignDefinition
+                        , call <$> cachedDefinition
+                        , call <$> localDefinition
+                        ]
+      case action of
+        Nothing -> error "ICE"
+        Just a  -> a
   where
-    name = _pathName resolvedPathInfo
+    getName = \case
+      TopLevelDeclaration name   -> Just name
+      BuiltinType _              -> Nothing
+      BuiltinFunction name       -> Just name
+      TypeParameter _            -> Nothing
+      Placeholder                -> Nothing
+      FunctionArgument _ argType -> getName $ _pathName $ functionArgType argType
+      LetVariable _ varType      -> getName $ _pathName varType
 
 resolveConstValue
   :: PathInfo Parsed
@@ -216,25 +247,23 @@ resolveConstValue pathInfo = resolvePath AllowPlaceholder go pathInfo
     originalPath = _pathName pathInfo
     go :: ResolveCallback TypedExpression
     go resolvedPath@PathInfo {..} = \case
-      Nothing   -> reportError undefined
-      Just decl -> case _located decl of
-        TypeAliasDecl _ -> reportError $ ErrorNotAConst originalPath _pathName
-        FunctionDecl  _ -> reportError $ ErrorNotAConst originalPath _pathName
-        StructDecl    _ -> reportError $ ErrorNotAConst originalPath _pathName
-        EnumDecl      enumInfo -> do
+      Nothing   -> reportError $ ErrorNotAConst originalPath _pathName
+      Just (name, def) -> case _located def of
+        TypeAliasDef _ -> reportError $ ErrorNotAConst originalPath _pathName
+        FunctionDef  _ -> reportError $ ErrorNotAConst originalPath _pathName
+        StructDef    _ -> reportError $ ErrorNotAConst originalPath _pathName
+        EnumDef enumInfo -> do
           -- TODO: reject type parameters
-          let identifier = NE.last originalPath
+          let identifier = NE.last $ _nameFullPath name
           if identifier == _enumName enumInfo
             then reportError $ ErrorNotAConst originalPath _pathName
             else
               case L.elemIndex identifier (_enumValues enumInfo) of
                 Nothing -> error "ICE"
                 Just i  -> pure $ TypedExpression resolvedPath $ IntLiteralExpr i
-        ConstDecl     _ ->
+        ConstDef info -> do
           -- TODO: reject type parameters
-          resolveDeclaration _pathName decl <&> \case
-            ConstDecl cInfo -> _constExpr cInfo
-            _ -> error "ICE"
+          _constExpr <$> resolveDefinition (_location def) info
 
 resolveValue
   :: PathInfo Parsed
@@ -244,35 +273,33 @@ resolveValue pathInfo = resolvePath AllowPlaceholder go pathInfo
     originalPath = _pathName pathInfo
     go :: ResolveCallback TypedExpression
     go resolvedPath@PathInfo {..} = \case
-      Nothing   -> case _pathName of
+      Nothing -> case _pathName of
         FunctionArgument _ (ByValue argType) ->
           pure $ TypedExpression argType $ PathExpr $ resolvedPath
         FunctionArgument _ (ByReference argType) ->
           pure $ TypedExpression argType $ PathExpr $ resolvedPath
         LetVariable _ varType ->
           pure $ TypedExpression varType $ PathExpr $ resolvedPath
-        TopLevelDeclaration _ _ -> error "ICE"
+        TopLevelDeclaration _ -> error "ICE"
         Placeholder -> reportError $ ErrorPlaceholder "function expression path"
         _ -> reportError $ ErrorNotAValue originalPath _pathName
-
-      Just decl -> case _located decl of
-        TypeAliasDecl _ -> reportError $ ErrorNotAValue originalPath _pathName
-        FunctionDecl  _ -> reportError $ ErrorNotAValue originalPath _pathName
-        StructDecl    _ -> reportError $ ErrorNotAValue originalPath _pathName
-        EnumDecl      enumInfo -> do
+      Just (name, def) -> case _located def of
+        TypeAliasDef _ -> reportError $ ErrorNotAValue originalPath _pathName
+        FunctionDef  _ -> reportError $ ErrorNotAValue originalPath _pathName
+        StructDef    _ -> reportError $ ErrorNotAValue originalPath _pathName
+        EnumDef enumInfo -> do
           -- TODO: reject type parameters
-          let identifier = NE.last originalPath
+          let identifier = NE.last $ _nameFullPath name
           if identifier == _enumName enumInfo
             then reportError $ ErrorNotAValue originalPath _pathName
             else
               case L.elemIndex identifier (_enumValues enumInfo) of
                 Nothing -> error "ICE"
                 Just i  -> pure $ TypedExpression resolvedPath $ IntLiteralExpr i
-        ConstDecl     _ ->
+        ConstDef info ->
           -- TODO: reject type parameters
-          resolveDeclaration _pathName decl <&> \case
-            ConstDecl cInfo -> _constExpr cInfo
-            _ -> error "ICE"
+          _constExpr <$> resolveDefinition (_location def) info
+
 
 {-
 resolveTypeMaybe
@@ -303,7 +330,7 @@ resolveType mode pathInfo = resolvePath mode go pathInfo
     originalPath = _pathName pathInfo
     go :: ResolveCallback (PathInfo Resolved)
     go path@PathInfo {..} = \case
-      Nothing   -> case (_pathName, mode) of
+      Nothing -> case (_pathName, mode) of
         (Placeholder, ForbidPlaceholder context) ->
           reportError $ ErrorPlaceholder context
         (FunctionArgument _ _, _) ->
@@ -311,82 +338,81 @@ resolveType mode pathInfo = resolvePath mode go pathInfo
         (LetVariable _ _, _) ->
           reportError $ ErrorNotAType originalPath _pathName
         _ -> pure path
-      Just decl -> case _located decl of
-        TypeAliasDecl info -> do
-          resolvedInfo <- resolveDeclaration _pathName decl <&> \case
-            TypeAliasDecl taInfo -> taInfo
-            _ -> error "ICE"
+      Just (name, def) -> case _located def of
+        ConstDef     _ -> reportError (ErrorNotAType originalPath _pathName)
+        FunctionDef  _ -> reportError (ErrorNotAType originalPath _pathName)
+        TypeAliasDef info -> do
+          resolvedInfo <- resolveDefinition (_location def) info
           let expected = length (_aliasParams info)
               actual   = length _pathParams
           when (expected /= actual) $
-            reportError $ ErrorIncorrectTypeParameterCount _pathName expected actual
+            reportError $ ErrorIncorrectTypeParameterCount name expected actual
           let typeArguments = M.fromList $ zip (_aliasParams resolvedInfo) _pathParams
           resultPathInfo <- substituteTypes typeArguments $ _aliasValue resolvedInfo
           pure resultPathInfo
-        ConstDecl     _ -> reportError (ErrorNotAType originalPath _pathName)
-        FunctionDecl  _ -> reportError (ErrorNotAType originalPath _pathName)
-        EnumDecl      _ -> do
-          when (not $ null _pathParams) $
-            reportError $ ErrorIncorrectTypeParameterCount _pathName 0 (length _pathParams)
+        EnumDef enumInfo -> do
+          let identifier = NE.last $ _nameFullPath name
+          when (identifier /= _enumName enumInfo) $
+            reportError $ ErrorNotAType originalPath _pathName
           pure path
-        StructDecl info -> do
+        StructDef info -> do
           let expected = length (_structParams info)
               actual   = length _pathParams
           when (expected /= actual) $
-            reportError $ ErrorIncorrectTypeParameterCount _pathName expected actual
+            reportError $ ErrorIncorrectTypeParameterCount name expected actual
           pure path
 
 resolveStruct
   :: PathInfo Parsed
-  -> MaybeT AnalysisM (PathInfo Resolved, StructInfo Resolved, HashMap Identifier (PathInfo Resolved))
+  -> MaybeT AnalysisM (Maybe (PathInfo Resolved, StructInfo Resolved, HashMap Identifier (PathInfo Resolved)))
 resolveStruct pathInfo = resolvePath AllowPlaceholder go pathInfo
   where
     originalPath = _pathName pathInfo
-    go :: ResolveCallback (PathInfo Resolved, StructInfo Resolved, HashMap Identifier (PathInfo Resolved))
+    go :: ResolveCallback (Maybe (PathInfo Resolved, StructInfo Resolved, HashMap Identifier (PathInfo Resolved)))
     go path@PathInfo {..} = \case
-      Nothing -> do
-        when (_pathName == Placeholder) $
-          reportError $ ErrorPlaceholder "struct name in struct expression"
-        reportError $ ErrorNotAStruct originalPath _pathName
-      Just decl -> case _located decl of
-        ConstDecl     _ -> reportError $ ErrorNotAStruct originalPath _pathName
-        FunctionDecl  _ -> reportError $ ErrorNotAStruct originalPath _pathName
-        EnumDecl      _ -> reportError $ ErrorNotAStruct originalPath _pathName
-        TypeAliasDecl info -> do
-          resolvedInfo <- resolveDeclaration _pathName decl <&> \case
-            TypeAliasDecl taInfo -> taInfo
-            _ -> error "ICE"
+      Nothing ->
+        case _pathName of
+          TypeParameter _ ->
+            pure Nothing
+          Placeholder ->
+            reportError $ ErrorPlaceholder "struct name in struct expression"
+          _ ->
+            reportError $ ErrorNotAStruct originalPath _pathName
+      Just (name, def) -> case _located def of
+        ConstDef     _ -> reportError $ ErrorNotAStruct originalPath _pathName
+        FunctionDef  _ -> reportError $ ErrorNotAStruct originalPath _pathName
+        EnumDef      _ -> reportError $ ErrorNotAStruct originalPath _pathName
+        TypeAliasDef info -> do
+          resolvedInfo <- resolveDefinition (_location def) info
           let expected = length (_aliasParams info)
               actual   = length _pathParams
           when (expected /= actual) $
-            reportError $ ErrorIncorrectTypeParameterCount _pathName expected actual
+            reportError $ ErrorIncorrectTypeParameterCount name expected actual
           let typeArguments = M.fromList $ zip (_aliasParams resolvedInfo) _pathParams
           resultPathInfo <- substituteTypes typeArguments $ _aliasValue resolvedInfo
-          resolveName go resultPathInfo
-        StructDecl _ -> do
-          resolvedInfo <- resolveDeclaration _pathName decl <&> \case
-            StructDecl sInfo -> sInfo
-            _ -> error "ICE"
+          resolveRole go resultPathInfo
+        StructDef info -> do
+          resolvedInfo <- resolveDefinition (_location def) info
           let expectedParams = _structParams resolvedInfo
               expectedCount  = length expectedParams
               givenCount     = length _pathParams
           when (expectedCount /= givenCount && givenCount > 0) $
-            reportError $ ErrorIncorrectTypeParameterCount _pathName expectedCount givenCount
+            reportError $ ErrorIncorrectTypeParameterCount name expectedCount givenCount
           let mapping = M.fromList $
                 if null _pathParams
                 then [(paramName, PlaceholderType) | paramName <- expectedParams]
                 else zip expectedParams _pathParams
-          pure (path, resolvedInfo, mapping)
+          pure $ Just (path, resolvedInfo, mapping)
 
-tryResolveEnumFromName
+tryResolveEnumFromRole
   :: PathInfo Resolved
-  -> MaybeT AnalysisM (Maybe EnumInfo)
-tryResolveEnumFromName = resolveName go
+  -> MaybeT AnalysisM (Maybe (EnumInfo Resolved))
+tryResolveEnumFromRole = resolveRole go
   where
-    go :: ResolveCallback (Maybe EnumInfo)
-    go _ decl = pure do
-      EnumDecl enumInfo <- fmap _located decl
-      pure enumInfo
+    go :: ResolveCallback (Maybe (EnumInfo Resolved))
+    go _ info = sequence do
+      WithLocation loc (EnumDef enumInfo) <- fmap snd info
+      pure $ resolveDefinition loc enumInfo
 
 substituteTypes
   :: HashMap Identifier (PathInfo Resolved)
@@ -409,11 +435,11 @@ setTypeParameters typeName parameters = do
         [identifier]     -> do
           when (isReserved identifier) $
             reportError $ ErrorReservedIdentifier typeName identifier
-          let parameterName = TypeParameter identifier
+          let parameterRole = TypeParameter identifier
           whenJustM (lookupIdentifier identifier) \names ->
-            reportWarning $ WarningNameShadow names parameterName
-          pure (pure identifier, pure parameterName)
-  contextNames %= M.union typeNames
+            reportWarning $ WarningNameShadow names parameterRole
+          pure (pure identifier, pure parameterRole)
+  contextScope %= M.union typeNames
 
 typeDiff
   :: PathInfo Resolved
@@ -455,44 +481,93 @@ mostSpecificType = NE.head . NE.sortWith numberOfParameters
 
 
 --------------------------------------------------------------------------------
--- Analysis
+-- Analyzable
 
 class Analyzable p where
-  resolveDeclaration :: Name -> WithLocation (Declaration p) -> MaybeT AnalysisM (Declaration Resolved)
+  resolveDefinition
+    :: IsDefinition i
+    => Location
+    -> i p
+    -> MaybeT AnalysisM (i Resolved)
 
 instance Analyzable Parsed where
-  resolveDeclaration = analyzeDeclaration
+  resolveDefinition loc info = toDefinition info
+    & WithLocation loc
+    & analyzeDefinition
+    & fmap (fromMaybe (error "ICE") . fromDefinition)
 
 instance Analyzable Resolved where
-  resolveDeclaration _ = pure . _located
+  resolveDefinition _ = pure
+
+class IsDefinition i where
+  toDefinition :: i p -> Definition p
+  fromDefinition :: Definition p -> Maybe (i p)
+
+instance IsDefinition TypeAliasInfo where
+  toDefinition = TypeAliasDef
+  fromDefinition = \case
+    TypeAliasDef i -> Just i
+    _ -> Nothing
+
+instance IsDefinition EnumInfo where
+  toDefinition = EnumDef
+  fromDefinition = \case
+    EnumDef i -> Just i
+    _ -> Nothing
+
+instance IsDefinition StructInfo where
+  toDefinition = StructDef
+  fromDefinition = \case
+    StructDef i -> Just i
+    _ -> Nothing
+
+instance IsDefinition ConstInfo where
+  toDefinition = ConstDef
+  fromDefinition = \case
+    ConstDef i -> Just i
+    _ -> Nothing
+
+instance IsDefinition FunctionInfo where
+  toDefinition = FunctionDef
+  fromDefinition = \case
+    FunctionDef i -> Just i
+    _ -> Nothing
 
 
-analyzeDeclaration
-  :: Name
-  -> WithLocation (Declaration Parsed)
-  -> MaybeT AnalysisM (Declaration Resolved)
-analyzeDeclaration thisName declaration = do
-  uses contextDeclarations (M.lookup thisName) >>= \case
-    Just decl -> pure $ _located decl
+--------------------------------------------------------------------------------
+-- Analysis
+
+analyzeDefinition
+  :: WithLocation (Definition Parsed)
+  -> MaybeT AnalysisM (Definition Resolved)
+analyzeDefinition definition = do
+  moduleName <- view infoModuleName
+  let exportedIdentifiers = definitionIdentifiers $ _located definition
+      rootName = Name (moduleName <> pure (NE.head exportedIdentifiers)) []
+  exportedNames <- for exportedIdentifiers \identifier -> do
+    when (isReserved identifier) $
+      reportError $ ErrorReservedIdentifier rootName identifier
+    pure $ Name (moduleName <> pure identifier) []
+  uses contextCache (M.lookup rootName) >>= \case
+    Just def -> pure $ _located def
     Nothing -> do
       resetState
-      let declLocation = _location declaration
-      contextLocation .= declLocation
-      declCycle <- views infoStack (S.member thisName)
-      if declCycle
-      then reportError (ErrorCyclicDefinition thisName)
-      else local (infoStack %~ S.insert thisName) do
-        let declIdentifier = declarationIdentifier $ _located declaration
-        when (isReserved declIdentifier) $
-          reportError $ ErrorReservedIdentifier thisName declIdentifier
-        resolvedDeclaration <- case _located declaration of
-          TypeAliasDecl info -> TypeAliasDecl <$> analyzeTypeAlias thisName info
-          StructDecl    info -> StructDecl    <$> analyzeStruct    thisName info
-          EnumDecl      info -> EnumDecl      <$> analyzeEnum      thisName info
-          ConstDecl     info -> ConstDecl     <$> analyzeConst     thisName info
-          FunctionDecl  info -> FunctionDecl  <$> analyzeFunction  thisName info
-        contextDeclarations %= M.insert thisName (WithLocation declLocation resolvedDeclaration)
-        pure resolvedDeclaration
+      let defLocation = _location definition
+      contextLocation .= defLocation
+      defCycle <- views infoStack (S.member rootName)
+      if defCycle
+      then reportError (ErrorCyclicDefinition rootName)
+      else local (infoStack %~ S.insert rootName) do
+        resolvedDefinition <- case _located definition of
+          TypeAliasDef info -> TypeAliasDef <$> analyzeTypeAlias rootName info
+          StructDef    info -> StructDef    <$> analyzeStruct    rootName info
+          EnumDef      info -> EnumDef      <$> analyzeEnum      rootName info
+          ConstDef     info -> ConstDef     <$> analyzeConst     rootName info
+          FunctionDef  info -> FunctionDef  <$> analyzeFunction  rootName info
+        contextCache <>= M.fromList do
+          name <- NE.toList exportedNames
+          pure (name, WithLocation defLocation resolvedDefinition)
+        pure resolvedDefinition
 
 analyzeTypeAlias
   :: Name
@@ -500,7 +575,7 @@ analyzeTypeAlias
   -> MaybeT AnalysisM (TypeAliasInfo Resolved)
 analyzeTypeAlias thisName TypeAliasInfo {..} = do
   setTypeParameters thisName _aliasParams
-  resolved <- resolveType (ForbidPlaceholder "type alias declaration") _aliasValue
+  resolved <- resolveType (ForbidPlaceholder "type alias definition") _aliasValue
   pure $ TypeAliasInfo _aliasName _aliasParams resolved
 
 analyzeStruct
@@ -509,14 +584,14 @@ analyzeStruct
   -> MaybeT AnalysisM (StructInfo Resolved)
 analyzeStruct thisName info = do
   setTypeParameters thisName (_structParams info)
-  structValues ((traverse . traverse) (resolveType $ ForbidPlaceholder "struct fields declaration")) info
+  structValues ((traverse . traverse) (resolveType $ ForbidPlaceholder "struct fields definition")) info
 
 analyzeEnum
   :: Name
-  -> EnumInfo
-  -> MaybeT AnalysisM EnumInfo
-analyzeEnum thisName info = do
-  let names = group $ sort $ _enumValues info
+  -> EnumInfo Parsed
+  -> MaybeT AnalysisM (EnumInfo Resolved)
+analyzeEnum thisName EnumInfo {..} = do
+  let names = group $ sort _enumValues
   failed <- or <$> for names \case
     []       -> error "ICE"
     [_]      -> pure False
@@ -524,14 +599,14 @@ analyzeEnum thisName info = do
       tell [ErrorEnumDuplicateEntries thisName name]
       pure True
   when failed mzero
-  pure info
+  pure $ EnumInfo _enumName _enumValues
 
 analyzeConst
   :: Name
   -> ConstInfo Parsed
   -> MaybeT AnalysisM (ConstInfo Resolved)
 analyzeConst _thisName ConstInfo {..} = do
-  resolvedType <- resolveType (ForbidPlaceholder "const declaration") _constType
+  resolvedType <- resolveType (ForbidPlaceholder "const definition") _constType
   resolvedExpr <- go _constExpr
   when (resolvedType /= _exprType resolvedExpr) $
     reportError $ ErrorWrongType [resolvedType] (_exprType resolvedExpr)
@@ -608,8 +683,8 @@ analyzeConst _thisName ConstInfo {..} = do
           let resolvedSourceType = _exprType resolvedExpr
               reportCastError :: forall a. MaybeT AnalysisM a
               reportCastError = reportError $ ErrorWrongCast resolvedSourceType resolvedTargetType
-          targetEnum <- tryResolveEnumFromName resolvedTargetType
-          sourceEnum <- tryResolveEnumFromName resolvedSourceType
+          targetEnum <- tryResolveEnumFromRole resolvedTargetType
+          sourceEnum <- tryResolveEnumFromRole resolvedSourceType
           case (sourceEnum, targetEnum) of
             (Just _, Just destEnum) -> do
               intValue <- case _exprValue resolvedExpr of
@@ -659,7 +734,7 @@ analyzeConst _thisName ConstInfo {..} = do
         ArrayExpr _ -> undefined
         IndexExpr _ _ -> undefined
         StructExpr path fields -> do
-          (resolvedType, structInfo, paramMapping) <- resolveStruct path
+          (resolvedType, structInfo, paramMapping) <- fromMaybe (error "ICE") <$> resolveStruct path
           resolvedFields <- (traverse . traverse) go fields
           fullyResolvedType <- analyzeStructFields resolvedType structInfo paramMapping resolvedFields
           pure $ TypedExpression fullyResolvedType $ StructExpr fullyResolvedType resolvedFields
@@ -753,7 +828,7 @@ analyzeFunction
   -> MaybeT AnalysisM (FunctionInfo Resolved)
 analyzeFunction thisName FunctionInfo {..} = do
   setTypeParameters thisName _funParams
-  resolvedType <- traverse (resolveType $ ForbidPlaceholder "function declaration") _funType
+  resolvedType <- traverse (resolveType $ ForbidPlaceholder "function definition") _funType
   let argNames = M.fromListWith (+) do
         (argName, _) <- _funArgs
         pure (argName, 1 :: Int)
@@ -770,24 +845,24 @@ analyzeFunction thisName FunctionInfo {..} = do
     analyzeArg (argName, argType) = do
       resolvedType <- case argType of
         ByValue t -> ByValue <$>
-          resolveType (ForbidPlaceholder "function declaration") t
+          resolveType (ForbidPlaceholder "function definition") t
         ByReference t -> ByReference <$>
-          resolveType (ForbidPlaceholder "function declaration") t
+          resolveType (ForbidPlaceholder "function definition") t
       when (isReserved argName) $
         reportError $ ErrorReservedIdentifier thisName argName
-      let resolvedName = FunctionArgument argName resolvedType
+      let resolvedRole = FunctionArgument argName resolvedType
       whenJustM (lookupIdentifier argName) \names ->
-        reportWarning $ WarningNameShadow names resolvedName
-      contextNames %= M.insert (pure argName) (pure resolvedName)
+        reportWarning $ WarningNameShadow names resolvedRole
+      contextScope %= M.insert (pure argName) (pure resolvedRole)
       pure (argName, resolvedType)
 
 analyzeBlock
   :: [WithLocation (Statement Parsed)]
   -> MaybeT AnalysisM [Statement Resolved]
 analyzeBlock statements = do
-  previousScope <- use contextNames
+  previousScope <- use contextScope
   result <- traverse analyzeStatement statements
-  contextNames .= previousScope
+  contextScope .= previousScope
   pure result
 
 analyzeStatement
@@ -828,8 +903,8 @@ analyzeFunctionExpression expr = do
           resultCast =
             TypedExpression resolvedTargetType $
             CastExpr resolvedExpr resolvedTargetType
-      targetEnum <- tryResolveEnumFromName resolvedTargetType
-      sourceEnum <- tryResolveEnumFromName resolvedSourceType
+      targetEnum <- tryResolveEnumFromRole resolvedTargetType
+      sourceEnum <- tryResolveEnumFromRole resolvedSourceType
       case (sourceEnum, targetEnum) of
         (Just _, Just destEnum) -> do
           case _exprValue resolvedExpr of

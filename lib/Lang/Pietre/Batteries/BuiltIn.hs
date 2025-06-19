@@ -18,7 +18,7 @@ data TypeResolutionMode
   deriving (Show)
 
 
-builtins :: [(Path, Name)]
+builtins :: [(Path, Role)]
 builtins =
   [ (pure "int",   _pathName IntType)
   , (pure "char",  _pathName CharType)

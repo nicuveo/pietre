@@ -9,22 +9,22 @@ import Lang.Pietre.Representations.Tokens
 
 
 data Diagnostic
-  = ErrorImportPath   ModuleName
+  = ErrorImportPath ModuleName
   | ErrorImportSymbol ModuleName Identifier
   | ErrorMultipleDeclaration Identifier (NonEmpty Location)
-  | ErrorNameNotFound Path
-  | ErrorNotAType Path Name
-  | ErrorNotAConst Path Name
-  | ErrorNotAStruct Path Name
-  | ErrorNotAValue Path Name
-  | ErrorAmbiguousPath Path (NonEmpty Name)
+  | ErrorRoleNotFound Path
+  | ErrorNotAType Path Role
+  | ErrorNotAConst Path Role
+  | ErrorNotAStruct Path Role
+  | ErrorNotAValue Path Role
+  | ErrorAmbiguousPath Path (NonEmpty Role)
   | ErrorCyclicDefinition Name
   | ErrorIncorrectTypeParameterCount Name Int Int
   | ErrorDuplicateTypeParameter Name Identifier
   | ErrorEnumDuplicateEntries Name Identifier
   | ErrorWrongType [PathInfo Resolved] (PathInfo Resolved)
   | ErrorWrongCast (PathInfo Resolved) (PathInfo Resolved)
-  | ErrorEnumOutOfBounds EnumInfo Int
+  | ErrorEnumOutOfBounds (EnumInfo Resolved) Int
   | ErrorStructMissingField (PathInfo Resolved) Identifier
   | ErrorStructDuplicatedField (PathInfo Resolved) Identifier
   | ErrorStructUnknownField (PathInfo Resolved) Identifier
@@ -37,5 +37,5 @@ data Diagnostic
   | ErrorFunctionDuplicatedArg Identifier
   | ErrorBreakNotInLoop
   | ErrorContinueNotInLoop
-  | WarningNameShadow (NonEmpty Name) Name
+  | WarningNameShadow (NonEmpty Role) Role
   deriving Show

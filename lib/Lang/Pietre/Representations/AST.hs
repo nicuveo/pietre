@@ -26,8 +26,8 @@ class Annotation (inner :: ASTPhase -> Type) (phase :: ASTPhase) where
   within :: Lens' (Annotated inner phase) (inner phase)
 
 
-instance Annotation Declaration Parsed where
-  type Annotated Declaration Parsed = WithLocation (Declaration Parsed)
+instance Annotation Definition Parsed where
+  type Annotated Definition Parsed = WithLocation (Definition Parsed)
   within = located
 
 instance Annotation Statement Parsed where
@@ -39,8 +39,8 @@ instance Annotation Expression Parsed where
   within = located
 
 
-instance Annotation Declaration Resolved where
-  type Annotated Declaration Resolved = WithLocation (Declaration Resolved)
+instance Annotation Definition Resolved where
+  type Annotated Definition Resolved = WithLocation (Definition Resolved)
   within = located
 
 instance Annotation Statement Resolved where
@@ -56,11 +56,11 @@ instance ASTRepresentation Parsed where
   type NameType Parsed = Path
 
 instance ASTRepresentation Resolved where
-  type NameType Resolved = Name
+  type NameType Resolved = Role
 
 
 type ShowConstraints p =
-  ( Show (Annotated Declaration p)
+  ( Show (Annotated Definition p)
   , Show (Annotated Statement   p)
   , Show (Annotated Expression  p)
   , Show (NameType p)
@@ -82,8 +82,8 @@ type OrdConstraints p =
 -- Parsed phase
 
 data Module = Module
-  { _modImports      :: [Import]
-  , _modDeclarations :: [Annotated Declaration Parsed]
+  { _modImports     :: [Import]
+  , _modDefinitions :: [Annotated Definition Parsed]
   }
 
 deriving instance Show Module
@@ -125,23 +125,14 @@ deriving instance OrdConstraints  Resolved => Ord  TypedExpression
 --------------------------------------------------------------------------------
 -- Generic AST
 
-data Declaration (p :: ASTPhase)
-  = TypeAliasDecl (TypeAliasInfo p)
-  | EnumDecl      EnumInfo
-  | StructDecl    (StructInfo    p)
-  | ConstDecl     (ConstInfo     p)
-  | FunctionDecl  (FunctionInfo  p)
+data Definition (p :: ASTPhase)
+  = TypeAliasDef (TypeAliasInfo p)
+  | EnumDef      (EnumInfo      p)
+  | StructDef    (StructInfo    p)
+  | ConstDef     (ConstInfo     p)
+  | FunctionDef  (FunctionInfo  p)
 
-deriving instance ShowConstraints p => Show (Declaration p)
-
-declarationIdentifier :: Declaration p -> Identifier
-declarationIdentifier = \case
-  ConstDecl     ConstInfo     {..} -> _constName
-  TypeAliasDecl TypeAliasInfo {..} -> _aliasName
-  EnumDecl      EnumInfo      {..} -> _enumName
-  StructDecl    StructInfo    {..} -> _structName
-  FunctionDecl  FunctionInfo  {..} -> _funName
-
+deriving instance ShowConstraints p => Show (Definition p)
 
 data TypeAliasInfo (p :: ASTPhase) = TypeAliasInfo
   { _aliasName   :: Identifier
@@ -152,11 +143,12 @@ data TypeAliasInfo (p :: ASTPhase) = TypeAliasInfo
 deriving instance ShowConstraints p => Show (TypeAliasInfo p)
 
 
-data EnumInfo = EnumInfo
+data EnumInfo (p :: ASTPhase) = EnumInfo
   { _enumName   :: Identifier
   , _enumValues :: [Identifier]
   }
-  deriving (Show)
+
+deriving instance ShowConstraints p => Show (EnumInfo p)
 
 
 data StructInfo (p :: ASTPhase) = StructInfo
@@ -192,6 +184,11 @@ data FunctionArgType (p :: ASTPhase)
   = ByValue     (PathInfo p)
   | ByReference (PathInfo p)
   deriving Generic
+
+functionArgType :: FunctionArgType p -> PathInfo p
+functionArgType = \case
+  ByValue     p -> p
+  ByReference p -> p
 
 deriving instance ShowConstraints p => Show (FunctionArgType p)
 deriving instance EqConstraints   p => Eq   (FunctionArgType p)
@@ -316,7 +313,7 @@ instance (EqConstraints p, Hashable (NameType p)) => Hashable (PathInfo p)
 
 instance Pretty Module where
   pretty Module {..} =
-    vsep $ map pretty _modImports ++ map (pretty . view located) _modDeclarations
+    vsep $ map pretty _modImports ++ map (pretty . view located) _modDefinitions
 
 instance Pretty Import where
   pretty Import {..} = hsep
@@ -329,13 +326,13 @@ instance Pretty Import where
         Exhaustive            -> "::*"
     ] <> ";"
 
-instance Pretty (Declaration Parsed) where
+instance Pretty (Definition Parsed) where
   pretty = \case
-    TypeAliasDecl tai -> pretty tai
-    EnumDecl      ei  -> pretty ei
-    StructDecl    si  -> pretty si
-    ConstDecl     ci  -> pretty ci
-    FunctionDecl  fi  -> pretty fi
+    TypeAliasDef tai -> pretty tai
+    EnumDef      ei  -> pretty ei
+    StructDef    si  -> pretty si
+    ConstDef     ci  -> pretty ci
+    FunctionDef  fi  -> pretty fi
 
 instance Pretty (TypeAliasInfo Parsed) where
   pretty TypeAliasInfo {..} = hsep
@@ -346,7 +343,7 @@ instance Pretty (TypeAliasInfo Parsed) where
     , pretty _aliasValue
     ] <> ";"
 
-instance Pretty EnumInfo where
+instance Pretty (EnumInfo Parsed) where
   pretty EnumInfo {..} = hsep
     [ "enum"
     , pretty _enumName
@@ -519,7 +516,7 @@ makeLenses ''LetInfo
 makeLenses ''TypedExpression
 
 makePrisms ''ImportType
-makePrisms ''Declaration
+makePrisms ''Definition
 makePrisms ''FunctionArgType
 makePrisms ''Statement
 makePrisms ''ElseInfo
