@@ -263,7 +263,7 @@ resolveConstValue pathInfo = resolvePath AllowPlaceholder go pathInfo
                 Just i  -> pure $ TypedExpression resolvedPath $ IntLiteralExpr i
         ConstDef info -> do
           -- TODO: reject type parameters
-          _constExpr <$> resolveDefinition (_location def) info
+          _constExpr <$> forceDefinition (_location def) info
 
 resolveValue
   :: PathInfo Parsed
@@ -298,7 +298,7 @@ resolveValue pathInfo = resolvePath AllowPlaceholder go pathInfo
                 Just i  -> pure $ TypedExpression resolvedPath $ IntLiteralExpr i
         ConstDef info ->
           -- TODO: reject type parameters
-          _constExpr <$> resolveDefinition (_location def) info
+          _constExpr <$> forceDefinition (_location def) info
 
 
 {-
@@ -342,7 +342,7 @@ resolveType mode pathInfo = resolvePath mode go pathInfo
         ConstDef     _ -> reportError (ErrorNotAType originalPath _pathName)
         FunctionDef  _ -> reportError (ErrorNotAType originalPath _pathName)
         TypeAliasDef info -> do
-          resolvedInfo <- resolveDefinition (_location def) info
+          resolvedInfo <- forceDefinition (_location def) info
           let expected = length (_aliasParams info)
               actual   = length _pathParams
           when (expected /= actual) $
@@ -361,6 +361,51 @@ resolveType mode pathInfo = resolvePath mode go pathInfo
           when (expected /= actual) $
             reportError $ ErrorIncorrectTypeParameterCount name expected actual
           pure path
+
+resolveFunction
+  :: PathInfo Parsed
+  -> MaybeT AnalysisM (FunctionInfo Resolved, HashMap Identifier (PathInfo Resolved))
+resolveFunction pathInfo = resolvePath AllowPlaceholder go pathInfo
+  where
+    originalPath = _pathName pathInfo
+    go :: ResolveCallback (FunctionInfo Resolved, HashMap Identifier (PathInfo Resolved))
+    go PathInfo {..} = \case
+      Nothing -> reportError $ ErrorNotAFunction originalPath _pathName
+      Just (name, def) -> case _located def of
+        ConstDef     _ -> reportError $ ErrorNotAFunction originalPath _pathName
+        StructDef    _ -> reportError $ ErrorNotAFunction originalPath _pathName
+        EnumDef      _ -> reportError $ ErrorNotAFunction originalPath _pathName
+        TypeAliasDef _ -> reportError $ ErrorNotAFunction originalPath _pathName
+        FunctionDef FunctionInfo {..} -> do
+          resolvedArgs <- (traverse . traverse) forceFunArg _funArgs
+          resolvedType <- traverse forceFunType _funType
+          let expectedCount  = length _funParams
+              givenCount     = length _pathParams
+          when (expectedCount /= givenCount && givenCount > 0) $
+            reportError $ ErrorIncorrectTypeParameterCount name expectedCount givenCount
+          let mapping = M.fromList $
+                if null _pathParams
+                then [(paramName, PlaceholderType) | paramName <- _funParams]
+                else zip _funParams _pathParams
+          -- TODO: register function for instantiation
+          pure (FunctionInfo _funName _funParams resolvedArgs resolvedType [], mapping)
+
+    forceFunType
+      :: forall p
+      .  Analyzable p
+      => PathInfo p
+      -> MaybeT AnalysisM (PathInfo Resolved)
+    forceFunType = forceType $ ForbidPlaceholder "function call"
+
+    forceFunArg
+      :: forall p
+      .  Analyzable p
+      => FunctionArgType p
+      -> MaybeT AnalysisM (FunctionArgType Resolved)
+    forceFunArg = \case
+      ByValue     path -> ByValue     <$> forceFunType path
+      ByReference path -> ByReference <$> forceFunType path
+
 
 resolveStruct
   :: PathInfo Parsed
@@ -383,7 +428,7 @@ resolveStruct pathInfo = resolvePath AllowPlaceholder go pathInfo
         FunctionDef  _ -> reportError $ ErrorNotAStruct originalPath _pathName
         EnumDef      _ -> reportError $ ErrorNotAStruct originalPath _pathName
         TypeAliasDef info -> do
-          resolvedInfo <- resolveDefinition (_location def) info
+          resolvedInfo <- forceDefinition (_location def) info
           let expected = length (_aliasParams info)
               actual   = length _pathParams
           when (expected /= actual) $
@@ -392,7 +437,7 @@ resolveStruct pathInfo = resolvePath AllowPlaceholder go pathInfo
           resultPathInfo <- substituteTypes typeArguments $ _aliasValue resolvedInfo
           resolveRole go resultPathInfo
         StructDef info -> do
-          resolvedInfo <- resolveDefinition (_location def) info
+          resolvedInfo <- forceDefinition (_location def) info
           let expectedParams = _structParams resolvedInfo
               expectedCount  = length expectedParams
               givenCount     = length _pathParams
@@ -412,7 +457,7 @@ tryResolveEnumFromRole = resolveRole go
     go :: ResolveCallback (Maybe (EnumInfo Resolved))
     go _ info = sequence do
       WithLocation loc (EnumDef enumInfo) <- fmap snd info
-      pure $ resolveDefinition loc enumInfo
+      pure $ forceDefinition loc enumInfo
 
 substituteTypes
   :: HashMap Identifier (PathInfo Resolved)
@@ -484,20 +529,26 @@ mostSpecificType = NE.head . NE.sortWith numberOfParameters
 -- Analyzable
 
 class Analyzable p where
-  resolveDefinition
+  forceDefinition
     :: IsDefinition i
     => Location
     -> i p
     -> MaybeT AnalysisM (i Resolved)
+  forceType
+    :: TypeResolutionMode
+    -> PathInfo p
+    -> MaybeT AnalysisM (PathInfo Resolved)
 
 instance Analyzable Parsed where
-  resolveDefinition loc info = toDefinition info
+  forceDefinition loc info = toDefinition info
     & WithLocation loc
     & analyzeDefinition
     & fmap (fromMaybe (error "ICE") . fromDefinition)
+  forceType = resolveType
 
 instance Analyzable Resolved where
-  resolveDefinition _ = pure
+  forceDefinition _ = pure
+  forceType _ = pure
 
 class IsDefinition i where
   toDefinition :: i p -> Definition p
@@ -981,14 +1032,27 @@ analyzeFunctionExpression expr = do
     PathExpr p ->
       resolveValue p
     FieldAccessExpr subExpr field -> do
-      TypedExpression structType structValue <- analyzeFunctionExpression subExpr
+      _lhs@(TypedExpression structType structValue) <- analyzeFunctionExpression subExpr
       case structValue of
         StructExpr _ fields -> do
           fmap snd $
             find ((field ==) . fst) fields `onNothing`
               reportError (ErrorFieldAccessFieldNotFound structType field)
-        _ -> undefined -- do
-          -- reportError $ ErrorFieldAccessNotAStruct structType
+        -- _ -> resolveStruct structType >>= \case
+        --   Nothing -> TypedExpression structType $ FieldAccessExpr lhs field
+        --   Just (resolvedTypeName, structInfo, paramMapping) -> do
+        --     fieldType <- find ((field ==) . fst) (_structValues structInfo) `onNothing`
+        --       reportError (ErrorFieldAccessFieldNotFound structType field)
+        --     resolvedFieldType <- substituteTypes paramMapping fieldType
+        --     pure $ TypedExpression fieldType $ FieldAccessExpr lhs field
+        _ -> undefined
+    CallExpr funPath arguments  -> do
+      (FunctionInfo {..}, mapping) <- resolveFunction funPath
+      resolvedArgs <- traverse analyzeFunctionExpression arguments
+      let resolvedType = fromMaybe UnitType _funType
+      -- TODO: perform type parameter matching
+      -- TODO: validate arg numbers and type
+      undefined resolvedArgs resolvedType mapping
     _ -> undefined
   where
     compileTimeEnumCast enumType enumInfo intValue = do
@@ -997,7 +1061,6 @@ analyzeFunctionExpression expr = do
       pure $ TypedExpression enumType $ IntLiteralExpr intValue
 
 {-
-    CallExpr _ _  -> reportError undefined
     ArrayExpr _ -> undefined
     IndexExpr _ _ -> undefined
     StructExpr path fields -> do

@@ -17,6 +17,7 @@ data Diagnostic
   | ErrorNotAConst Path Role
   | ErrorNotAStruct Path Role
   | ErrorNotAValue Path Role
+  | ErrorNotAFunction Path Role
   | ErrorAmbiguousPath Path (NonEmpty Role)
   | ErrorCyclicDefinition Name
   | ErrorIncorrectTypeParameterCount Name Int Int
