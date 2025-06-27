@@ -38,6 +38,8 @@ library
       Lang.Pietre.Representations.Name
       Lang.Pietre.Representations.Tokens
       Lang.Pietre.Stages.Analysis
+      Lang.Pietre.Stages.Analysis.Context
+      Lang.Pietre.Stages.Analysis.Core
       Lang.Pietre.Stages.Analysis.Diagnostic
       Lang.Pietre.Stages.Analysis.Monad
       Lang.Pietre.Stages.Assembly

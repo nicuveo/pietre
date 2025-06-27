@@ -22,6 +22,7 @@ data Role
   | BuiltinFunction Name
   | TypeParameter Identifier
   | Placeholder
+  | FunctionPointer (FunctionType Resolved)
   | FunctionArgument Identifier (FunctionArgType Resolved)
   | LetVariable Identifier (PathInfo Resolved)
-  deriving (Show, Eq, Ord)
+  deriving (Show)

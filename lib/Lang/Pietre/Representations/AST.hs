@@ -48,7 +48,6 @@ instance Annotation Statement Resolved where
   within = id
 
 
-
 class ASTRepresentation (p :: ASTPhase) where
   type NameType p :: Type
 
@@ -64,17 +63,6 @@ type ShowConstraints p =
   , Show (Annotated Statement   p)
   , Show (Annotated Expression  p)
   , Show (NameType p)
-  )
-
-type EqConstraints p =
-  ( Eq (NameType p)
-  , Eq (Annotated Expression p)
-  )
-
-type OrdConstraints p =
-  ( EqConstraints p
-  , Ord (NameType p)
-  , Ord (Annotated Expression p)
   )
 
 
@@ -118,8 +106,6 @@ data TypedExpression = TypedExpression
   }
 
 deriving instance ShowConstraints Resolved => Show TypedExpression
-deriving instance EqConstraints   Resolved => Eq   TypedExpression
-deriving instance OrdConstraints  Resolved => Ord  TypedExpression
 
 
 --------------------------------------------------------------------------------
@@ -173,12 +159,18 @@ data FunctionInfo (p :: ASTPhase) = FunctionInfo
   { _funName   :: Identifier
   , _funParams :: [Identifier]
   , _funArgs   :: [(Identifier, FunctionArgType p)]
-  , _funType   :: Maybe (PathInfo p)
+  , _funReturn :: Maybe (PathInfo p)
   , _funBody   :: [Annotated Statement p]
   }
 
 deriving instance ShowConstraints p => Show (FunctionInfo p)
 
+data FunctionType (p :: ASTPhase) = FunctionType
+  { _funtypeArgs   :: [FunctionArgType p]
+  , _funtypeReturn :: Maybe (PathInfo p)
+  }
+
+deriving instance ShowConstraints p => Show (FunctionType p)
 
 data FunctionArgType (p :: ASTPhase)
   = ByValue     (PathInfo p)
@@ -191,10 +183,6 @@ functionArgType = \case
   ByReference p -> p
 
 deriving instance ShowConstraints p => Show (FunctionArgType p)
-deriving instance EqConstraints   p => Eq   (FunctionArgType p)
-deriving instance OrdConstraints  p => Ord  (FunctionArgType p)
-
-instance (EqConstraints p, Hashable (NameType p)) => Hashable (FunctionArgType p)
 
 
 data Statement (p :: ASTPhase)
@@ -292,8 +280,6 @@ data Expression (p :: ASTPhase)
   | ExponentiationAssignmentExpr (Annotated Expression p) (Annotated Expression p)
 
 deriving instance ShowConstraints p => Show (Expression p)
-deriving instance EqConstraints   p => Eq   (Expression p)
-deriving instance OrdConstraints  p => Ord  (Expression p)
 
 
 data PathInfo (p :: ASTPhase) = PathInfo
@@ -302,10 +288,6 @@ data PathInfo (p :: ASTPhase) = PathInfo
   } deriving Generic
 
 deriving instance ShowConstraints p => Show (PathInfo p)
-deriving instance EqConstraints   p => Eq   (PathInfo p)
-deriving instance OrdConstraints  p => Ord  (PathInfo p)
-
-instance (EqConstraints p, Hashable (NameType p)) => Hashable (PathInfo p)
 
 
 --------------------------------------------------------------------------------
@@ -388,7 +370,7 @@ instance Pretty (FunctionInfo Parsed) where
               ByValue     te -> pretty te
               ByReference te -> "&" <+> pretty te
           ]
-    , foldMap (\t -> "->" <+> pretty t) _funType
+    , foldMap (\t -> "->" <+> pretty t) _funReturn
     , prettyBlock _funBody
     ]
 

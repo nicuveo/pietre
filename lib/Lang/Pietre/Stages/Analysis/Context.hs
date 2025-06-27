@@ -1,0 +1,470 @@
+module Lang.Pietre.Stages.Analysis.Context
+  ( -- * lookup
+    lookupRole
+  , lookupEnumType
+    -- * type resolve
+  , TypeResolutionMode (..)
+  , resolveType
+  , resolveStructType
+  , checkStructType
+    -- * expr resolve
+  , resolveConstValue
+  , resolveExprValue
+  , resolveFunctionCallValue
+  ) where
+
+import                "this" Prelude
+
+import                Control.Lens                           hiding (mapping,
+                                                              op)
+import                Data.HashMap.Strict                    qualified as M
+import                Data.List                              qualified as L
+import                Data.List.NonEmpty                     qualified as NE
+
+import                Lang.Pietre.Batteries.BuiltIn
+import                Lang.Pietre.Representations.AST
+import                Lang.Pietre.Representations.Location
+import                Lang.Pietre.Representations.Name
+import                Lang.Pietre.Representations.Tokens
+import {-# SOURCE #-} Lang.Pietre.Stages.Analysis.Core
+import                Lang.Pietre.Stages.Analysis.Diagnostic
+import                Lang.Pietre.Stages.Analysis.Monad
+
+
+--------------------------------------------------------------------------------
+-- Lookup
+
+-- | Given an identifier, attempt to locate any matching item in scope.
+lookupRole
+  :: Identifier
+  -> MaybeT AnalysisM (Maybe (NonEmpty Role))
+lookupRole path =
+  uses contextScope (M.lookup $ pure path)
+
+lookupEnumType
+  :: PathInfo Resolved
+  -> MaybeT AnalysisM (Maybe (EnumInfo Resolved))
+lookupEnumType = resolveTypeWith go
+  where
+    go :: ResolveCallback (Maybe (EnumInfo Resolved))
+    go _ info = sequence do
+      WithLocation loc (EnumDef enumInfo) <- fmap snd info
+      pure $ forceDefinition loc enumInfo
+
+
+--------------------------------------------------------------------------------
+-- Type-level resolve
+
+data TypeResolutionMode
+  = AllowPlaceholder
+  | ForbidPlaceholder Text
+  deriving (Show)
+
+resolveType
+  :: TypeResolutionMode
+  -> PathInfo Parsed
+  -> MaybeT AnalysisM (PathInfo Resolved)
+resolveType mode =
+  resolvePath mode >=> resolveTypeWith go
+  where
+    go :: ResolveCallback (PathInfo Resolved)
+    go path@PathInfo {..} = \case
+      Nothing -> case (_pathName, mode) of
+        (Placeholder, ForbidPlaceholder context) ->
+          reportError $ ErrorPlaceholder context
+        _ -> pure path
+      Just (name, def) -> case _located def of
+        ConstDef     _ -> reportError $ ErrorNotAType _pathName
+        FunctionDef  _ -> reportError $ ErrorNotAType _pathName
+        TypeAliasDef info -> do
+          resolvedInfo <- forceDefinition (_location def) info
+          let expected = length (_aliasParams info)
+              actual   = length _pathParams
+          when (expected /= actual) $
+            reportError $ ErrorIncorrectTypeParameterCount name expected actual
+          let typeArguments = M.fromList $ zip (_aliasParams resolvedInfo) _pathParams
+          resultPathInfo <- substituteTypes typeArguments $ _aliasValue resolvedInfo
+          pure resultPathInfo
+        EnumDef enumInfo -> do
+          let actual = length _pathParams
+          when (length _pathParams /= 0) $
+            reportError $ ErrorIncorrectTypeParameterCount name 0 actual
+          let identifier = NE.last $ _nameFullPath name
+          when (identifier /= _enumName enumInfo) $
+            reportError $ ErrorNotAType _pathName
+          pure path
+        StructDef info -> do
+          let expected = length (_structParams info)
+              actual   = length _pathParams
+              invalid  = case mode of
+                AllowPlaceholder    -> actual > 0 && actual /= expected
+                ForbidPlaceholder _ -> actual /= expected
+          when invalid $
+            reportError $ ErrorIncorrectTypeParameterCount name expected actual
+          pure path
+
+resolveStructType
+  :: PathInfo Parsed
+  -> MaybeT AnalysisM
+     (Maybe ( PathInfo Resolved
+            , StructInfo Resolved
+            , HashMap Identifier (PathInfo Resolved)
+            )
+     )
+resolveStructType =
+  resolveType AllowPlaceholder >=> checkStructType
+
+checkStructType
+  :: PathInfo Resolved
+  -> MaybeT AnalysisM
+     (Maybe ( PathInfo Resolved
+            , StructInfo Resolved
+            , HashMap Identifier (PathInfo Resolved)
+            )
+     )
+checkStructType = resolveTypeWith go
+  where
+    go :: ResolveCallback
+          (Maybe ( PathInfo Resolved
+                 , StructInfo Resolved
+                 , HashMap Identifier (PathInfo Resolved)
+                 )
+          )
+    go path@PathInfo {..} = \case
+      Nothing ->
+        case _pathName of
+          TypeParameter _ ->
+            pure Nothing
+          Placeholder ->
+            reportError $ ErrorPlaceholder "struct name in struct expression"
+          _ ->
+            reportError $ ErrorNotAStruct _pathName
+      Just (_, def) -> case _located def of
+        EnumDef      _ -> reportError $ ErrorNotAStruct _pathName
+        StructDef info -> do
+          resolvedInfo <- forceDefinition (_location def) info
+          let expectedParams = _structParams resolvedInfo
+              mapping = M.fromList $
+                if null _pathParams
+                then [(paramName, PlaceholderType) | paramName <- expectedParams]
+                else zip expectedParams _pathParams
+          pure $ Just (path, resolvedInfo, mapping)
+        _ -> error "ICE"
+
+
+--------------------------------------------------------------------------------
+-- Value-level resolve
+
+resolveConstValue
+  :: PathInfo Parsed
+  -> MaybeT AnalysisM TypedExpression
+resolveConstValue = do
+  resolvePath (ForbidPlaceholder "const value") >=> resolveValueWith go
+  where
+    go :: ResolveCallback TypedExpression
+    go resolvedPath@PathInfo {..} = \case
+      Nothing -> error "ICE"
+      Just (name, def) -> case _located def of
+        TypeAliasDef _ -> reportError $ ErrorNotAConst _pathName
+        FunctionDef  _ -> reportError $ ErrorNotAConst _pathName
+        StructDef    _ -> reportError $ ErrorNotAConst _pathName
+        EnumDef   info -> verifyEnumValue resolvedPath name info
+        ConstDef  info -> verifyConstValue resolvedPath name (_location def) info
+
+resolveExprValue
+  :: PathInfo Parsed
+  -> MaybeT AnalysisM TypedExpression
+resolveExprValue =
+  resolvePath mode >=> resolveValueWith go
+  where
+    mode = ForbidPlaceholder "expr value"
+    go :: ResolveCallback TypedExpression
+    go resolvedPath@PathInfo {..} info = case _pathName of
+      FunctionArgument _ (ByValue argType) ->
+        pure $ TypedExpression argType $ PathExpr $ resolvedPath
+      FunctionArgument _ (ByReference argType) ->
+        pure $ TypedExpression argType $ PathExpr $ resolvedPath
+      LetVariable _ varType ->
+        pure $ TypedExpression varType $ PathExpr $ resolvedPath
+      BuiltinFunction _ -> case info of
+        Just (name, WithLocation _ (FunctionDef funInfo)) -> do
+          (functionType, _) <- partiallyResolveFunctionType mode resolvedPath name funInfo
+          pure $ TypedExpression
+            (PathInfo (FunctionPointer functionType) [])
+            (PathExpr resolvedPath)
+        _ -> error "ICE"
+      TopLevelDeclaration _ -> case info of
+        Nothing -> error "ICE"
+        Just (name, def) -> case _located def of
+          TypeAliasDef    _ -> reportError $ ErrorNotAValue _pathName
+          StructDef       _ -> reportError $ ErrorNotAValue _pathName
+          EnumDef     eInfo -> verifyEnumValue resolvedPath name eInfo
+          ConstDef    cInfo -> verifyConstValue resolvedPath name (_location def) cInfo
+          FunctionDef fInfo -> do
+            (functionType, _) <- partiallyResolveFunctionType mode resolvedPath name fInfo
+            pure $ TypedExpression
+              (PathInfo (FunctionPointer functionType) [])
+              (PathExpr resolvedPath)
+      _ -> error "ICE"
+
+resolveFunctionCallValue
+  :: PathInfo Parsed
+  -> MaybeT AnalysisM
+     ( FunctionType Resolved
+     , HashMap Identifier (PathInfo Resolved)
+     )
+resolveFunctionCallValue = do
+  resolvePath AllowPlaceholder >=> resolveValueWith go
+  where
+    go :: ResolveCallback
+          ( FunctionType Resolved
+          , HashMap Identifier (PathInfo Resolved)
+          )
+    go resolvedPath@PathInfo {..} info = case _pathName of
+      FunctionArgument _ (ByValue argType) ->
+        checkFunctionType argType
+      FunctionArgument _ (ByReference argType) ->
+        checkFunctionType argType
+      LetVariable _ varType ->
+        checkFunctionType varType
+      BuiltinFunction _ -> case info of
+        Just (name, WithLocation _ (FunctionDef fInfo)) -> do
+          partiallyResolveFunctionType AllowPlaceholder resolvedPath name fInfo
+        _ -> error "ICE"
+      TopLevelDeclaration _ -> case info of
+        Nothing -> error "ICE"
+        Just (name, def) -> case _located def of
+          TypeAliasDef    _ -> reportError $ ErrorNotAFunction _pathName
+          StructDef       _ -> reportError $ ErrorNotAFunction _pathName
+          EnumDef         _ -> reportError $ ErrorNotAFunction _pathName
+          ConstDef        _ -> reportError $ ErrorNotAFunction _pathName
+          FunctionDef fInfo -> partiallyResolveFunctionType AllowPlaceholder resolvedPath name fInfo
+      _ -> error "ICE"
+    checkFunctionType PathInfo {..} = case _pathName of
+      FunctionPointer functionType ->
+        pure (functionType, M.empty)
+      _ ->
+        reportError $ ErrorNotAFunction _pathName
+
+
+--------------------------------------------------------------------------------
+-- Analyzable class
+
+class Analyzable p where
+  forceDefinition
+    :: IsDefinition i
+    => Location
+    -> i p
+    -> MaybeT AnalysisM (i Resolved)
+  forceType
+    :: TypeResolutionMode
+    -> PathInfo p
+    -> MaybeT AnalysisM (PathInfo Resolved)
+
+instance Analyzable Parsed where
+  forceDefinition loc info = toDefinition info
+    & WithLocation loc
+    & analyzeDefinition
+    & fmap (fromMaybe (error "ICE") . fromDefinition)
+  forceType = resolveType
+
+instance Analyzable Resolved where
+  forceDefinition _ = pure
+  forceType _ = pure
+
+class IsDefinition i where
+  toDefinition :: i p -> Definition p
+  fromDefinition :: Definition p -> Maybe (i p)
+
+instance IsDefinition TypeAliasInfo where
+  toDefinition = TypeAliasDef
+  fromDefinition = \case
+    TypeAliasDef i -> Just i
+    _ -> Nothing
+
+instance IsDefinition EnumInfo where
+  toDefinition = EnumDef
+  fromDefinition = \case
+    EnumDef i -> Just i
+    _ -> Nothing
+
+instance IsDefinition StructInfo where
+  toDefinition = StructDef
+  fromDefinition = \case
+    StructDef i -> Just i
+    _ -> Nothing
+
+instance IsDefinition ConstInfo where
+  toDefinition = ConstDef
+  fromDefinition = \case
+    ConstDef i -> Just i
+    _ -> Nothing
+
+instance IsDefinition FunctionInfo where
+  toDefinition = FunctionDef
+  fromDefinition = \case
+    FunctionDef i -> Just i
+    _ -> Nothing
+
+
+--------------------------------------------------------------------------------
+-- Internals
+
+type ResolveCallback r
+  =  forall (p :: ASTPhase)
+  .  Analyzable p
+  => PathInfo Resolved
+  -> Maybe (Name, WithLocation (Definition p))
+  -> MaybeT AnalysisM r
+
+resolvePath
+  :: TypeResolutionMode
+  -> PathInfo Parsed
+  -> MaybeT AnalysisM (PathInfo Resolved)
+resolvePath mode PathInfo {..} = do
+  roles@(role :| others) <- handleMaybe (ErrorRoleNotFound _pathName) =<<
+    uses contextScope (M.lookup _pathName)
+  when (not $ null others) $
+    reportError $ ErrorAmbiguousPath _pathName roles
+  params <- traverse (resolveType mode) _pathParams
+  pure $ PathInfo role params
+
+resolveTypeWith
+  :: forall r
+   . ResolveCallback r
+  -> PathInfo Resolved
+  -> MaybeT AnalysisM r
+resolveTypeWith callback resolvedPathInfo =
+  getTypeName (_pathName resolvedPathInfo)
+  >>= processCallback callback resolvedPathInfo
+
+resolveValueWith
+  :: forall r
+   . ResolveCallback r
+  -> PathInfo Resolved
+  -> MaybeT AnalysisM r
+resolveValueWith callback resolvedPathInfo = do
+  getValueName (_pathName resolvedPathInfo)
+  >>= processCallback callback resolvedPathInfo
+
+getTypeName :: Role -> MaybeT AnalysisM (Maybe Name)
+getTypeName role = case role of
+  TopLevelDeclaration name -> pure $ Just name
+  BuiltinType _            -> pure Nothing
+  BuiltinFunction _        -> reportError $ ErrorNotAType role
+  TypeParameter _          -> pure Nothing
+  Placeholder              -> pure Nothing
+  FunctionPointer _        -> pure Nothing
+  FunctionArgument _ _     -> reportError $ ErrorNotAType role
+  LetVariable _ _          -> reportError $ ErrorNotAType role
+
+getValueName :: Role -> MaybeT AnalysisM (Maybe Name)
+getValueName role = case role of
+  TopLevelDeclaration name   -> pure $ Just name
+  BuiltinType _              -> reportError $ ErrorNotAValue role
+  BuiltinFunction name       -> pure $ Just name
+  TypeParameter _            -> reportError $ ErrorNotAValue role
+  Placeholder                -> reportError $ ErrorNotAValue role
+  FunctionPointer _          -> reportError $ ErrorNotAValue role
+  FunctionArgument _ argType -> getTypeName $ _pathName $ functionArgType argType
+  LetVariable _ varType      -> getTypeName $ _pathName varType
+
+processCallback
+  :: forall r
+   . ResolveCallback r
+  -> PathInfo Resolved
+  -> Maybe Name
+  -> MaybeT AnalysisM r
+processCallback callback resolvedPathInfo = \case
+  Nothing -> callback @Resolved resolvedPathInfo Nothing
+  Just name -> do
+    let
+      call :: forall (p :: ASTPhase)
+           .  Analyzable p
+           => WithLocation (Definition p)
+           -> MaybeT AnalysisM r
+      call = callback resolvedPathInfo . Just . (name,)
+    foreignDefinition <- views infoForeignDefinitions (M.lookup name)
+    cachedDefinition  <- uses contextCache (M.lookup name)
+    localDefinition   <- views infoLocalDefinitions (M.lookup name)
+    let action = asum [ call <$> foreignDefinition
+                      , call <$> cachedDefinition
+                      , call <$> localDefinition
+                      ]
+    fromMaybe (error "ICE") action
+
+partiallyResolveFunctionType
+  :: forall (p :: ASTPhase)
+   . Analyzable p
+  => TypeResolutionMode
+  -> PathInfo Resolved
+  -> Name
+  -> FunctionInfo p
+  -> MaybeT AnalysisM
+     ( FunctionType Resolved
+     , HashMap Identifier (PathInfo Resolved)
+     )
+partiallyResolveFunctionType mode PathInfo {..} name FunctionInfo {..} = do
+  resolvedArgs   <- traverse forceFunArg (map snd _funArgs)
+  resolvedReturn <- traverse forceFunType _funReturn
+  let expected = length _funParams
+      actual   = length _pathParams
+      invalid  = case mode of
+        AllowPlaceholder    -> actual > 0 && actual /= expected
+        ForbidPlaceholder _ -> actual /= expected
+  when invalid $
+    reportError $ ErrorIncorrectTypeParameterCount name expected actual
+  let mapping = M.fromList $
+        if null _pathParams
+        then [(paramName, PlaceholderType) | paramName <- _funParams]
+        else zip _funParams _pathParams
+  -- TODO: register function for instantiation
+  pure (FunctionType resolvedArgs resolvedReturn, mapping)
+  where
+    forceFunType = forceType @p $ ForbidPlaceholder "function call"
+    forceFunArg = \case
+      ByValue     path -> ByValue     <$> forceFunType path
+      ByReference path -> ByReference <$> forceFunType path
+
+verifyEnumValue
+  :: forall p
+   . PathInfo Resolved
+  -> Name
+  -> EnumInfo p
+  -> MaybeT AnalysisM TypedExpression
+verifyEnumValue resolvedPath@PathInfo {..} name EnumInfo {..} = do
+  let actual = length _pathParams
+  when (actual /= 0) $
+    reportError $ ErrorIncorrectTypeParameterCount name 0 actual
+  let identifier = NE.last $ _nameFullPath name
+  when (identifier == _enumName) $
+    reportError $ ErrorNotAConst _pathName
+  case L.elemIndex identifier _enumValues of
+    Nothing -> error "ICE"
+    Just i  -> pure $ TypedExpression resolvedPath $ IntLiteralExpr i
+
+verifyConstValue
+  :: forall p
+   . Analyzable p
+  => PathInfo Resolved
+  -> Name
+  -> Location
+  -> ConstInfo p
+  -> MaybeT AnalysisM TypedExpression
+verifyConstValue PathInfo {..} name loc constInfo = do
+  let actual = length _pathParams
+  when (actual /= 0) $
+    reportError $ ErrorIncorrectTypeParameterCount name 0 actual
+  _constExpr <$> forceDefinition loc constInfo
+
+
+--------------------------------------------------------------------------------
+-- TODO: move this
+
+substituteTypes
+  :: HashMap Identifier (PathInfo Resolved)
+  -> PathInfo Resolved
+  -> MaybeT AnalysisM (PathInfo Resolved)
+substituteTypes mappings info@PathInfo {..} = case _pathName of
+  TypeParameter name -> M.lookup name mappings `onNothing` error "ICE"
+  _                  -> pathParams (traverse $ substituteTypes mappings) info
