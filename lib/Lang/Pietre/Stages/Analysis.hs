@@ -45,10 +45,9 @@ analyzeModule foreignDefinitions moduleExports moduleName Module {..} = runMaybe
   let analysisInfo = AnalysisInfo moduleName S.empty localDefinitions foreignDefinitions topLevelScope
   let (diagnostics, resolvedModule) =
         runAnalysis analysisInfo do
-          result <- sequence <$>
-            traverse (runMaybeT . analyzeDefinition) _modDefinitions
+          traverse_ (try . analyzeDefinition) _modDefinitions
           cachedDefinitions <- use contextCache
-          pure $ ResolvedModule exported cachedDefinitions <$ result
+          pure $ ResolvedModule exported cachedDefinitions
   tell diagnostics
   hoistMaybe resolvedModule
   where

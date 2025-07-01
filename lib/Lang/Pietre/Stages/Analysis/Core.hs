@@ -44,8 +44,9 @@ createForeignScope moduleExports imports = do
   -- the hashmap of imported paths, grouped by module
   knownSymbols :: [HashMap ModuleName (HashMap Path (NonEmpty Role))] <-
     for imports \Import {..} -> do
-      exportedIdentifiers <- handleMaybe (ErrorImportPath _importPath) $
-        M.lookup _importPath moduleExports
+      exportedIdentifiers <-
+        M.lookup _importPath moduleExports `onNothing`
+          (tell [ErrorImportPath _importPath] >> mzero)
       let mkRole identifier = pure $ TopLevelDeclaration $ Name (_importPath <> pure identifier) []
       M.singleton _importPath . M.fromListWith (<>) <$> case _importType of
         Qualified Nothing ->
@@ -63,8 +64,9 @@ createForeignScope moduleExports imports = do
             ]
         Specific identifiers ->
           concat <$> for identifiers \identifier -> do
-            unless (identifier `S.member` exportedIdentifiers) $
-              reportError $ ErrorImportSymbol _importPath identifier
+            unless (identifier `S.member` exportedIdentifiers) do
+              tell [ErrorImportSymbol _importPath identifier]
+              mzero
             pure
               [ (pure identifier, mkRole identifier)
               , (_importPath <> pure identifier, mkRole identifier)
@@ -121,19 +123,19 @@ createLocalScope moduleName definitions = do
 setTypeParameters
   :: Name
   -> [Identifier]
-  -> MaybeT AnalysisM ()
+  -> AnalysisM ()
 setTypeParameters typeName parameters = do
   typeNames <-
     fmap M.fromList $
       for (group $ sort parameters) \case
         []               -> error "ICE"
-        (identifier:_:_) -> reportError $ ErrorDuplicateTypeParameter typeName identifier
+        (identifier:_:_) -> fatal $ ErrorDuplicateTypeParameter typeName identifier
         [identifier]     -> do
           when (isReserved identifier) $
-            reportError $ ErrorReservedIdentifier typeName identifier
+            report $ ErrorReservedIdentifier typeName identifier
           let parameterRole = TypeParameter identifier
           whenJustM (lookupRole identifier) \names ->
-            reportWarning $ WarningNameShadow names parameterRole
+            report $ WarningNameShadow names parameterRole
           pure (pure identifier, pure parameterRole)
   contextScope %= M.union typeNames
 
@@ -214,14 +216,14 @@ mostSpecificType = NE.head . NE.sortWith numberOfParameters
 
 analyzeDefinition
   :: WithLocation (Definition Parsed)
-  -> MaybeT AnalysisM (Definition Resolved)
+  -> AnalysisM (Definition Resolved)
 analyzeDefinition definition = do
   moduleName <- view infoModuleName
   let exportedIdentifiers = definitionIdentifiers $ _located definition
       rootName = Name (moduleName <> pure (NE.head exportedIdentifiers)) []
   exportedNames <- for exportedIdentifiers \identifier -> do
     when (isReserved identifier) $
-      reportError $ ErrorReservedIdentifier rootName identifier
+      report $ ErrorReservedIdentifier rootName identifier
     pure $ Name (moduleName <> pure identifier) []
   uses contextCache (M.lookup rootName) >>= \case
     Just def -> pure $ _located def
@@ -231,7 +233,7 @@ analyzeDefinition definition = do
       contextLocation .= defLocation
       defCycle <- views infoStack (S.member rootName)
       if defCycle
-      then reportError (ErrorCyclicDefinition rootName)
+      then fatal (ErrorCyclicDefinition rootName)
       else local (infoStack %~ S.insert rootName) do
         resolvedDefinition <- case _located definition of
           TypeAliasDef info -> TypeAliasDef <$> analyzeTypeAlias rootName info
@@ -247,7 +249,7 @@ analyzeDefinition definition = do
 analyzeTypeAlias
   :: Name
   -> TypeAliasInfo Parsed
-  -> MaybeT AnalysisM (TypeAliasInfo Resolved)
+  -> AnalysisM (TypeAliasInfo Resolved)
 analyzeTypeAlias thisName TypeAliasInfo {..} = do
   setTypeParameters thisName _aliasParams
   resolved <- resolveType (ForbidPlaceholder "type alias definition") _aliasValue
@@ -256,7 +258,7 @@ analyzeTypeAlias thisName TypeAliasInfo {..} = do
 analyzeStruct
   :: Name
   -> StructInfo Parsed
-  -> MaybeT AnalysisM (StructInfo Resolved)
+  -> AnalysisM (StructInfo Resolved)
 analyzeStruct thisName info = do
   setTypeParameters thisName (_structParams info)
   structValues ((traverse . traverse) (resolveType $ ForbidPlaceholder "struct fields definition")) info
@@ -264,71 +266,63 @@ analyzeStruct thisName info = do
 analyzeEnum
   :: Name
   -> EnumInfo Parsed
-  -> MaybeT AnalysisM (EnumInfo Resolved)
-analyzeEnum thisName EnumInfo {..} = do
-  let names = group $ sort _enumValues
-  failed <- or <$> for names \case
-    []       -> error "ICE"
-    [_]      -> pure False
-    (name:_) -> do
-      tell [ErrorEnumDuplicateEntries thisName name]
-      pure True
-  when failed mzero
+  -> AnalysisM (EnumInfo Resolved)
+analyzeEnum _thisName EnumInfo {..} =
   pure $ EnumInfo _enumName _enumValues
 
 analyzeConst
   :: Name
   -> ConstInfo Parsed
-  -> MaybeT AnalysisM (ConstInfo Resolved)
+  -> AnalysisM (ConstInfo Resolved)
 analyzeConst _thisName ConstInfo {..} = do
   resolvedType <- resolveType (ForbidPlaceholder "const definition") _constType
   resolvedExpr <- go _constExpr
   unless (resolvedType `typeMatches` _exprType resolvedExpr) $
-    reportError $ ErrorWrongType [resolvedType] (_exprType resolvedExpr)
+    report $ ErrorWrongType [resolvedType] (_exprType resolvedExpr)
   pure $ ConstInfo _constName resolvedType resolvedExpr
   where
     binaryIntExpression
       :: (Int -> Int -> Int)
       -> WithLocation (Expression Parsed)
       -> WithLocation (Expression Parsed)
-      -> MaybeT AnalysisM TypedExpression
+      -> AnalysisM TypedExpression
     binaryIntExpression f e1 e2 = do
       lhs <- go e1 >>= \case
         TypedExpression IntType (IntLiteralExpr x) -> pure x
         TypedExpression e1t _ ->
-          reportError $ ErrorWrongType [IntType] e1t
+          fatal $ ErrorWrongType [IntType] e1t
       rhs <- go e2 >>= \case
         TypedExpression IntType (IntLiteralExpr x) -> pure x
         TypedExpression e2t _ ->
-          reportError $ ErrorWrongType [IntType] e2t
+          fatal $ ErrorWrongType [IntType] e2t
       pure $ IntExpression (f lhs rhs)
 
     binaryBoolExpression
       :: (Bool -> Bool -> Bool)
       -> WithLocation (Expression Parsed)
       -> WithLocation (Expression Parsed)
-      -> MaybeT AnalysisM TypedExpression
+      -> AnalysisM TypedExpression
     binaryBoolExpression f e1 e2 = do
       lhs <- go e1 >>= \case
         TypedExpression BoolType (BoolLiteralExpr x) -> pure x
         TypedExpression e1t _ ->
-          reportError $ ErrorWrongType [BoolType] e1t
+          fatal $ ErrorWrongType [BoolType] e1t
       rhs <- go e2 >>= \case
         TypedExpression BoolType (BoolLiteralExpr x) -> pure x
         TypedExpression e2t _ ->
-          reportError $ ErrorWrongType [BoolType] e2t
+          fatal $ ErrorWrongType [BoolType] e2t
       pure $ BoolExpression (f lhs rhs)
 
     comparisonExpression
       :: (forall a. Ord a => a -> a -> Bool)
       -> WithLocation (Expression Parsed)
       -> WithLocation (Expression Parsed)
-      -> MaybeT AnalysisM TypedExpression
+      -> AnalysisM TypedExpression
     comparisonExpression op e1 e2 = do
       TypedExpression t1 r1 <- go e1
       TypedExpression t2 r2 <- go e2
       unless (t1 `typeMatches` t2) $
-        reportError $ ErrorWrongType [t1] t2
+        report $ ErrorWrongType [t1] t2
       pure $ BoolExpression $ compareExpressions op r1 r2
 
     compareExpressions
@@ -349,7 +343,7 @@ analyzeConst _thisName ConstInfo {..} = do
 
     go
       :: WithLocation (Expression Parsed)
-      -> MaybeT AnalysisM TypedExpression
+      -> AnalysisM TypedExpression
     go WithLocation {..} = do
       contextLocation .= _location
       case _located of
@@ -359,8 +353,8 @@ analyzeConst _thisName ConstInfo {..} = do
           resolvedExpr <- go e
           resolvedTargetType <- resolveType (ForbidPlaceholder "cast expression") t
           let resolvedSourceType = _exprType resolvedExpr
-              reportCastError :: forall a. MaybeT AnalysisM a
-              reportCastError = reportError $ ErrorWrongCast resolvedSourceType resolvedTargetType
+              reportCastError :: forall a. AnalysisM a
+              reportCastError = fatal $ ErrorWrongCast resolvedSourceType resolvedTargetType
           targetEnum <- lookupEnumType resolvedTargetType
           sourceEnum <- lookupEnumType resolvedSourceType
           case (sourceEnum, targetEnum) of
@@ -369,7 +363,7 @@ analyzeConst _thisName ConstInfo {..} = do
                 IntLiteralExpr  i -> pure i
                 _                 -> error "ICE"
               when (intValue < 0 || intValue >= length (_enumValues destEnum)) $
-                reportError $ ErrorEnumOutOfBounds destEnum intValue
+                report $ ErrorEnumOutOfBounds destEnum intValue
               pure $ TypedExpression resolvedTargetType $ IntLiteralExpr intValue
             (Nothing, Just destEnum) -> do
               intValue <- case _exprValue resolvedExpr of
@@ -378,7 +372,7 @@ analyzeConst _thisName ConstInfo {..} = do
                 BoolLiteralExpr b -> pure $ fromEnum b
                 _                 -> reportCastError
               when (intValue < 0 || intValue >= length (_enumValues destEnum)) $
-                reportError $ ErrorEnumOutOfBounds destEnum intValue
+                report $ ErrorEnumOutOfBounds destEnum intValue
               pure $ TypedExpression resolvedTargetType $ IntLiteralExpr intValue
             (Just _, Nothing) -> do
               intValue <- case _exprValue resolvedExpr of
@@ -406,9 +400,9 @@ analyzeConst _thisName ConstInfo {..} = do
             StructExpr _ fields -> do
               fmap snd $
                 find ((field ==) . fst) fields `onNothing`
-                  reportError (ErrorFieldAccessFieldNotFound structType field)
-            _                   -> reportError $ ErrorFieldAccessNotAStruct structType
-        CallExpr _ _  -> reportError undefined
+                  fatal (ErrorFieldAccessFieldNotFound structType field)
+            _ -> fatal $ ErrorFieldAccessNotAStruct structType
+        CallExpr _ _  -> fatal undefined
         ArrayExpr _ -> undefined
         IndexExpr _ _ -> undefined
         StructExpr path fields -> do
@@ -420,24 +414,25 @@ analyzeConst _thisName ConstInfo {..} = do
         BoolLiteralExpr   b -> pure $ BoolExpression b
         CharLiteralExpr   c -> pure $ CharExpression c
         StringLiteralExpr s -> pure $ TypedExpression undefined $ StringLiteralExpr s
-        ReferenceExpr _ -> reportError undefined
+        ReferenceExpr _ -> fatal undefined
         BoolNegationExpr e -> go e >>= \case
           BoolExpression x -> pure $ BoolExpression (not x)
-          TypedExpression t _ -> reportError $ ErrorWrongType [BoolType] t
+          TypedExpression t _ -> fatal $ ErrorWrongType [BoolType] t
         IntNegationExpr e -> go e >>= \case
           IntExpression x -> pure $ IntExpression (-x)
-          TypedExpression t _ -> reportError $ ErrorWrongType [IntType] t
+          TypedExpression t _ -> fatal $ ErrorWrongType [IntType] t
         AdditionExpr e1 e2 -> do
           lhs <- go e1
           case lhs of
             TypedExpression IntType (IntLiteralExpr _) -> pure ()
-            TypedExpression e1t _ -> reportError $ ErrorWrongType [IntType] e1t
+            TypedExpression e1t _ -> report $ ErrorWrongType [IntType] e1t
           rhs <- go e2
           case rhs of
             TypedExpression IntType (IntLiteralExpr _) -> pure ()
-            TypedExpression e2t _ -> reportError $ ErrorWrongType [IntType] e2t
+            TypedExpression e2t _ -> report $ ErrorWrongType [IntType] e2t
           unless (_exprType lhs `typeMatches` _exprType rhs) $
-            reportError $ ErrorWrongType [_exprType lhs] (_exprType rhs)
+            report $ ErrorWrongType [_exprType lhs] (_exprType rhs)
+          validate
           case (_exprValue lhs, _exprValue rhs) of
             (IntLiteralExpr x, IntLiteralExpr y) -> pure $ IntExpression (x + y)
             _                                    -> error "ICE"
@@ -456,30 +451,34 @@ analyzeConst _thisName ConstInfo {..} = do
         BoolOrExpr         e1 e2 -> binaryBoolExpression (||) e1 e2
         RangeInclusiveExpr           _ _ -> undefined
         RangeExclusiveExpr           _ _ -> undefined
-        AssignmentExpr               _ _ -> reportError undefined
-        AdditionAssignmentExpr       _ _ -> reportError undefined
-        SubtractionAssignmentExpr    _ _ -> reportError undefined
-        MultiplicationAssignmentExpr _ _ -> reportError undefined
-        DivisionAssignmentExpr       _ _ -> reportError undefined
-        ModuloAssignmentExpr         _ _ -> reportError undefined
-        ExponentiationAssignmentExpr _ _ -> reportError undefined
+        AssignmentExpr               _ _ -> fatal undefined
+        AdditionAssignmentExpr       _ _ -> fatal undefined
+        SubtractionAssignmentExpr    _ _ -> fatal undefined
+        MultiplicationAssignmentExpr _ _ -> fatal undefined
+        DivisionAssignmentExpr       _ _ -> fatal undefined
+        ModuloAssignmentExpr         _ _ -> fatal undefined
+        ExponentiationAssignmentExpr _ _ -> fatal undefined
 
 analyzeStructFields
   :: PathInfo Resolved
   -> StructInfo Resolved
   -> HashMap Identifier (PathInfo Resolved)
   -> NonEmpty (Identifier, TypedExpression)
-  -> MaybeT AnalysisM (PathInfo Resolved)
+  -> AnalysisM (PathInfo Resolved)
 analyzeStructFields typeName StructInfo {..} paramMapping values = do
   let referenceMap = M.fromList $ NE.toList _structValues
       valuesMap    = M.fromListWith (<>) $ NE.toList $ (fmap . fmap) pure values
   for_ values \(identifier, _) -> do
     when (not $ M.member identifier referenceMap) $
-      reportError $ ErrorStructUnknownField typeName identifier
+      report $ ErrorStructUnknownField typeName identifier
   allDiffs <- for _structValues \(fieldName, fieldType) -> do
     case fold $ M.lookup fieldName valuesMap of
-      []      -> reportError $ ErrorStructMissingField typeName fieldName
-      (_:_:_) -> reportError $ ErrorStructDuplicatedField typeName fieldName
+      []      -> do
+        report $ ErrorStructMissingField typeName fieldName
+        pure []
+      (_:_:_) -> do
+        report $ ErrorStructDuplicatedField typeName fieldName
+        pure []
       [expr]  -> do
         catMaybes <$>
           for (typeDiff fieldType (_exprType expr)) \(lhs, rhs) -> do
@@ -487,36 +486,38 @@ analyzeStructFields typeName StructInfo {..} paramMapping values = do
               (TypeParameter paramName, _) -> do
                 typePattern <- M.lookup paramName paramMapping `onNothing` error "ICE"
                 unless (typePattern `typeMatches` rhs) $
-                  reportError $ ErrorWrongType [typePattern] rhs
+                  report $ ErrorWrongType [typePattern] rhs
                 pure $ Just (paramName, pure rhs)
               (_, TypeParameter _) -> pure Nothing
-              _ -> reportError $ ErrorWrongType [fieldType] (_exprType expr)
+              _ -> do
+                report $ ErrorWrongType [fieldType] (_exprType expr)
+                pure Nothing
   let tempMapping :: HashMap Identifier (NonEmpty (PathInfo Resolved)) = M.fromListWith (<>) $ concat $ NE.toList allDiffs
   resolvedTypeParams <- for _structParams \paramName -> do
     possibleTypes <- M.lookup paramName tempMapping `onNothing`
-      reportError (ErrorStructAmbiguousType typeName paramName)
+      fatal (ErrorStructAmbiguousType typeName paramName)
     unless (typesAllMatch $ NE.toList possibleTypes) $
-      reportError $ ErrorStructIncompatibleTypes typeName paramName possibleTypes
+      report $ ErrorStructIncompatibleTypes typeName paramName possibleTypes
+    validate
     pure $ mostSpecificType possibleTypes
   pure (typeName & pathParams .~ resolvedTypeParams)
 
 analyzeFunction
   :: Name
   -> FunctionInfo Parsed
-  -> MaybeT AnalysisM (FunctionInfo Resolved)
+  -> AnalysisM (FunctionInfo Resolved)
 analyzeFunction thisName FunctionInfo {..} = do
   setTypeParameters thisName _funParams
   resolvedType <- traverse (resolveType $ ForbidPlaceholder "function definition") _funReturn
   let argNames = M.fromListWith (+) do
         (argName, _) <- _funArgs
         pure (argName, 1 :: Int)
-  allValid <- and <$> for (M.toList argNames) \(argName, argCount) -> do
+  for_ (M.toList argNames) \(argName, argCount) -> do
     when (argCount > 1) $
-      tell [ErrorFunctionDuplicatedArg argName]
-    pure $ argCount == 1
-  unless allValid mzero -- TODO: introduce better error handling
+      report $ ErrorFunctionDuplicatedArg argName
   resolvedArgs <- traverse analyzeArg _funArgs
   contextFunType .= fromMaybe UnitType resolvedType
+  validate
   resolvedStatements <- analyzeBlock _funBody
   pure $ FunctionInfo _funName _funParams resolvedArgs resolvedType resolvedStatements
   where
@@ -527,16 +528,16 @@ analyzeFunction thisName FunctionInfo {..} = do
         ByReference t -> ByReference <$>
           resolveType (ForbidPlaceholder "function definition") t
       when (isReserved argName) $
-        reportError $ ErrorReservedIdentifier thisName argName
+        report $ ErrorReservedIdentifier thisName argName
       let resolvedRole = FunctionArgument argName resolvedType
       whenJustM (lookupRole argName) \names ->
-        reportWarning $ WarningNameShadow names resolvedRole
+        report $ WarningNameShadow names resolvedRole
       contextScope %= M.insert (pure argName) (pure resolvedRole)
       pure (argName, resolvedType)
 
 analyzeBlock
   :: [WithLocation (Statement Parsed)]
-  -> MaybeT AnalysisM [Statement Resolved]
+  -> AnalysisM [Statement Resolved]
 analyzeBlock statements = do
   previousScope <- use contextScope
   result <- traverse analyzeStatement statements
@@ -545,30 +546,32 @@ analyzeBlock statements = do
 
 analyzeStatement
   :: WithLocation (Statement Parsed)
-  -> MaybeT AnalysisM (Statement Resolved)
+  -> AnalysisM (Statement Resolved)
 analyzeStatement statement = do
   contextLocation .= _location statement
   case _located statement of
     ContinueStmt -> do
       unlessM (use contextWithinLoop) $
-        reportError ErrorContinueNotInLoop
+        report ErrorContinueNotInLoop
       pure ContinueStmt
     BreakStmt -> do
       unlessM (use contextWithinLoop) $
-        reportError ErrorBreakNotInLoop
+        report ErrorBreakNotInLoop
       pure BreakStmt
     ReturnStmt returnExpr -> do
-      resolvedReturnExpr <- traverse analyzeFunctionExpression returnExpr
-      let returnType = maybe UnitType _exprType resolvedReturnExpr
-      funReturnType <- use contextFunType
-      unless (funReturnType `typeMatches` returnType) $
-        reportError $ ErrorWrongType [funReturnType] returnType
-      pure $ ReturnStmt resolvedReturnExpr
+      traverse (try . analyzeFunctionExpression) returnExpr >>= \case
+        Nothing -> pure $ ReturnStmt Nothing
+        Just resolvedReturnExpr -> do
+          let returnType = maybe UnitType _exprType resolvedReturnExpr
+          funReturnType <- use contextFunType
+          unless (funReturnType `typeMatches` returnType) $
+            report $ ErrorWrongType [funReturnType] returnType
+          pure $ ReturnStmt resolvedReturnExpr
     _ -> undefined
 
 analyzeFunctionExpression
   :: WithLocation (Expression Parsed)
-  -> MaybeT AnalysisM TypedExpression
+  -> AnalysisM TypedExpression
 analyzeFunctionExpression expr = do
   contextLocation .= _location expr
   case _located expr of
@@ -576,8 +579,8 @@ analyzeFunctionExpression expr = do
       resolvedExpr <- analyzeFunctionExpression e
       resolvedTargetType <- resolveType (ForbidPlaceholder "cast expression") t
       let resolvedSourceType = _exprType resolvedExpr
-          reportCastError :: forall a. MaybeT AnalysisM a
-          reportCastError = reportError $ ErrorWrongCast resolvedSourceType resolvedTargetType
+          reportCastError :: forall a. AnalysisM a
+          reportCastError = fatal $ ErrorWrongCast resolvedSourceType resolvedTargetType
           resultCast =
             TypedExpression resolvedTargetType $
             CastExpr resolvedExpr resolvedTargetType
@@ -664,7 +667,7 @@ analyzeFunctionExpression expr = do
         StructExpr _ fields -> do
           fmap snd $
             find ((field ==) . fst) fields `onNothing`
-              reportError (ErrorFieldAccessFieldNotFound structType field)
+              fatal (ErrorFieldAccessFieldNotFound structType field)
         -- _ -> resolveStruct structType >>= \case
         --   Nothing -> TypedExpression structType $ FieldAccessExpr lhs field
         --   Just (resolvedTypeName, structInfo, paramMapping) -> do
@@ -684,7 +687,7 @@ analyzeFunctionExpression expr = do
   where
     compileTimeEnumCast enumType enumInfo intValue = do
       when (intValue < 0 || intValue >= length (_enumValues enumInfo)) $
-        reportError $ ErrorEnumOutOfBounds enumInfo intValue
+        report $ ErrorEnumOutOfBounds enumInfo intValue
       pure $ TypedExpression enumType $ IntLiteralExpr intValue
 
 {-
@@ -747,7 +750,7 @@ analyzeFunctionExpression expr = do
       :: (Int -> Int -> Int)
       -> WithLocation (Expression Parsed)
       -> WithLocation (Expression Parsed)
-      -> MaybeT AnalysisM TypedExpression
+      -> AnalysisM TypedExpression
     binaryIntExpression f e1 e2 = do
       lhs <- go e1 >>= \case
         TypedExpression IntType (IntLiteralExpr x) -> pure x
@@ -763,7 +766,7 @@ analyzeFunctionExpression expr = do
       :: (Bool -> Bool -> Bool)
       -> WithLocation (Expression Parsed)
       -> WithLocation (Expression Parsed)
-      -> MaybeT AnalysisM TypedExpression
+      -> AnalysisM TypedExpression
     binaryBoolExpression f e1 e2 = do
       lhs <- go e1 >>= \case
         TypedExpression BoolType (BoolLiteralExpr x) -> pure x
@@ -779,7 +782,7 @@ analyzeFunctionExpression expr = do
       :: (Expression Resolved -> Expression Resolved -> Bool)
       -> WithLocation (Expression Parsed)
       -> WithLocation (Expression Parsed)
-      -> MaybeT AnalysisM TypedExpression
+      -> AnalysisM TypedExpression
     comparisonExpression op e1 e2 = do
       TypedExpression t1 r1 <- go e1
       TypedExpression t2 r2 <- go e2
