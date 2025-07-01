@@ -55,20 +55,20 @@ instance Arbitrary ImportType where
     Specific  ids -> Specific  <$> shrink ids
     Exhaustive    -> []
 
-instance Arbitrary (Declaration Parsed) where
+instance Arbitrary (Definition Parsed) where
   arbitrary = oneof
-    [ TypeAliasDecl <$> arbitrary
-    , EnumDecl      <$> arbitrary
-    , StructDecl    <$> arbitrary
-    , ConstDecl     <$> arbitrary
-    , FunctionDecl  <$> arbitrary
+    [ TypeAliasDef <$> arbitrary
+    , EnumDef      <$> arbitrary
+    , StructDef    <$> arbitrary
+    , ConstDef     <$> arbitrary
+    , FunctionDef  <$> arbitrary
     ]
   shrink = \case
-    TypeAliasDecl info -> TypeAliasDecl <$> shrink info
-    EnumDecl      info -> EnumDecl      <$> shrink info
-    StructDecl    info -> StructDecl    <$> shrink info
-    ConstDecl     info -> ConstDecl     <$> shrink info
-    FunctionDecl  info -> FunctionDecl  <$> shrink info
+    TypeAliasDef info -> TypeAliasDef <$> shrink info
+    EnumDef      info -> EnumDef      <$> shrink info
+    StructDef    info -> StructDef    <$> shrink info
+    ConstDef     info -> ConstDef     <$> shrink info
+    FunctionDef  info -> FunctionDef  <$> shrink info
 
 instance Arbitrary (TypeAliasInfo Parsed) where
   arbitrary = liftA3 TypeAliasInfo arbitrary arbitrary arbitrary
@@ -78,7 +78,7 @@ instance Arbitrary (TypeAliasInfo Parsed) where
     , [TypeAliasInfo name params x     | x <- shrink value ]
     ]
 
-instance Arbitrary EnumInfo where
+instance Arbitrary (EnumInfo Parsed) where
   arbitrary = liftA2 EnumInfo arbitrary arbitrary
   shrink (EnumInfo name values) = concat
     [ EnumInfo
