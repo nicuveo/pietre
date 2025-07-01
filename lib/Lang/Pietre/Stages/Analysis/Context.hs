@@ -15,11 +15,11 @@ module Lang.Pietre.Stages.Analysis.Context
 
 import                "this" Prelude
 
-import                Control.Lens                           hiding (mapping,
-                                                              op)
-import                Data.HashMap.Strict                    qualified as M
-import                Data.List                              qualified as L
-import                Data.List.NonEmpty                     qualified as NE
+import                Control.Lens                              hiding (mapping,
+                                                                 op)
+import                Data.HashMap.Strict                       qualified as M
+import                Data.List                                 qualified as L
+import                Data.List.NonEmpty                        qualified as NE
 
 import                Lang.Pietre.Batteries.BuiltIn
 import                Lang.Pietre.Representations.AST
@@ -28,6 +28,7 @@ import                Lang.Pietre.Representations.Name
 import                Lang.Pietre.Representations.Tokens
 import {-# SOURCE #-} Lang.Pietre.Stages.Analysis.Core
 import                Lang.Pietre.Stages.Analysis.Diagnostic
+import                Lang.Pietre.Stages.Analysis.Instantiation
 import                Lang.Pietre.Stages.Analysis.Monad
 
 
@@ -456,15 +457,3 @@ verifyConstValue PathInfo {..} name loc constInfo = do
   when (actual /= 0) $
     report $ ErrorIncorrectTypeParameterCount name 0 actual
   _constExpr <$> forceDefinition loc constInfo
-
-
---------------------------------------------------------------------------------
--- TODO: move this
-
-substituteTypes
-  :: HashMap Identifier (PathInfo Resolved)
-  -> PathInfo Resolved
-  -> AnalysisM (PathInfo Resolved)
-substituteTypes mappings info@PathInfo {..} = case _pathName of
-  TypeParameter name -> M.lookup name mappings `onNothing` error "ICE"
-  _                  -> pathParams (traverse $ substituteTypes mappings) info

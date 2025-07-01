@@ -41,6 +41,7 @@ library
       Lang.Pietre.Stages.Analysis.Context
       Lang.Pietre.Stages.Analysis.Core
       Lang.Pietre.Stages.Analysis.Diagnostic
+      Lang.Pietre.Stages.Analysis.Instantiation
       Lang.Pietre.Stages.Analysis.Monad
       Lang.Pietre.Stages.Assembly
       Lang.Pietre.Stages.Assembly.Color

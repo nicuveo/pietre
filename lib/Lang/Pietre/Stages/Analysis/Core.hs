@@ -4,12 +4,12 @@ module Lang.Pietre.Stages.Analysis.Core where
 
 import "this" Prelude
 
-import Control.Lens                           hiding (mapping, op)
-import Control.Monad.Extra                    (unlessM, whenJustM)
-import Data.HashMap.Strict                    qualified as M
-import Data.HashSet                           qualified as S
-import Data.List                              qualified as L
-import Data.List.NonEmpty                     qualified as NE
+import Control.Lens                              hiding (mapping, op)
+import Control.Monad.Extra                       (unlessM, whenJustM)
+import Data.HashMap.Strict                       qualified as M
+import Data.HashSet                              qualified as S
+import Data.List                                 qualified as L
+import Data.List.NonEmpty                        qualified as NE
 
 import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Representations.AST
@@ -18,6 +18,7 @@ import Lang.Pietre.Representations.Name
 import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Analysis.Context
 import Lang.Pietre.Stages.Analysis.Diagnostic
+import Lang.Pietre.Stages.Analysis.Instantiation
 import Lang.Pietre.Stages.Analysis.Monad
 
 
