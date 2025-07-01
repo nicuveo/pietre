@@ -41,6 +41,8 @@ data Diagnostic
   | ErrorStructUnknownField (PathInfo Resolved) Identifier
   | ErrorStructAmbiguousType (PathInfo Resolved) Identifier
   | ErrorStructIncompatibleTypes (PathInfo Resolved) Identifier (NonEmpty (PathInfo Resolved))
+  | ErrorFunctionAmbiguousType (PathInfo Resolved) Identifier
+  | ErrorFunctionIncompatibleTypes (PathInfo Resolved) Identifier (NonEmpty (PathInfo Resolved))
   | ErrorFieldAccessNotAStruct (PathInfo Resolved)
   | ErrorFieldAccessFieldNotFound (PathInfo Resolved) Identifier
   | ErrorReservedIdentifier Name Identifier
@@ -48,6 +50,7 @@ data Diagnostic
   | ErrorFunctionDuplicatedArg Identifier
   | ErrorBreakNotInLoop
   | ErrorContinueNotInLoop
+  | ErrorFunctionCallWrongNumberOfArguments (PathInfo Resolved) Int Int
   | WarningNameShadow (NonEmpty Role) Role
   deriving Show
 

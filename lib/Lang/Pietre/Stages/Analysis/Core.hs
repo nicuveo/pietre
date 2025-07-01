@@ -488,18 +488,20 @@ analyzeStructFields typeName StructInfo {..} paramMapping values = do
                 unless (typePattern `typeMatches` rhs) $
                   report $ ErrorWrongType [typePattern] rhs
                 pure $ Just (paramName, pure rhs)
-              (_, TypeParameter _) -> pure Nothing
+              (_, TypeParameter _) ->
+                pure Nothing
               _ -> do
                 report $ ErrorWrongType [fieldType] (_exprType expr)
                 pure Nothing
-  let tempMapping :: HashMap Identifier (NonEmpty (PathInfo Resolved)) = M.fromListWith (<>) $ concat $ NE.toList allDiffs
+  let tempMapping :: HashMap Identifier (NonEmpty (PathInfo Resolved))
+      tempMapping = M.unionWith (<>) (filterMapping paramMapping) (M.fromListWith (<>) $ concat $ NE.toList allDiffs)
   resolvedTypeParams <- for _structParams \paramName -> do
     possibleTypes <- M.lookup paramName tempMapping `onNothing`
       fatal (ErrorStructAmbiguousType typeName paramName)
     unless (typesAllMatch $ NE.toList possibleTypes) $
       report $ ErrorStructIncompatibleTypes typeName paramName possibleTypes
-    validate
     pure $ mostSpecificType possibleTypes
+  validate
   pure (typeName & pathParams .~ resolvedTypeParams)
 
 analyzeFunction
@@ -559,7 +561,7 @@ analyzeStatement statement = do
         report ErrorBreakNotInLoop
       pure BreakStmt
     ReturnStmt returnExpr -> do
-      traverse (try . analyzeFunctionExpression) returnExpr >>= \case
+      try (traverse analyzeFunctionExpression returnExpr) >>= \case
         Nothing -> pure $ ReturnStmt Nothing
         Just resolvedReturnExpr -> do
           let returnType = maybe UnitType _exprType resolvedReturnExpr
@@ -568,6 +570,52 @@ analyzeStatement statement = do
             report $ ErrorWrongType [funReturnType] returnType
           pure $ ReturnStmt resolvedReturnExpr
     _ -> undefined
+
+analyzeFunctionCallArgs
+  :: PathInfo Resolved
+  -> FunctionType Resolved
+  -> HashMap Identifier (PathInfo Resolved)
+  -> [TypedExpression]
+  -> AnalysisM (PathInfo Resolved, HashMap Identifier (PathInfo Resolved))
+analyzeFunctionCallArgs resolvedPath FunctionType {..} paramMapping values = do
+  allDiffs <- sequence . concat <$>
+    for (zip _funtypeArgs values) \(fieldArgType, expr) -> do
+      case (fieldArgType, _exprValue expr) of
+        (ByReference _, ReferenceExpr _) -> pure ()
+        (ByReference _, _)               -> report undefined
+        (ByValue _,     ReferenceExpr _) -> report undefined
+        (ByValue _,     _)               -> pure ()
+      let fieldType = functionArgType fieldArgType
+      for (typeDiff fieldType (_exprType expr)) \(lhs, rhs) -> do
+        case (_pathName lhs, _pathName rhs) of
+          (TypeParameter paramName, _) -> do
+            typePattern <- M.lookup paramName paramMapping `onNothing`
+              error "ICE"
+            unless (typePattern `typeMatches` rhs) $
+              report $ ErrorWrongType [typePattern] rhs
+            pure $ Just (paramName, pure rhs)
+          (_, TypeParameter _) ->
+            pure Nothing
+          _ -> do
+            report $ ErrorWrongType [fieldType] (_exprType expr)
+            pure Nothing
+  case allDiffs of
+    Nothing ->
+      pure (resolvedPath, paramMapping)
+    Just ds -> do
+      let tempMapping :: HashMap Identifier [PathInfo Resolved]
+          tempMapping = M.unionWith (<>) (filterMapping paramMapping) (M.fromListWith (<>) ds)
+      resolvedTypeParams <- for _funtypeParams \paramName -> do
+        possibleTypes <- M.lookup paramName tempMapping `onNothing`
+          fatal (ErrorFunctionAmbiguousType resolvedPath paramName)
+        possibleTypesNE <- NE.nonEmpty possibleTypes `onNothing`
+          fatal (ErrorFunctionAmbiguousType resolvedPath paramName)
+        unless (typesAllMatch possibleTypes) $
+          report $ ErrorFunctionIncompatibleTypes resolvedPath paramName possibleTypesNE
+        pure $ mostSpecificType possibleTypesNE
+      validate
+      let newMapping = M.fromList $ zip _funtypeParams resolvedTypeParams
+      pure (resolvedPath & pathParams .~ resolvedTypeParams, newMapping)
 
 analyzeFunctionExpression
   :: WithLocation (Expression Parsed)
@@ -662,27 +710,31 @@ analyzeFunctionExpression expr = do
     PathExpr p ->
       resolveExprValue p
     FieldAccessExpr subExpr field -> do
-      _lhs@(TypedExpression structType structValue) <- analyzeFunctionExpression subExpr
+      lhs@(TypedExpression structType structValue) <- analyzeFunctionExpression subExpr
       case structValue of
         StructExpr _ fields -> do
           fmap snd $
             find ((field ==) . fst) fields `onNothing`
               fatal (ErrorFieldAccessFieldNotFound structType field)
-        -- _ -> resolveStruct structType >>= \case
-        --   Nothing -> TypedExpression structType $ FieldAccessExpr lhs field
-        --   Just (resolvedTypeName, structInfo, paramMapping) -> do
-        --     fieldType <- find ((field ==) . fst) (_structValues structInfo) `onNothing`
-        --       reportError (ErrorFieldAccessFieldNotFound structType field)
-        --     resolvedFieldType <- substituteTypes paramMapping fieldType
-        --     pure $ TypedExpression fieldType $ FieldAccessExpr lhs field
-        _ -> undefined
+        _ -> checkStructType structType >>= \case
+          Nothing ->
+            pure $ TypedExpression structType $ FieldAccessExpr lhs field
+          Just (structInfo, paramMapping) -> do
+            (_, fieldType) <- find ((field ==) . fst) (_structValues structInfo) `onNothing`
+              fatal (ErrorFieldAccessFieldNotFound structType field)
+            resolvedFieldType <- substituteTypes paramMapping fieldType
+            pure $ TypedExpression resolvedFieldType $ FieldAccessExpr lhs field
     CallExpr funPath arguments  -> do
-      (FunctionType {..}, mapping) <- resolveFunctionCallValue funPath
+      (resolvedPath, funType, mapping) <- resolveFunctionCallValue funPath
       resolvedArgs <- traverse analyzeFunctionExpression arguments
-      let resolvedType = fromMaybe UnitType _funtypeReturn
-      -- TODO: perform type parameter matching
-      -- TODO: validate arg numbers and type
-      undefined resolvedArgs resolvedType mapping
+      let expected = length (_funtypeArgs funType)
+          actual   = length resolvedArgs
+      when (expected /= actual) $
+        report $ ErrorFunctionCallWrongNumberOfArguments resolvedPath expected actual
+      (fullyResolvedPath, fullMapping) <- analyzeFunctionCallArgs resolvedPath funType mapping resolvedArgs
+      -- TODO: register function for instantiation
+      returnType <- substituteTypes fullMapping $ fromMaybe UnitType (_funtypeReturn funType)
+      pure $ TypedExpression returnType $ CallExpr fullyResolvedPath resolvedArgs
     _ -> undefined
   where
     compileTimeEnumCast enumType enumInfo intValue = do
@@ -816,3 +868,13 @@ pattern CharExpression x = TypedExpression CharType (CharLiteralExpr x)
 
 pattern BoolExpression :: Bool -> TypedExpression
 pattern BoolExpression x = TypedExpression BoolType (BoolLiteralExpr x)
+
+
+filterMapping
+  :: Applicative f
+  => HashMap Identifier (PathInfo Resolved)
+  -> HashMap Identifier (f (PathInfo Resolved))
+filterMapping = M.mapMaybe \pathInfo ->
+  case _pathName pathInfo of
+    Placeholder -> Nothing
+    _           -> Just $ pure pathInfo
