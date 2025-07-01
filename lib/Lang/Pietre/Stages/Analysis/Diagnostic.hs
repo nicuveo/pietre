@@ -2,6 +2,8 @@ module Lang.Pietre.Stages.Analysis.Diagnostic where
 
 import "this" Prelude
 
+import Control.Monad.Writer.Class
+
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
@@ -53,3 +55,15 @@ isError :: Diagnostic -> Bool
 isError = \case
   WarningNameShadow _ _ -> False
   _ -> True
+
+
+class Monad m => MonadDiagnostic m where
+  report :: Diagnostic -> m ()
+  abort  :: m a
+
+  fatal  :: Diagnostic -> m a
+  fatal d = report d >> abort
+
+instance MonadDiagnostic (MaybeT ((,) [Diagnostic])) where
+  report = tell . pure
+  abort = mzero

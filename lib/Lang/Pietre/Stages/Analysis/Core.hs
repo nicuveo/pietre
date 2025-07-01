@@ -6,7 +6,6 @@ import "this" Prelude
 
 import Control.Lens                           hiding (mapping, op)
 import Control.Monad.Extra                    (unlessM, whenJustM)
-import Control.Monad.RWS.Strict
 import Data.HashMap.Strict                    qualified as M
 import Data.HashSet                           qualified as S
 import Data.List                              qualified as L
@@ -34,10 +33,10 @@ definitionIdentifiers = \case
   EnumDef      EnumInfo      {..} -> _enumName :| _enumValues
 
 createForeignScope
-  :: MonadWriter [Diagnostic] m
+  :: MonadDiagnostic m
   => HashMap ModuleName (HashSet Identifier)
   -> [Import]
-  -> MaybeT m (HashMap Path (NonEmpty Role))
+  -> m (HashMap Path (NonEmpty Role))
 createForeignScope moduleExports imports = do
   -- for each imported module, we create a hashmap
   -- from module name to hashmap of path to non-empty list:
@@ -46,7 +45,7 @@ createForeignScope moduleExports imports = do
     for imports \Import {..} -> do
       exportedIdentifiers <-
         M.lookup _importPath moduleExports `onNothing`
-          (tell [ErrorImportPath _importPath] >> mzero)
+          fatal (ErrorImportPath _importPath)
       let mkRole identifier = pure $ TopLevelDeclaration $ Name (_importPath <> pure identifier) []
       M.singleton _importPath . M.fromListWith (<>) <$> case _importType of
         Qualified Nothing ->
@@ -64,9 +63,8 @@ createForeignScope moduleExports imports = do
             ]
         Specific identifiers ->
           concat <$> for identifiers \identifier -> do
-            unless (identifier `S.member` exportedIdentifiers) do
-              tell [ErrorImportSymbol _importPath identifier]
-              mzero
+            unless (identifier `S.member` exportedIdentifiers) $
+              fatal $ ErrorImportSymbol _importPath identifier
             pure
               [ (pure identifier, mkRole identifier)
               , (_importPath <> pure identifier, mkRole identifier)
@@ -84,10 +82,10 @@ createForeignScope moduleExports imports = do
     foldl' (M.unionWith (<>)) M.empty $ knownSymbols
 
 createLocalScope
-  :: MonadWriter [Diagnostic] m
+  :: MonadDiagnostic m
   => ModuleName
   -> [Annotated Definition Parsed]
-  -> MaybeT m
+  -> m
      ( HashSet Identifier
      , HashMap Name (WithLocation (Definition Parsed))
      , HashMap Path (NonEmpty Role)
@@ -104,13 +102,14 @@ createLocalScope moduleName definitions = do
         pure (identifier, pure ((name, definition), map (, pure role) paths))
 
   -- report an error if any identifier appears more than once
-  failed <- or <$> for (M.toList topLevelNames) \(identifier, entries) -> do
-    let defs = entries <&> \((_, definition), _) -> definition
-    let hasDuplicates = NE.length defs > 1
-    when hasDuplicates $
-      tell [ErrorMultipleDeclaration identifier $ fmap _location defs]
-    pure hasDuplicates
-  when failed mzero
+  let diagnostics = do
+        (identifier, entries) <- M.toList topLevelNames
+        let defs = entries <&> \((_, definition), _) -> definition
+        guard $ NE.length defs > 1
+        pure $ ErrorMultipleDeclaration identifier $ fmap _location defs
+  unless (null diagnostics) do
+    traverse report diagnostics
+    abort
 
   -- create all local maps
   let exports = M.keys topLevelNames

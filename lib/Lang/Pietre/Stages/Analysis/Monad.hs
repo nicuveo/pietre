@@ -67,18 +67,14 @@ resetState = do
 --------------------------------------------------------------------------------
 -- Error handling
 
-report :: Diagnostic -> AnalysisM ()
-report diag = do
-  when (isError diag) do
-    contextAnyError .= True
-    contextNewError .= True
-  tell [diag]
+instance MonadDiagnostic AnalysisM where
+  report diag = do
+    when (isError diag) do
+      contextAnyError .= True
+      contextNewError .= True
+    tell [diag]
 
-fatal :: Diagnostic -> AnalysisM a
-fatal d = report d >> abort
-
-abort :: AnalysisM a
-abort = mzero
+  abort = mzero
 
 validate :: AnalysisM ()
 validate = whenM (use contextNewError) abort
