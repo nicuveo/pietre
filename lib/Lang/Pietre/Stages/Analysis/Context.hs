@@ -83,11 +83,10 @@ resolveType mode =
           when (expected /= actual) $
             report $ ErrorIncorrectTypeParameterCount name expected actual
           let typeArguments = M.fromList $ zip (_aliasParams resolvedInfo) _pathParams
-          resultPathInfo <- substituteTypes typeArguments $ _aliasValue resolvedInfo
-          pure resultPathInfo
+          substituteTypes typeArguments $ _aliasValue resolvedInfo
         EnumDef enumInfo -> do
           let actual = length _pathParams
-          when (length _pathParams /= 0) $
+          unless (null _pathParams) $
             report $ ErrorIncorrectTypeParameterCount name 0 actual
           let identifier = NE.last $ _nameFullPath name
           when (identifier /= _enumName enumInfo) $
@@ -181,11 +180,11 @@ resolveExprValue =
     go :: ResolveCallback TypedExpression
     go resolvedPath@PathInfo {..} info = case _pathName of
       FunctionArgument _ (ByValue argType) ->
-        pure $ TypedExpression argType $ PathExpr $ resolvedPath
+        pure $ TypedExpression argType $ PathExpr resolvedPath
       FunctionArgument _ (ByReference argType) ->
-        pure $ TypedExpression argType $ PathExpr $ resolvedPath
+        pure $ TypedExpression argType $ PathExpr resolvedPath
       LetVariable _ varType ->
-        pure $ TypedExpression varType $ PathExpr $ resolvedPath
+        pure $ TypedExpression varType $ PathExpr resolvedPath
       BuiltinFunction _ -> case info of
         Just (name, WithLocation _ (FunctionDef funInfo)) -> do
           (functionType, _) <- partiallyResolveFunctionType mode resolvedPath name funInfo
@@ -325,7 +324,7 @@ resolvePath mode PathInfo {..} = do
   roles@(role :| others) <-
     uses contextScope (M.lookup _pathName) `onNothingM`
       fatal (ErrorRoleNotFound _pathName)
-  when (not $ null others) $
+  unless (null others) $
     fatal $ ErrorAmbiguousPath _pathName roles
   params <- traverse (resolveType mode) _pathParams
   pure $ PathInfo role params
@@ -406,7 +405,7 @@ partiallyResolveFunctionType
      , HashMap Identifier (PathInfo Resolved)
      )
 partiallyResolveFunctionType mode PathInfo {..} name FunctionInfo {..} = do
-  resolvedArgs   <- traverse forceFunArg (map snd _funArgs)
+  resolvedArgs   <- traverse (forceFunArg . snd) _funArgs
   resolvedReturn <- traverse forceFunType _funReturn
   let expected = length _funParams
       actual   = length _pathParams

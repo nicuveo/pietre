@@ -1,5 +1,3 @@
-{-# LANGUAGE PatternSynonyms #-}
-
 module Lang.Pietre.Stages.Analysis
   ( DefinitionCache
   , ResolvedModule (..)

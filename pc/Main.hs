@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedLists #-}
-
 module Main where
 
 import "this" Prelude                       hiding (readFile)
@@ -44,7 +42,7 @@ main = do
         source <- liftIO $ readFile filename
         ast    <- parseModule filename source `onLeft` (error . show)
         let (diagnostics, result) = analyzeModule defCache exports moduleName ast
-        when (not $ null diagnostics) $
+        unless (null diagnostics) $
           liftIO $ print (moduleName, diagnostics)
         case result of
           Nothing -> error "aborting"

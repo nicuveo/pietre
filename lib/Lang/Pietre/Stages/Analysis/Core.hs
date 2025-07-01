@@ -79,7 +79,7 @@ createForeignScope moduleExports imports = do
   -- possible matches across modules
   pure $
     foldl' (M.unionWith (<>)) M.empty $ M.elems $
-    foldl' (M.unionWith (<>)) M.empty $ knownSymbols
+    foldl' (M.unionWith (<>)) M.empty knownSymbols
 
 createLocalScope
   :: MonadDiagnostic m
@@ -108,7 +108,7 @@ createLocalScope moduleName definitions = do
         guard $ NE.length defs > 1
         pure $ ErrorMultipleDeclaration identifier $ fmap _location defs
   unless (null diagnostics) do
-    traverse report diagnostics
+    traverse_ report diagnostics
     abort
 
   -- create all local maps
@@ -468,7 +468,7 @@ analyzeStructFields typeName StructInfo {..} paramMapping values = do
   let referenceMap = M.fromList $ NE.toList _structValues
       valuesMap    = M.fromListWith (<>) $ NE.toList $ (fmap . fmap) pure values
   for_ values \(identifier, _) -> do
-    when (not $ M.member identifier referenceMap) $
+    unless (M.member identifier referenceMap) $
       report $ ErrorStructUnknownField typeName identifier
   allDiffs <- for _structValues \(fieldName, fieldType) -> do
     case fold $ M.lookup fieldName valuesMap of

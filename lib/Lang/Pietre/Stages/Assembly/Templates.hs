@@ -37,9 +37,9 @@ applyTemplate
   -> Image
   -> Image
   -> Image
-applyTemplate !(i0, j0) !imgA !imgB = I.traverse2 imgB imgA const newPx
+applyTemplate (!i0, !j0) !imgA !imgB = I.traverse2 imgB imgA const newPx
   where
-    !(m, n) = I.dims imgA
+    (!m, !n) = I.dims imgA
     newPx getPxB getPxA (i, j) =
       let !(i', j') = (i - i0, j - j0)
       in
@@ -87,7 +87,7 @@ readTemplate s = Template (length rows) (maximum $ map length rows)
 makeImage :: Color -> Template -> Image
 makeImage startingColor Template{..} =
   I.makeImage (templateRows, templateColumns) \(r, c) ->
-    case (templateData V.! (templateColumns * r + c)) of
+    case templateData V.! (templateColumns * r + c) of
       Transparent        -> I.PixelRGBA 0 0 0 0
       Absolute color     -> convert color
       Relative hue light -> convert $ step hue light startingColor
