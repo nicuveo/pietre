@@ -18,6 +18,7 @@ While the differences between the two languages are vast, they are mostly the co
 
 - the `^` operator has a higher precedence, and is used to indicate an exponent instead of a bitwise `xor`;
 - all local variables are mutable by default, the `mut` keyword doesn't exist.
+- struct expressions have a `@` between the type name and the opening brace
 
 # Terminology
 
@@ -171,6 +172,7 @@ Operators are one of the following:
 - `/=`
 - `%=`
 - `^=`
+- `@`
 
 ## Delimiters
 
@@ -213,7 +215,7 @@ The language allows for three kinds of type declarations: type aliases, enumerat
 
 #### Enumerations
 
-An enum defines the set of valid constructors for a given type, enclosed between brackets. The name of the enum is registered in the namespace as a type, and the enum's constructors as constant values. Enum constructors cannot take an argument.
+An enum defines the set of valid constructors for a given type, enclosed between brackets. The name of the enum is registered in the namespace as a type, and the enum's constructors as constant values. Enum constructors cannot take an argument. Enums do not accept type parameters.
 
 ```rust
 enum Colour { Red | Green | Blue };
@@ -230,7 +232,7 @@ struct Pair<A, B> {
 }
 ```
 
-TODO
+A record must not be empty.
 
 #### Aliases
 
