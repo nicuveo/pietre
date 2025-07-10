@@ -794,6 +794,21 @@ analyzeFunctionExpression expr = do
         unless (resolvedType `typeMatches` IntType) $
           fatal $ ErrorWrongType [IntType] resolvedType
         pure $ TypedExpression IntType (IntNegationExpr inner)
+    AdditionExpr e1 e2 -> do
+      lhs <- analyzeFunctionExpression e1
+      rhs <- analyzeFunctionExpression e2
+      case (lhs, rhs) of
+        (IntExpression l, IntExpression r) ->
+          pure $ IntExpression (l + r)
+        -- (StringExpression l, StringExpression r) ->
+        --   pure $ StringExpression (l ++ r)
+        _ -> do
+          if | _exprType lhs `typeMatches` IntType -> do
+                 unless (_exprType rhs `typeMatches` IntType) $
+                   fatal $ ErrorWrongType [IntType] $ _exprType rhs
+                 pure $ TypedExpression IntType $ AdditionExpr lhs rhs
+             | otherwise -> do
+                 fatal $ ErrorWrongType [IntType {-, StringType -}] $ _exprType lhs
     SubtractionExpr    e1 e2 -> binaryIntExpression  (pure ... subtract) SubtractionExpr    e1 e2
     MultiplicationExpr e1 e2 -> binaryIntExpression  (pure ... (*))      MultiplicationExpr e1 e2
     ExponentiationExpr e1 e2 -> binaryIntExpression  (pure ... (^))      ExponentiationExpr e1 e2
@@ -901,19 +916,12 @@ analyzeFunctionExpression expr = do
       case (_exprValue lhs, _exprValue rhs) of
         (IntLiteralExpr x, IntLiteralExpr y) -> pure $ IntExpression (x + y)
         _                                    -> error "ICE"
-    SubtractionExpr    e1 e2 -> binaryIntExpression subtract e1 e2
-    MultiplicationExpr e1 e2 -> binaryIntExpression (*) e1 e2
-    DivisionExpr       e1 e2 -> binaryIntExpression div e1 e2
-    ModuloExpr         e1 e2 -> binaryIntExpression mod e1 e2
-    ExponentiationExpr e1 e2 -> binaryIntExpression (^) e1 e2
     EqualityExpr       e1 e2 -> comparisonExpression (==) e1 e2
     DifferenceExpr     e1 e2 -> comparisonExpression (/=) e1 e2
     GreaterExpr        e1 e2 -> comparisonExpression (>)  e1 e2
     LesserExpr         e1 e2 -> comparisonExpression (<)  e1 e2
     GreaterEqExpr      e1 e2 -> comparisonExpression (>=) e1 e2
     LesserEqExpr       e1 e2 -> comparisonExpression (<=) e1 e2
-    BoolAndExpr        e1 e2 -> binaryBoolExpression (&&) e1 e2
-    BoolOrExpr         e1 e2 -> binaryBoolExpression (||) e1 e2
     RangeInclusiveExpr           _ _ -> undefined
     RangeExclusiveExpr           _ _ -> undefined
     AssignmentExpr               _ _ -> reportError undefined
