@@ -51,6 +51,10 @@ data Diagnostic
   | ErrorBreakNotInLoop
   | ErrorContinueNotInLoop
   | ErrorFunctionCallWrongNumberOfArguments (PathInfo Resolved) Int Int
+  | ErrorDivideByZero
+  | ErrorReferenceNotLocalVariable (Expression Resolved)
+  | ErrorFunctionCallArgExpectingReference Identifier
+  | ErrorFunctionCallArgExpectingValue     Identifier
   | WarningNameShadow (NonEmpty Role) Role
   deriving Show
 

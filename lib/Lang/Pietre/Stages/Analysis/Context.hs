@@ -106,15 +106,15 @@ resolveType mode =
 resolveStructType
   :: PathInfo Parsed
   -> AnalysisM
-     (Maybe ( PathInfo Resolved
-            , StructInfo Resolved
-            , HashMap Identifier (PathInfo Resolved)
-            )
+     ( PathInfo Resolved
+     , Maybe ( StructInfo Resolved
+             , HashMap Identifier (PathInfo Resolved)
+             )
      )
 resolveStructType path = do
   resolvedPath <- resolveType AllowPlaceholder path
   result <- checkStructType resolvedPath
-  pure $ result <&> \(info, mappings) -> (resolvedPath, info, mappings)
+  pure (resolvedPath, result)
 
 checkStructType
   :: PathInfo Resolved
@@ -409,7 +409,7 @@ partiallyResolveFunctionType
      , HashMap Identifier (PathInfo Resolved)
      )
 partiallyResolveFunctionType mode resolvedPath@PathInfo {..} name FunctionInfo {..} = do
-  resolvedArgs   <- traverse (forceFunArg . snd) _funArgs
+  resolvedArgs   <- (traverse . traverse) forceFunArg _funArgs
   resolvedReturn <- traverse forceFunType _funReturn
   let expected = length _funParams
       actual   = length _pathParams

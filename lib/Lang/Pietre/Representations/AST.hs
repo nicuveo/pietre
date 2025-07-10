@@ -167,7 +167,7 @@ deriving instance ShowConstraints p => Show (FunctionInfo p)
 
 data FunctionType (p :: ASTPhase) = FunctionType
   { _funtypeParams :: [Identifier]
-  , _funtypeArgs   :: [FunctionArgType p]
+  , _funtypeArgs   :: [(Identifier, FunctionArgType p)]
   , _funtypeReturn :: Maybe (PathInfo p)
   }
 

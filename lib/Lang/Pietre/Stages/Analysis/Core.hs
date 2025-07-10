@@ -4,7 +4,7 @@ module Lang.Pietre.Stages.Analysis.Core where
 
 import "this" Prelude
 
-import Control.Lens                              hiding (mapping, op)
+import Control.Lens                              hiding (mapping, op, (...))
 import Control.Monad.Extra                       (unlessM, whenJustM)
 import Data.HashMap.Strict                       qualified as M
 import Data.HashSet                              qualified as S
@@ -153,8 +153,8 @@ typeDiff p1 p2 = case (_pathName p1, _pathName p2) of
   (Placeholder, Placeholder) ->
     similar
   (FunctionPointer t1, FunctionPointer t2) ->
-    let args1 = map functionArgType $ _funtypeArgs t1
-        args2 = map functionArgType $ _funtypeArgs t2
+    let args1 = map (functionArgType . snd) $ _funtypeArgs t1
+        args2 = map (functionArgType . snd) $ _funtypeArgs t2
         return1 = fromMaybe UnitType $ _funtypeReturn t1
         return2 = fromMaybe UnitType $ _funtypeReturn t2
     in concat (zipWith typeDiff args1 args2) ++ typeDiff return1 return2
@@ -180,8 +180,8 @@ typeMatches p1 p2 = case (_pathName p1, _pathName p2) of
   (BuiltinType t1, BuiltinType t2) ->
     t1 == t2 && argMatches
   (FunctionPointer t1, FunctionPointer t2) ->
-    let args1 = _funtypeArgs t1
-        args2 = _funtypeArgs t2
+    let args1 = map snd $ _funtypeArgs t1
+        args2 = map snd $ _funtypeArgs t2
         return1 = fromMaybe UnitType $ _funtypeReturn t1
         return2 = fromMaybe UnitType $ _funtypeReturn t2
     in and (zipWith checkArgs args1 args2) && typeMatches return1 return2
@@ -282,7 +282,7 @@ analyzeConst _thisName ConstInfo {..} = do
   pure $ ConstInfo _constName resolvedType resolvedExpr
   where
     binaryIntExpression
-      :: (Int -> Int -> Int)
+      :: (Int -> Int -> AnalysisM Int)
       -> WithLocation (Expression Parsed)
       -> WithLocation (Expression Parsed)
       -> AnalysisM TypedExpression
@@ -295,7 +295,7 @@ analyzeConst _thisName ConstInfo {..} = do
         TypedExpression IntType (IntLiteralExpr x) -> pure x
         TypedExpression e2t _ ->
           fatal $ ErrorWrongType [IntType] e2t
-      pure $ IntExpression (f lhs rhs)
+      IntExpression <$> f lhs rhs
 
     binaryBoolExpression
       :: (Bool -> Bool -> Bool)
@@ -314,31 +314,51 @@ analyzeConst _thisName ConstInfo {..} = do
       pure $ BoolExpression (f lhs rhs)
 
     comparisonExpression
-      :: (forall a. Ord a => a -> a -> Bool)
+      :: (forall a. Ord a => a -> a -> Maybe Bool)
+      -> Bool
       -> WithLocation (Expression Parsed)
       -> WithLocation (Expression Parsed)
       -> AnalysisM TypedExpression
-    comparisonExpression op e1 e2 = do
+    comparisonExpression op defaultCase e1 e2 = do
       TypedExpression t1 r1 <- go e1
       TypedExpression t2 r2 <- go e2
       unless (t1 `typeMatches` t2) $
         report $ ErrorWrongType [t1] t2
-      pure $ BoolExpression $ compareExpressions op r1 r2
+      BoolExpression . fromMaybe defaultCase <$> compareExpressions op r1 r2
+
+    compareExpect
+      :: Ord a
+      => (Ordering -> Bool)
+      -> a
+      -> a
+      -> Maybe Bool
+    compareExpect checkOrdering x y =
+      case compare x y of
+        EQ -> Nothing
+        o  -> Just $ checkOrdering o
 
     compareExpressions
-      :: (forall a. Ord a => a -> a -> Bool)
+      :: (forall a. Ord a => a -> a -> Maybe Bool)
       -> Expression Resolved
       -> Expression Resolved
-      -> Bool
-    compareExpressions op e1 e2 = do
+      -> AnalysisM (Maybe Bool)
+    compareExpressions op e1 e2 =
       case (e1, e2) of
-        (StructExpr _ f1, StructExpr _ f2) ->
-          let sortedF1 = map (_exprValue . snd) $ L.sortOn fst $ NE.toList f1
-              sortedF2 = map (_exprValue . snd) $ L.sortOn fst $ NE.toList f2
-          in all (uncurry $ compareExpressions op) $ zip sortedF1 sortedF2
-        (IntLiteralExpr  i1, IntLiteralExpr  i2) -> op i1 i2
-        (CharLiteralExpr c1, CharLiteralExpr c2) -> op c1 c2
-        (BoolLiteralExpr b1, BoolLiteralExpr b2) -> op b1 b2
+        (StructExpr structType lhsFields, StructExpr _ rhsFields) -> do
+          (structInfo, _) <- checkStructType structType `onNothingM`
+            error "ICE"
+          comparisons <- for (_structValues structInfo) \(fieldName, _) -> do
+            (_, lhsField) <-
+              find ((fieldName ==) . fst) lhsFields `onNothing`
+                fatal (ErrorFieldAccessFieldNotFound structType fieldName)
+            (_, rhsField) <-
+              find ((fieldName ==) . fst) rhsFields `onNothing`
+                fatal (ErrorFieldAccessFieldNotFound structType fieldName)
+            compareExpressions op (_exprValue lhsField) (_exprValue rhsField)
+          pure $ asum comparisons
+        (IntLiteralExpr  i1, IntLiteralExpr  i2) -> pure $ op i1 i2
+        (CharLiteralExpr c1, CharLiteralExpr c2) -> pure $ op c1 c2
+        (BoolLiteralExpr b1, BoolLiteralExpr b2) -> pure $ op b1 b2
         _ -> error "ICE"
 
     go
@@ -406,7 +426,9 @@ analyzeConst _thisName ConstInfo {..} = do
         ArrayExpr _ -> undefined
         IndexExpr _ _ -> undefined
         StructExpr path fields -> do
-          (resolvedType, structInfo, paramMapping) <- fromMaybe (error "ICE") <$> resolveStructType path
+          (resolvedType, structDetails) <- resolveStructType path
+          (structInfo, paramMapping) <- structDetails
+            `onNothing` error "ICE"
           resolvedFields <- (traverse . traverse) go fields
           fullyResolvedType <- analyzeStructFields resolvedType structInfo paramMapping resolvedFields
           pure $ TypedExpression fullyResolvedType $ StructExpr fullyResolvedType resolvedFields
@@ -436,17 +458,17 @@ analyzeConst _thisName ConstInfo {..} = do
           case (_exprValue lhs, _exprValue rhs) of
             (IntLiteralExpr x, IntLiteralExpr y) -> pure $ IntExpression (x + y)
             _                                    -> error "ICE"
-        SubtractionExpr    e1 e2 -> binaryIntExpression subtract e1 e2
-        MultiplicationExpr e1 e2 -> binaryIntExpression (*) e1 e2
-        DivisionExpr       e1 e2 -> binaryIntExpression div e1 e2
-        ModuloExpr         e1 e2 -> binaryIntExpression mod e1 e2
-        ExponentiationExpr e1 e2 -> binaryIntExpression (^) e1 e2
-        EqualityExpr       e1 e2 -> comparisonExpression (==) e1 e2
-        DifferenceExpr     e1 e2 -> comparisonExpression (/=) e1 e2
-        GreaterExpr        e1 e2 -> comparisonExpression (>)  e1 e2
-        LesserExpr         e1 e2 -> comparisonExpression (<)  e1 e2
-        GreaterEqExpr      e1 e2 -> comparisonExpression (>=) e1 e2
-        LesserEqExpr       e1 e2 -> comparisonExpression (<=) e1 e2
+        SubtractionExpr    e1 e2 -> binaryIntExpression (pure ... subtract) e1 e2
+        MultiplicationExpr e1 e2 -> binaryIntExpression (pure ... (*)) e1 e2
+        ExponentiationExpr e1 e2 -> binaryIntExpression (pure ... (^)) e1 e2
+        DivisionExpr       e1 e2 -> binaryIntExpression (safeDiv div) e1 e2
+        ModuloExpr         e1 e2 -> binaryIntExpression (safeDiv mod) e1 e2
+        EqualityExpr       e1 e2 -> comparisonExpression (compareExpect (const False)) True  e1 e2
+        DifferenceExpr     e1 e2 -> comparisonExpression (compareExpect (const True )) False e1 e2
+        GreaterExpr        e1 e2 -> comparisonExpression (compareExpect (== GT)) False e1 e2
+        LesserExpr         e1 e2 -> comparisonExpression (compareExpect (== LT)) False e1 e2
+        GreaterEqExpr      e1 e2 -> comparisonExpression (compareExpect (== GT)) True  e1 e2
+        LesserEqExpr       e1 e2 -> comparisonExpression (compareExpect (== LT)) True  e1 e2
         BoolAndExpr        e1 e2 -> binaryBoolExpression (&&) e1 e2
         BoolOrExpr         e1 e2 -> binaryBoolExpression (||) e1 e2
         RangeInclusiveExpr           _ _ -> undefined
@@ -579,13 +601,13 @@ analyzeFunctionCallArgs
   -> AnalysisM (PathInfo Resolved, HashMap Identifier (PathInfo Resolved))
 analyzeFunctionCallArgs resolvedPath FunctionType {..} paramMapping values = do
   allDiffs <- sequence . concat <$>
-    for (zip _funtypeArgs values) \(fieldArgType, expr) -> do
-      case (fieldArgType, _exprValue expr) of
+    for (zip _funtypeArgs values) \((argName, argType), expr) -> do
+      case (argType, _exprValue expr) of
         (ByReference _, ReferenceExpr _) -> pure ()
-        (ByReference _, _)               -> report undefined
-        (ByValue _,     ReferenceExpr _) -> report undefined
+        (ByReference _, _)               -> report $ ErrorFunctionCallArgExpectingReference argName
+        (ByValue _,     ReferenceExpr _) -> report $ ErrorFunctionCallArgExpectingValue     argName
         (ByValue _,     _)               -> pure ()
-      let fieldType = functionArgType fieldArgType
+      let fieldType = functionArgType argType
       for (typeDiff fieldType (_exprType expr)) \(lhs, rhs) -> do
         case (_pathName lhs, _pathName rhs) of
           (TypeParameter paramName, _) -> do
@@ -599,6 +621,7 @@ analyzeFunctionCallArgs resolvedPath FunctionType {..} paramMapping values = do
           _ -> do
             report $ ErrorWrongType [fieldType] (_exprType expr)
             pure Nothing
+  validate
   case allDiffs of
     Nothing ->
       pure (resolvedPath, paramMapping)
@@ -735,32 +758,135 @@ analyzeFunctionExpression expr = do
       -- TODO: register function for instantiation
       returnType <- substituteTypes fullMapping $ fromMaybe UnitType (_funtypeReturn funType)
       pure $ TypedExpression returnType $ CallExpr fullyResolvedPath resolvedArgs
-    _ -> undefined
+    IntLiteralExpr    i -> pure $ IntExpression  i
+    BoolLiteralExpr   b -> pure $ BoolExpression b
+    CharLiteralExpr   c -> pure $ CharExpression c
+    StringLiteralExpr s -> pure $ TypedExpression undefined $ StringLiteralExpr s
+    ArrayExpr _   -> undefined
+    IndexExpr _ _ -> undefined
+    StructExpr path fields -> do
+      (resolvedType, structDetails) <- resolveStructType path
+      resolvedFields <- (traverse . traverse) analyzeFunctionExpression fields
+      fullyResolvedType <- case structDetails of
+        Nothing ->
+          pure resolvedType
+        Just (structInfo, paramMapping) ->
+          analyzeStructFields resolvedType structInfo paramMapping resolvedFields
+      pure $ TypedExpression fullyResolvedType $ StructExpr fullyResolvedType resolvedFields
+    ReferenceExpr path -> do
+      TypedExpression resolvedType resolvedValue <- resolveExprValue path
+      resolvedPath <- case resolvedValue of
+        PathExpr res@(PathInfo (FunctionArgument _ _) _) -> pure res
+        PathExpr res@(PathInfo (LetVariable      _ _) _) -> pure res
+        _ -> fatal $ ErrorReferenceNotLocalVariable resolvedValue
+      pure $ TypedExpression resolvedType (ReferenceExpr resolvedPath)
+    BoolNegationExpr e -> analyzeFunctionExpression e >>= \case
+      BoolExpression x ->
+        pure $ BoolExpression (not x)
+      inner@(TypedExpression resolvedType _) -> do
+        unless (resolvedType `typeMatches` BoolType) $
+          fatal $ ErrorWrongType [BoolType] resolvedType
+        pure $ TypedExpression BoolType (BoolNegationExpr inner)
+    IntNegationExpr e -> analyzeFunctionExpression e >>= \case
+      IntExpression x ->
+        pure $ IntExpression (-x)
+      inner@(TypedExpression resolvedType _) -> do
+        unless (resolvedType `typeMatches` IntType) $
+          fatal $ ErrorWrongType [IntType] resolvedType
+        pure $ TypedExpression IntType (IntNegationExpr inner)
+    SubtractionExpr    e1 e2 -> binaryIntExpression  (pure ... subtract) SubtractionExpr    e1 e2
+    MultiplicationExpr e1 e2 -> binaryIntExpression  (pure ... (*))      MultiplicationExpr e1 e2
+    ExponentiationExpr e1 e2 -> binaryIntExpression  (pure ... (^))      ExponentiationExpr e1 e2
+    DivisionExpr       e1 e2 -> binaryIntExpression  (safeDiv div)       DivisionExpr       e1 e2
+    ModuloExpr         e1 e2 -> binaryIntExpression  (safeDiv mod)       ModuloExpr         e1 e2
+    BoolAndExpr        e1 e2 -> binaryBoolExpression (&&)                BoolAndExpr        e1 e2
+    BoolOrExpr         e1 e2 -> binaryBoolExpression (||)                BoolOrExpr         e1 e2
+    e -> error (show e)
   where
     compileTimeEnumCast enumType enumInfo intValue = do
       when (intValue < 0 || intValue >= length (_enumValues enumInfo)) $
         report $ ErrorEnumOutOfBounds enumInfo intValue
       pure $ TypedExpression enumType $ IntLiteralExpr intValue
 
+    binaryIntExpression
+      :: (Int -> Int -> AnalysisM Int)
+      -> (TypedExpression -> TypedExpression -> Expression Resolved)
+      -> WithLocation (Expression Parsed)
+      -> WithLocation (Expression Parsed)
+      -> AnalysisM TypedExpression
+    binaryIntExpression f c e1 e2 = do
+      lhs <- analyzeFunctionExpression e1
+      rhs <- analyzeFunctionExpression e2
+      case (lhs, rhs) of
+        (IntExpression l, IntExpression r) ->
+          IntExpression <$> f l r
+        _ -> do
+          unless (_exprType lhs `typeMatches` IntType) $
+            report $ ErrorWrongType [IntType] $ _exprType lhs
+          unless (_exprType rhs `typeMatches` IntType) $
+            report $ ErrorWrongType [IntType] $ _exprType rhs
+          validate
+          pure $ TypedExpression IntType $ c lhs rhs
+
+    binaryBoolExpression
+      :: (Bool -> Bool -> Bool)
+      -> (TypedExpression -> TypedExpression -> Expression Resolved)
+      -> WithLocation (Expression Parsed)
+      -> WithLocation (Expression Parsed)
+      -> AnalysisM TypedExpression
+    binaryBoolExpression f c e1 e2 = do
+      lhs <- analyzeFunctionExpression e1
+      rhs <- analyzeFunctionExpression e2
+      case (lhs, rhs) of
+        (BoolExpression l, BoolExpression r) ->
+          pure $ BoolExpression $ f l r
+        _ -> do
+          unless (_exprType lhs `typeMatches` BoolType) $
+            report $ ErrorWrongType [BoolType] $ _exprType lhs
+          unless (_exprType rhs `typeMatches` BoolType) $
+            report $ ErrorWrongType [BoolType] $ _exprType rhs
+          validate
+          pure $ TypedExpression BoolType $ c lhs rhs
+
+  {-
+    comparisonExpression
+      :: (forall a. Ord a => a -> a -> Bool)
+      -> (TypedExpression -> TypedExpression -> Expression Resolved)
+      -> WithLocation (Expression Parsed)
+      -> WithLocation (Expression Parsed)
+      -> AnalysisM TypedExpression
+    comparisonExpression op c e1 e2 = do
+      lhs@TypedExpression t1 r1 <- go e1
+      rhs@TypedExpression t2 r2 <- go e2
+      unless (t1 `typeMatches` t2) $
+        fatal $ ErrorWrongType [t1] t2
+      compareExpressions op c r1 r2
+
+    compareExpressions
+      :: (forall a. Ord a => a -> a -> Bool)
+      -> (TypedExpression -> TypedExpression -> TypedExpression)
+      -> TypedExpression
+      -> TypedExpression
+      -> TypedExpression
+    compareExpressions op c lhs rhs = do
+      case (_exprValue lhs, _exprValue rhs) of
+        (StructExpr _ f1, StructExpr _ f2) ->
+          let sortedLHSFields = map snd $ L.sortOn fst $ NE.toList f1
+              sortedRHSFields = map snd $ L.sortOn fst $ NE.toList f2
+              innerExprs = zipWith (compareExpressions op c) sortedLHSFields sortedRHSFields
+          in combineComparisons innerExprs
+        (IntLiteralExpr  i1, IntLiteralExpr  i2) -> BoolLiteral $ op i1 i2
+        (CharLiteralExpr c1, CharLiteralExpr c2) -> BoolLiteral $ op c1 c2
+        (BoolLiteralExpr b1, BoolLiteralExpr b2) -> BoolLiteral $ op b1 b2
+        _ -> c lhs rhs
+    -}
+
+    -- combineComparisons
+    --   :: [TypedExpression]
+    --   -> TypedExpression
+
+
 {-
-    ArrayExpr _ -> undefined
-    IndexExpr _ _ -> undefined
-    StructExpr path fields -> do
-      (resolvedType, structInfo, paramMapping) <- resolveStruct path
-      resolvedFields <- (traverse . traverse) go fields
-      fullyResolvedType <- analyzeStructFields resolvedType structInfo paramMapping resolvedFields
-      pure $ TypedExpression fullyResolvedType $ StructExpr fullyResolvedType resolvedFields
-    IntLiteralExpr    i -> pure $ IntExpression  i
-    BoolLiteralExpr   b -> pure $ BoolExpression b
-    CharLiteralExpr   c -> pure $ CharExpression c
-    StringLiteralExpr s -> pure $ TypedExpression undefined $ StringLiteralExpr s
-    ReferenceExpr _ -> reportError undefined
-    BoolNegationExpr e -> go e >>= \case
-      BoolExpression x -> pure $ BoolExpression (not x)
-      TypedExpression t _ -> reportError $ ErrorWrongType [BoolType] t
-    IntNegationExpr e -> go e >>= \case
-      IntExpression x -> pure $ IntExpression (-x)
-      TypedExpression t _ -> reportError $ ErrorWrongType [IntType] t
     AdditionExpr e1 e2 -> do
       lhs <- go e1
       case lhs of
@@ -878,3 +1004,10 @@ filterMapping = M.mapMaybe \pathInfo ->
   case _pathName pathInfo of
     Placeholder -> Nothing
     _           -> Just $ pure pathInfo
+
+safeDiv
+  :: (Int -> Int -> Int)
+  -> (Int -> Int -> AnalysisM Int)
+safeDiv f x y = do
+  when (y == 0) $ fatal ErrorDivideByZero
+  pure $ f x y
