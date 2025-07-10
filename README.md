@@ -1,15 +1,31 @@
 <div align="center">
   <img src="/docs/img/logo.png" alt="the project logo, which is itself a Piet program", style="float:left"/>
 
-[Documentation](/docs) | [Twitch] | [Youtube]
+[Documentation](/docs) | [Twitch] | [YouTube]
 
 </div>
 
 <br />
 
-Piètre is a small stack-based imperative language that compiles to [Piet](https://www.dangermouse.net/esoteric/piet.html), an esoteric language in which the source code is an image[^1]. Its syntax is similar to Rust's[^2].
+Piètre is a small stack-based imperative language that compiles to
+[Piet](https://www.dangermouse.net/esoteric/piet.html), an esoteric language in
+which the source code is an image[^1]. Its syntax is similar to Rust's[^2]. You
+can watch an introduction to the project on
+[YouTube](https://youtu.be/uCQ2hjx_7-Y).
 
-The main goal of this project is to be educational: it aims first at being a good resource to learn about compilers and how to implement them. A secondary objective is to provide a reference for how to organize a medium-size Haskell codebase. Furthermore, until 1.0 is reached, the code of this project will be entirely written [live on Twitch][Twitch]. Streams are announced ahead of time on the [channel's schedule][Twitch schedule].
+The main goal of this project is to be educational: it aims first at being a
+good resource to learn about compilers and how to implement them, and a
+secondary objective is to provide a reference for how to organize a medium-size
+Haskell codebase. Furthermore, until 1.0 is reached, the code of this project
+will be entirely written [live on Twitch][Twitch]; streams are announced ahead
+of time on the [channel's schedule][Twitch schedule]. All streams are archived
+on a dedicated [YouTube
+channel](https://www.youtube.com/@nicuveo-archive/videos).
+
+This live-coding project is part of the
+[declarative.tv](https://declarative.tv/) initiative, where you can find other
+streamers using functional and declarative languages. Join our Discord server to
+chat about this project!
 
 _Piètre_ means "shoddy" or "second-rate" in french.[^3]
 
@@ -17,9 +33,9 @@ _Piètre_ means "shoddy" or "second-rate" in french.[^3]
 
 ## Status
 
-[![main build status][ShieldM]][Actionm] [![dev build status][ShieldD]][ActionD] <br />
-[![twitch status][TwitchStatus]][Twitch]
+[![main build status][ShieldM]][Actionm] [![dev build status][ShieldD]][ActionD] [![twitch status][TwitchStatus]][Twitch]
 
+Until 1.0 is reached, all development will happen on the [dev branch](https://github.com/nicuveo/pietre/tree/dev).
 
 <br />
 
@@ -40,7 +56,9 @@ Binary releases will be provided from 1.0 onwards.
 
 ## Contributing
 
-Until 1.0 is reached, this project will remain a one-person effort and will not accept external contributions. There is no guarantee this policy will change past 1.0: this is a hobby project first and foremost. :)
+Until 1.0 is reached, this project will remain a one-person effort and will not
+accept external code contributions. There is no guarantee this policy will
+change past 1.0: this is a hobby project first and foremost. :)
 
 <br />
 
@@ -57,7 +75,7 @@ Once the project has made enough progress, a roadmap to 1.0 will be detailed her
 [ShieldD]: https://img.shields.io/github/actions/workflow/status/nicuveo/pietre/validate.yml?logo=github&event=push&style=flat&branch=dev&label=dev%20build
 [TwitchStatus]: https://img.shields.io/twitch/status/nicuveo?logo=twitch&logoColor=white&style=flat&cacheSeconds=300
 [Twitch]: https://twitch.tv/nicuveo
-[Youtube]: https://www.youtube.com/playlist?list=PLgbgEcpv1Xa21W1vEHnYO5mU70bWJW05j
+[YouTube]: https://www.youtube.com/playlist?list=PLgbgEcpv1Xa21W1vEHnYO5mU70bWJW05j
 [Twitch schedule]: https://www.twitch.tv/nicuveo/schedule
 [Haskell]: https://www.haskell.org/
 [Stack]: https://docs.haskellstack.org/en/stable/
