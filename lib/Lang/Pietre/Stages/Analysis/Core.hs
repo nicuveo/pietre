@@ -460,7 +460,7 @@ analyzeConst _thisName ConstInfo {..} = do
             _                                    -> error "ICE"
         SubtractionExpr    e1 e2 -> binaryIntExpression (pure ... subtract) e1 e2
         MultiplicationExpr e1 e2 -> binaryIntExpression (pure ... (*)) e1 e2
-        ExponentiationExpr e1 e2 -> binaryIntExpression (pure ... (^)) e1 e2
+        ExponentiationExpr e1 e2 -> binaryIntExpression safeExp e1 e2
         DivisionExpr       e1 e2 -> binaryIntExpression (safeDiv div) e1 e2
         ModuloExpr         e1 e2 -> binaryIntExpression (safeDiv mod) e1 e2
         EqualityExpr       e1 e2 -> comparisonExpression (compareExpect (const False)) True  e1 e2
@@ -811,11 +811,17 @@ analyzeFunctionExpression expr = do
                  fatal $ ErrorWrongType [IntType {-, StringType -}] $ _exprType lhs
     SubtractionExpr    e1 e2 -> binaryIntExpression  (pure ... subtract) SubtractionExpr    e1 e2
     MultiplicationExpr e1 e2 -> binaryIntExpression  (pure ... (*))      MultiplicationExpr e1 e2
-    ExponentiationExpr e1 e2 -> binaryIntExpression  (pure ... (^))      ExponentiationExpr e1 e2
+    ExponentiationExpr e1 e2 -> binaryIntExpression  safeExp             ExponentiationExpr e1 e2
     DivisionExpr       e1 e2 -> binaryIntExpression  (safeDiv div)       DivisionExpr       e1 e2
     ModuloExpr         e1 e2 -> binaryIntExpression  (safeDiv mod)       ModuloExpr         e1 e2
     BoolAndExpr        e1 e2 -> binaryBoolExpression (&&)                BoolAndExpr        e1 e2
     BoolOrExpr         e1 e2 -> binaryBoolExpression (||)                BoolOrExpr         e1 e2
+    EqualityExpr       e1 e2 -> comparisonExpression (compareExpect (const False)) EqualityExpr   True  e1 e2
+    DifferenceExpr     e1 e2 -> comparisonExpression (compareExpect (const True )) DifferenceExpr False e1 e2
+    GreaterExpr        e1 e2 -> comparisonExpression (compareExpect (== GT))       GreaterExpr    False e1 e2
+    LesserExpr         e1 e2 -> comparisonExpression (compareExpect (== LT))       LesserExpr     False e1 e2
+    GreaterEqExpr      e1 e2 -> comparisonExpression (compareExpect (== GT))       GreaterEqExpr  True  e1 e2
+    LesserEqExpr       e1 e2 -> comparisonExpression (compareExpect (== LT))       LesserEqExpr   True  e1 e2
     e -> error (show e)
   where
     compileTimeEnumCast enumType enumInfo intValue = do
@@ -862,6 +868,58 @@ analyzeFunctionExpression expr = do
             report $ ErrorWrongType [BoolType] $ _exprType rhs
           validate
           pure $ TypedExpression BoolType $ c lhs rhs
+
+    comparisonExpression
+      :: (forall a. Ord a => a -> a -> Maybe Bool)
+      -> (TypedExpression -> TypedExpression -> Expression Resolved)
+      -> Bool
+      -> WithLocation (Expression Parsed)
+      -> WithLocation (Expression Parsed)
+      -> AnalysisM TypedExpression
+    comparisonExpression op c defaultCase e1 e2 = do
+      lhs@(TypedExpression t1 r1) <- analyzeFunctionExpression e1
+      rhs@(TypedExpression t2 r2) <- analyzeFunctionExpression e2
+      unless (t1 `typeMatches` t2) $
+        report $ ErrorWrongType [t1] t2
+      runMaybeT (compareExpressions op r1 r2) <&> \case
+        Nothing -> TypedExpression BoolType $ c lhs rhs
+        Just mb -> BoolExpression $ fromMaybe defaultCase mb
+
+    compareExpect
+      :: Ord a
+      => (Ordering -> Bool)
+      -> a
+      -> a
+      -> Maybe Bool
+    compareExpect checkOrdering x y =
+      case compare x y of
+        EQ -> Nothing
+        o  -> Just $ checkOrdering o
+
+    compareExpressions
+      :: (forall a. Ord a => a -> a -> Maybe Bool)
+      -> Expression Resolved
+      -> Expression Resolved
+      -> MaybeT AnalysisM (Maybe Bool)
+    compareExpressions op e1 e2 =
+      case (e1, e2) of
+        (StructExpr structType lhsFields, StructExpr _ rhsFields) -> do
+          (structInfo, _) <- lift (checkStructType structType) `onNothingM`
+            mzero
+          comparisons <- for (_structValues structInfo) \(fieldName, _) -> do
+            (_, lhsField) <- lift $
+              find ((fieldName ==) . fst) lhsFields `onNothing`
+                fatal (ErrorFieldAccessFieldNotFound structType fieldName)
+            (_, rhsField) <- lift $
+              find ((fieldName ==) . fst) rhsFields `onNothing`
+                fatal (ErrorFieldAccessFieldNotFound structType fieldName)
+            compareExpressions op (_exprValue lhsField) (_exprValue rhsField)
+          pure $ asum comparisons
+        (IntLiteralExpr  i1, IntLiteralExpr  i2) -> pure $ op i1 i2
+        (CharLiteralExpr c1, CharLiteralExpr c2) -> pure $ op c1 c2
+        (BoolLiteralExpr b1, BoolLiteralExpr b2) -> pure $ op b1 b2
+        _ -> mzero
+
 
   {-
     comparisonExpression
@@ -1019,3 +1077,8 @@ safeDiv
 safeDiv f x y = do
   when (y == 0) $ fatal ErrorDivideByZero
   pure $ f x y
+
+safeExp :: Int -> Int -> AnalysisM Int
+safeExp x y = do
+  when (y < 0) $ fatal ErrorNegativeExponent
+  pure $ x ^ y

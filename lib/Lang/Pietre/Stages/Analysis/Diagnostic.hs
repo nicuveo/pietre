@@ -52,6 +52,7 @@ data Diagnostic
   | ErrorContinueNotInLoop
   | ErrorFunctionCallWrongNumberOfArguments (PathInfo Resolved) Int Int
   | ErrorDivideByZero
+  | ErrorNegativeExponent
   | ErrorReferenceNotLocalVariable (Expression Resolved)
   | ErrorFunctionCallArgExpectingReference Identifier
   | ErrorFunctionCallArgExpectingValue     Identifier
