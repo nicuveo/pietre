@@ -41,7 +41,7 @@ instance Arbitrary Import where
 instance Arbitrary Identifier where
   arbitrary = fmap (T.pack . ('_':)) $ listOf $ arbitrary `suchThat` isLetter
   shrink i
-    | T.length i == 1 = []
+    | T.length i <= 1 = []
     | otherwise       = [T.init i]
 
 instance Arbitrary ImportType where

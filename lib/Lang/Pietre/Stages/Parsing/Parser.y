@@ -315,7 +315,7 @@ boolean_expr :: { WithLocation (Expression Parsed) }
   | expression "||" expression { binaryExpr BoolOrExpr  $1 $3 }
 
 cast_expr :: { WithLocation (Expression Parsed) }
-  : expression "as" type_expr { WithLocation (_location $1) (CastExpr $1 $3) }
+  : expression "as" path_expr { WithLocation (_location $1) (CastExpr $1 (snd $3)) }
 
 range_expr :: { WithLocation (Expression Parsed) }
   : expression "..=" expression { binaryExpr RangeInclusiveExpr $1 $3 }
@@ -337,9 +337,9 @@ reference :: { PathInfo Parsed }
   : "&" type_expr { $2 }
 
 type_expr :: { PathInfo Parsed }
-  : IDENTIFIER                   { PathInfo (pure $ getIdentifierLiteral $1) [] }
-  | IDENTIFIER "::" generic_args { PathInfo (pure $ getIdentifierLiteral $1) $3 }
-  | IDENTIFIER "::" type_expr    { prependPathInfo (getIdentifierLiteral $1) $3 }
+  : IDENTIFIER                { PathInfo (pure $ getIdentifierLiteral $1) [] }
+  | IDENTIFIER generic_args   { PathInfo (pure $ getIdentifierLiteral $1) $2 }
+  | IDENTIFIER "::" type_expr { prependPathInfo (getIdentifierLiteral $1) $3 }
 
 generic_args :: { [PathInfo Parsed] }
   : "<" comma_list(type_expr) ">" { $2 }

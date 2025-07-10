@@ -321,9 +321,9 @@ instance Pretty (TypeAliasInfo Parsed) where
   pretty TypeAliasInfo {..} = hsep
     [ "type"
     , pretty _aliasName
-    , prettyParams _aliasParams
+    , prettyParams pretty "<" _aliasParams
     , "="
-    , pretty _aliasValue
+    , prettyTypeExpr _aliasValue
     ] <> ";"
 
 instance Pretty (EnumInfo Parsed) where
@@ -337,13 +337,13 @@ instance Pretty (StructInfo Parsed) where
   pretty StructInfo {..} = hsep
     [ "struct"
     , pretty _structName
-    , prettyParams _structParams
+    , prettyParams pretty "<" _structParams
     , encloseSep "{" "}" "," do
         (name, typeExpr) <- NE.toList _structValues
         pure $ hsep
           [ pretty name
           , ":"
-          , pretty typeExpr
+          , prettyTypeExpr typeExpr
           ]
     ]
 
@@ -352,7 +352,7 @@ instance Pretty (ConstInfo Parsed) where
     [ "const"
     , pretty _constName
     , ":"
-    , pretty _constType
+    , prettyTypeExpr _constType
     , "="
     , pretty (_constExpr ^. within @Expression @Parsed)
     ] <> ";"
@@ -361,17 +361,17 @@ instance Pretty (FunctionInfo Parsed) where
   pretty FunctionInfo {..} = hsep
     [ "fn"
     , pretty _funName
-    , prettyParams _funParams
+    , prettyParams pretty "<" _funParams
     , encloseSep "(" ")" "," do
         (name, argType) <- _funArgs
         pure $ hsep
           [ pretty name
           , ":"
           , case argType of
-              ByValue     te -> pretty te
-              ByReference te -> "&" <+> pretty te
+              ByValue     te -> prettyTypeExpr te
+              ByReference te -> "&" <+> prettyTypeExpr te
           ]
-    , foldMap (\t -> "->" <+> pretty t) _funReturn
+    , foldMap (\t -> "->" <+> prettyTypeExpr t) _funReturn
     , prettyBlock _funBody
     ]
 
@@ -417,25 +417,25 @@ instance Pretty (LetInfo Parsed) where
   pretty LetInfo {..} = hsep
     [ "let"
     , pretty _letName
-    , foldMap (\t -> ":" <+> pretty t) _letType
+    , foldMap (\t -> ":" <+> prettyTypeExpr t) _letType
     , "="
     , pretty (_letExpr ^. within @Expression @Parsed)
     ] <> ";"
 
 instance Pretty (Expression Parsed) where
   pretty = \case
-    PathExpr                     p     -> pretty p
-    CastExpr                     e  t  -> parens (go e) <+> "as" <+> pretty t
+    PathExpr                     p     -> prettyPathExpr p
+    CastExpr                     e  t  -> parens (go e) <+> "as" <+> prettyPathExpr t
     FieldAccessExpr              e  i  -> parens (go e) <> "." <> pretty i
-    CallExpr                     f  as -> pretty f <> encloseSep "(" ")" "," (map go as)
+    CallExpr                     f  as -> prettyPathExpr f <> encloseSep "(" ")" "," (map go as)
     ArrayExpr                    vs    -> list $ map go vs
     IndexExpr                    e1 e2 -> parens (go e1) <> brackets (go e2)
-    StructExpr                   p  fs -> pretty p <+> encloseSep "@{" "}" "," [pretty name <+> ":" <+> go value | (name, value) <- NE.toList fs]
+    StructExpr                   p  fs -> prettyPathExpr p <+> encloseSep "@{" "}" "," [pretty name <+> ":" <+> go value | (name, value) <- NE.toList fs]
     BoolLiteralExpr              b     -> if b then "true" else "false"
     IntLiteralExpr               i     -> viaShow i
     CharLiteralExpr              c     -> viaShow c
     StringLiteralExpr            s     -> viaShow s
-    ReferenceExpr                e     -> "&" <> pretty e
+    ReferenceExpr                e     -> "&" <> prettyPathExpr e
     IntNegationExpr              e     -> "-" <> parens (go e)
     BoolNegationExpr             e     -> "!" <> parens (go e)
     AdditionExpr                 e1 e2 -> parens (go e1) <+> "+"   <+> parens (go e2)
@@ -464,15 +464,16 @@ instance Pretty (Expression Parsed) where
     where
       go = pretty . (^. within @Expression @Parsed)
 
-instance Pretty (PathInfo Parsed) where
-  pretty PathInfo {..} = hcat (intersperse "::" (toList $ fmap pretty _pathName)) <> case _pathParams of
-    [] -> mempty
-    _  -> encloseSep "::<" ">" "," $ map pretty _pathParams
+prettyPathExpr :: PathInfo Parsed -> Doc ann
+prettyPathExpr PathInfo {..} = hcat (intersperse "::" (toList $ fmap pretty _pathName)) <> prettyParams prettyTypeExpr "::<" _pathParams
 
+prettyTypeExpr :: PathInfo Parsed -> Doc ann
+prettyTypeExpr PathInfo {..} = hcat (intersperse "::" (toList $ fmap pretty _pathName)) <> prettyParams prettyTypeExpr "<" _pathParams
 
-prettyParams :: Pretty p => [p] -> Doc ann
-prettyParams []     = mempty
-prettyParams params = encloseSep "<" ">" "," $ map pretty params
+prettyParams :: (p -> Doc ann) -> Doc ann -> [p] -> Doc ann
+prettyParams renderFun opening params
+  | null params = mempty
+  | otherwise   = encloseSep opening ">" "," $ map renderFun params
 
 prettyBlock :: [Annotated Statement Parsed] -> Doc ann
 prettyBlock = braces . enclose hardline hardline . indent 2 . vsep . map (pretty . (^. within @Statement @Parsed))
