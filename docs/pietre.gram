@@ -94,7 +94,7 @@ grouped_expr: "(" expression ")"
 
 ## path
 
-path_expr: IDENTIFIER ("::" IDENTIFIER)* generic_args?
+path_expr: IDENTIFIER ("::" IDENTIFIER)* ("::" generic_args)?
 
 ## field access
 
@@ -116,7 +116,7 @@ index_expr: expression "[" expression "]"
 
 ## struct
 
-struct_expr: path_expr "{" field_expr ("," field_expr)* ","? "}"
+struct_expr: path_expr "@" "{" field_expr ("," field_expr)* ","? "}"
 field_expr: IDENTIFIER ":" expression
 
 ## literal
@@ -185,7 +185,7 @@ compound_assignment_expr
 
 reference: "&" type
 type: path_type
-path_type: path_expr generic_args
+path_type: IDENTIFIER ("::" IDENTIFIER)* generic_args?
 
 ## generic
 
