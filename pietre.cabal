@@ -55,6 +55,7 @@ library
       Lang.Pietre.Stages.Parsing.Lexer
       Lang.Pietre.Stages.Parsing.Monad
       Lang.Pietre.Stages.Parsing.Parser
+      Lang.Pietre.Stages.Simplification
   other-modules:
       Paths_pietre
   autogen-modules:

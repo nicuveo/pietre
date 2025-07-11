@@ -39,12 +39,12 @@ main = do
       for filenames \filename -> do
         (defCache, exports) <- get
         let moduleName = pure $ T.pack $ takeBaseName filename
-        source <- liftIO $ readFile filename
-        ast    <- parseModule filename source `onLeft` (error . show)
-        let (diagnostics, result) = analyzeModule defCache exports moduleName ast
+        source    <- liftIO $ readFile filename
+        parsedAST <- parseModule filename source `onLeft` (error . show)
+        let (diagnostics, resolvedAST) = analyzeModule defCache exports moduleName parsedAST
         unless (null diagnostics) $
           liftIO $ print (moduleName, diagnostics)
-        case result of
+        case simplifyModule <$> resolvedAST of
           Nothing -> error "aborting"
           Just (ResolvedModule exported newDefinitions) -> do
             put ( defCache <> newDefinitions
