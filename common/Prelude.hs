@@ -11,6 +11,9 @@ functions.
 module Prelude
   ( -- * re-exports from useful "default" modules
     module P
+    -- * nested operations
+  , fmap2
+  , traverse2
     -- * custom operators
   , (...)
     -- * maybe helpers
@@ -72,6 +75,23 @@ import "base" Prelude             as P hiding (lookup)
 
 import Data.HashMap.Strict        qualified as M
 import Data.Sequence              (Seq (..))
+
+
+-- nested operations
+
+fmap2
+  :: (Functor f, Functor g)
+  => (a -> b)
+  -> f (g a)
+  -> f (g b)
+fmap2 = fmap . fmap
+
+traverse2
+  :: (Traversable t1, Traversable t2, Applicative f)
+  => (a -> f b)
+  -> t1 (t2 a)
+  -> f (t1 (t2 b))
+traverse2 = traverse . traverse
 
 
 -- operators
