@@ -19,7 +19,7 @@ data WithLocation a = WithLocation
   { _location :: Location
   , _located  :: a
   }
-  deriving (Show, Functor)
+  deriving (Show, Functor, Traversable, Foldable)
 
 makeLenses ''Location
 makeLenses ''WithLocation
