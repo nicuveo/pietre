@@ -1,6 +1,10 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Lang.Pietre.Stages.Analysis
   ( DefinitionCache
   , ResolvedModule (..)
+  , resmodExported
+  , resmodDefinitionCache
   , analyzeModule
   ) where
 
@@ -28,6 +32,8 @@ data ResolvedModule = ResolvedModule
   { _resmodExported        :: HashSet Identifier
   , _resmodDefinitionCache :: DefinitionCache
   }
+
+makeLenses ''ResolvedModule
 
 analyzeModule
   :: DefinitionCache
