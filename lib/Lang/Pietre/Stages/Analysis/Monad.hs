@@ -33,6 +33,7 @@ data AnalysisInfo = AnalysisInfo
 data AnalysisContext = AnalysisContext
   { _contextCache      :: HashMap Name (WithLocation (Definition Resolved))
   , _contextScope      :: HashMap Path (NonEmpty Role)
+  , _contextCurrent    :: Name
   , _contextLocation   :: Location
   , _contextFunType    :: PathInfo Resolved
   , _contextWithinLoop :: Bool
@@ -45,7 +46,16 @@ makeLenses ''AnalysisInfo
 makeLenses ''AnalysisContext
 
 initialContext :: AnalysisContext
-initialContext = AnalysisContext M.empty M.empty (initialLocation "") UnitType False False False
+initialContext = AnalysisContext
+  { _contextCache      = M.empty
+  , _contextScope      = M.empty
+  , _contextCurrent    = Name (pure $ error "ICE") []
+  , _contextLocation   = initialLocation ""
+  , _contextFunType    = UnitType
+  , _contextWithinLoop = False
+  , _contextAnyError   = False
+  , _contextNewError   = False
+  }
 
 runAnalysis
   :: AnalysisInfo

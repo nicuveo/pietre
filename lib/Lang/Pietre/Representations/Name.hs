@@ -20,7 +20,7 @@ data Role
   = TopLevelDeclaration Name
   | BuiltinType Identifier
   | BuiltinFunction Name
-  | TypeParameter Identifier
+  | TypeParameter Name Identifier
   | Placeholder
   | FunctionPointer (FunctionType Resolved)
   | FunctionArgument Identifier (FunctionArgType Resolved)

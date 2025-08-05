@@ -7,6 +7,7 @@ import Control.Monad.Extra                       (unlessM, whenJustM)
 import Data.HashMap.Strict                       qualified as M
 import Data.HashSet                              qualified as S
 import Data.List                                 qualified as L
+import Data.List.Extra                           (zipWithLongest)
 import Data.List.NonEmpty                        qualified as NE
 
 import Lang.Pietre.Batteries.BuiltIn
@@ -130,7 +131,8 @@ setTypeParameters parameters = do
         [identifier]     -> do
           when (isReserved identifier) $
             report $ ErrorReservedIdentifier identifier
-          let parameterRole = TypeParameter identifier
+          declName <- use contextCurrent
+          let parameterRole = TypeParameter declName identifier
           whenJustM (lookupRole identifier) \names ->
             report $ WarningNameShadow names parameterRole
           pure (pure identifier, pure parameterRole)
@@ -145,8 +147,8 @@ typeDiff p1 p2 = case (_pathName p1, _pathName p2) of
     if t1 == t2 then similar else different
   (BuiltinType t1, BuiltinType t2) ->
     if t1 == t2 then similar else different
-  (TypeParameter t1, TypeParameter t2) ->
-    if t1 == t2 then similar else different
+  (TypeParameter n1 t1, TypeParameter n2 t2) ->
+    if t1 == t2 && n1 == n2 then similar else different
   (Placeholder, Placeholder) ->
     similar
   (FunctionPointer t1, FunctionPointer t2) ->
@@ -159,7 +161,13 @@ typeDiff p1 p2 = case (_pathName p1, _pathName p2) of
     different
   where
     different = [(p1, p2)]
-    similar   = concatMap (uncurry typeDiff) $ zip (_pathParams p1) (_pathParams p2)
+    similar =
+      concatMap (uncurry typeDiff) $
+      zipWithLongest defaultToPlaceholder (_pathParams p1) (_pathParams p2)
+    defaultToPlaceholder l r =
+      ( fromMaybe PlaceholderType l
+      , fromMaybe PlaceholderType r
+      )
 
 typeMatches
   :: PathInfo Resolved
@@ -168,8 +176,8 @@ typeMatches
 typeMatches p1 p2 = case (_pathName p1, _pathName p2) of
   (BuiltinType "!void", _) -> True
   (_, BuiltinType "!void") -> True
-  (TypeParameter _, _) -> True
-  (_, TypeParameter _) -> True
+  (TypeParameter _ _, _) -> True
+  (_, TypeParameter _ _) -> True
   (Placeholder, _) -> True
   (_, Placeholder) -> True
   (TopLevelDeclaration t1, TopLevelDeclaration t2) ->
@@ -204,8 +212,8 @@ mostSpecificType
 mostSpecificType = NE.head . NE.sortWith numberOfParameters
   where
     numberOfParameters PathInfo {..} = case _pathName of
-      TypeParameter _ -> 1 :: Int
-      _               -> sum $ map numberOfParameters _pathParams
+      TypeParameter _ _ -> 1 :: Int
+      _                 -> sum $ map numberOfParameters _pathParams
 
 
 --------------------------------------------------------------------------------
@@ -232,6 +240,7 @@ analyzeDefinition definition = do
       if defCycle
       then fatal (ErrorCyclicDefinition rootName)
       else local (infoStack %~ S.insert rootName) do
+        contextCurrent .= rootName
         resolvedDefinition <- case _located definition of
           TypeAliasDef info -> TypeAliasDef <$> analyzeTypeAlias info
           StructDef    info -> StructDef    <$> analyzeStruct    info
@@ -486,7 +495,6 @@ analyzeStructFields typeName StructInfo {..} paramMapping values = do
   for_ values \(identifier, _) -> do
     unless (M.member identifier referenceMap) $
       report $ ErrorStructUnknownField typeName identifier
-  traceM "DEBUG STARTS HERE"
   allDiffs <- for _structValues \(fieldName, fieldType) -> do
     case fold $ M.lookup fieldName valuesMap of
       []      -> do
@@ -499,12 +507,12 @@ analyzeStructFields typeName StructInfo {..} paramMapping values = do
         catMaybes <$>
           for (typeDiff fieldType (_exprType expr)) \(lhs, rhs) -> do
             case (_pathName lhs, _pathName rhs) of
-              (TypeParameter paramName, _) -> do
+              (TypeParameter _ paramName, _) -> do
                 typePattern <- M.lookup paramName paramMapping `onNothing` error "ICE"
                 unless (typePattern `typeMatches` rhs) $
                   report $ ErrorWrongType [typePattern] rhs
                 pure $ Just (paramName, pure rhs)
-              (_, TypeParameter _) ->
+              (_, TypeParameter _ _) ->
                 pure Nothing
               _ -> do
                 report $ ErrorWrongType [fieldType] (_exprType expr)
@@ -676,13 +684,13 @@ analyzeFunctionCallArgs resolvedPath FunctionType {..} paramMapping values = do
       let fieldType = functionArgType argType
       for (typeDiff fieldType (_exprType expr)) \(lhs, rhs) -> do
         case (_pathName lhs, _pathName rhs) of
-          (TypeParameter paramName, _) -> do
+          (TypeParameter _ paramName, _) -> do
             typePattern <- M.lookup paramName paramMapping `onNothing`
               error "ICE"
             unless (typePattern `typeMatches` rhs) $
               report $ ErrorWrongType [typePattern] rhs
             pure $ Just (paramName, pure rhs)
-          (_, TypeParameter _) ->
+          (_, TypeParameter _ _) ->
             pure Nothing
           _ -> do
             report $ ErrorWrongType [fieldType] (_exprType expr)
@@ -749,7 +757,7 @@ analyzeFunctionExpression expr = do
             (VoidType, value) -> do
               pure $ RValueExpression VoidType value
             _ -> case _pathName $ _exprType resolvedExpr of
-              TypeParameter _ ->
+              TypeParameter _ _ ->
                 pure resultCast
               _ -> do
                 reportCastError
@@ -768,7 +776,7 @@ analyzeFunctionExpression expr = do
             (BoolType, value) ->
               pure $ RValueExpression BoolType value
             _ -> case _pathName resolvedTargetType of
-                TypeParameter _ ->
+                TypeParameter _ _ ->
                   pure resultCast
                 _ -> do
                   reportCastError
@@ -793,9 +801,9 @@ analyzeFunctionExpression expr = do
             _ -> case ( _pathName (_exprType resolvedExpr)
                       , _pathName resolvedTargetType
                       ) of
-              (TypeParameter _, _) -> pure resultCast
-              (_, TypeParameter _) -> pure resultCast
-              _                    -> reportCastError
+              (TypeParameter _ _, _) -> pure resultCast
+              (_, TypeParameter _ _) -> pure resultCast
+              _                      -> reportCastError
     PathExpr p ->
       resolveExprValue p
     FieldAccessExpr subExpr field -> do

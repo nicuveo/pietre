@@ -15,5 +15,5 @@ substituteTypes
   -> PathInfo Resolved
   -> AnalysisM (PathInfo Resolved)
 substituteTypes mappings info@PathInfo {..} = case _pathName of
-  TypeParameter name -> M.lookup name mappings `onNothing` error "ICE"
-  _                  -> pathParams (traverse $ substituteTypes mappings) info
+  TypeParameter _ name -> M.lookup name mappings `onNothing` error "ICE"
+  _                    -> pathParams (traverse $ substituteTypes mappings) info

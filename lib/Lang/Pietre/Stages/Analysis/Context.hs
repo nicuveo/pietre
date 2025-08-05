@@ -133,7 +133,7 @@ checkStructType = resolveTypeWith go
     go PathInfo {..} = \case
       Nothing ->
         case _pathName of
-          TypeParameter _ ->
+          TypeParameter _ _ ->
             pure Nothing
           Placeholder ->
             fatal $ ErrorPlaceholder "struct name in struct expression"
@@ -355,7 +355,7 @@ getTypeName role = case role of
   TopLevelDeclaration name -> pure $ Just name
   BuiltinType _            -> pure Nothing
   BuiltinFunction _        -> fatal $ ErrorNotAType role
-  TypeParameter _          -> pure Nothing
+  TypeParameter _ _        -> pure Nothing
   Placeholder              -> pure Nothing
   FunctionPointer _        -> pure Nothing
   FunctionArgument _ _     -> fatal $ ErrorNotAType role
@@ -366,7 +366,7 @@ getValueName role = case role of
   TopLevelDeclaration name   -> pure  $ Just name
   BuiltinType _              -> fatal $ ErrorNotAValue role
   BuiltinFunction name       -> pure  $ Just name
-  TypeParameter _            -> fatal $ ErrorNotAValue role
+  TypeParameter _ _          -> fatal $ ErrorNotAValue role
   Placeholder                -> fatal $ ErrorNotAValue role
   FunctionPointer _          -> fatal $ ErrorNotAValue role
   FunctionArgument _ argType -> getTypeName $ _pathName $ functionArgType argType
