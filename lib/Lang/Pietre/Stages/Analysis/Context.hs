@@ -181,15 +181,15 @@ resolveExprValue =
     go :: ResolveCallback TypedExpression
     go resolvedPath@PathInfo {..} info = case _pathName of
       FunctionArgument _ (ByValue argType) ->
-        pure $ TypedExpression argType $ PathExpr resolvedPath
+        pure $ LValueExpression argType $ PathExpr resolvedPath
       FunctionArgument _ (ByReference argType) ->
-        pure $ TypedExpression argType $ PathExpr resolvedPath
+        pure $ LValueExpression argType $ PathExpr resolvedPath
       LetVariable _ varType ->
-        pure $ TypedExpression varType $ PathExpr resolvedPath
+        pure $ LValueExpression varType $ PathExpr resolvedPath
       BuiltinFunction _ -> case info of
         Just (name, WithLocation _ (FunctionDef funInfo)) -> do
           (_, functionType, _) <- partiallyResolveFunctionType mode resolvedPath name funInfo
-          pure $ TypedExpression
+          pure $ RValueExpression
             (PathInfo (FunctionPointer functionType) [])
             (PathExpr resolvedPath)
         _ -> error "ICE"
@@ -202,7 +202,7 @@ resolveExprValue =
           ConstDef    cInfo -> verifyConstValue resolvedPath name (_location def) cInfo
           FunctionDef fInfo -> do
             (_, functionType, _) <- partiallyResolveFunctionType mode resolvedPath name fInfo
-            pure $ TypedExpression
+            pure $ RValueExpression
               (PathInfo (FunctionPointer functionType) [])
               (PathExpr resolvedPath)
       _ -> error "ICE"
@@ -445,7 +445,7 @@ verifyEnumValue resolvedPath@PathInfo {..} name EnumInfo {..} = do
     report $ ErrorNotAConst _pathName
   case L.elemIndex identifier _enumValues of
     Nothing -> error "ICE"
-    Just i  -> pure $ TypedExpression resolvedPath $ IntLiteralExpr i
+    Just i  -> pure $ RValueExpression resolvedPath $ IntLiteralExpr i
 
 verifyConstValue
   :: forall p

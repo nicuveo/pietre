@@ -42,8 +42,8 @@ pattern PlaceholderType :: PathInfo Resolved
 pattern PlaceholderType = PathInfo Placeholder []
 
 pattern IntExpression :: Int -> TypedExpression
-pattern IntExpression x = TypedExpression IntType (IntLiteralExpr x)
+pattern IntExpression x = RValueExpression IntType (IntLiteralExpr x)
 pattern CharExpression :: Char -> TypedExpression
-pattern CharExpression x = TypedExpression CharType (CharLiteralExpr x)
+pattern CharExpression x = RValueExpression CharType (CharLiteralExpr x)
 pattern BoolExpression :: Bool -> TypedExpression
-pattern BoolExpression x = TypedExpression BoolType (BoolLiteralExpr x)
+pattern BoolExpression x = RValueExpression BoolType (BoolLiteralExpr x)

@@ -108,6 +108,7 @@ instance Simplifiable (PathInfo Resolved) where
 
 instance Simplifiable TypedExpression where
   simplify TypedExpression {..} = TypedExpression
+    _exprIsLValue
     (simplify _exprType)
     (simplify _exprValue)
 
@@ -132,8 +133,8 @@ instance Simplifiable (Expression Resolved) where
     BoolOrExpr (BoolExpression True ) _   -> Just $ BoolLiteralExpr True
     BoolOrExpr (BoolExpression False) rhs -> Just $ _exprValue rhs
 
-    BoolNegationExpr (TypedExpression BoolType (BoolNegationExpr expr)) -> Just $ _exprValue expr
-    IntNegationExpr  (TypedExpression IntType  (IntNegationExpr  expr)) -> Just $ _exprValue expr
+    BoolNegationExpr (TypedExpression _ BoolType (BoolNegationExpr expr)) -> Just $ _exprValue expr
+    IntNegationExpr  (TypedExpression _ IntType  (IntNegationExpr  expr)) -> Just $ _exprValue expr
 
     EqualityExpr (BoolExpression True) rhs  -> Just $ _exprValue rhs
     EqualityExpr lhs (BoolExpression True)  -> Just $ _exprValue lhs

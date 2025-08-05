@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -101,11 +102,24 @@ type Path = NonEmpty Identifier
 
 
 data TypedExpression = TypedExpression
-  { _exprType  :: PathInfo Resolved
-  , _exprValue :: Expression Resolved
+  { _exprIsLValue :: Bool
+  , _exprType     :: PathInfo Resolved
+  , _exprValue    :: Expression Resolved
   }
 
 deriving instance ShowConstraints Resolved => Show TypedExpression
+
+pattern LValueExpression
+  :: PathInfo Resolved
+  -> Expression Resolved
+  -> TypedExpression
+pattern LValueExpression eType eValue = TypedExpression True eType eValue
+
+pattern RValueExpression
+  :: PathInfo Resolved
+  -> Expression Resolved
+  -> TypedExpression
+pattern RValueExpression eType eValue = TypedExpression False eType eValue
 
 
 --------------------------------------------------------------------------------

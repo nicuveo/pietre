@@ -31,8 +31,8 @@ data Diagnostic
   | ErrorAmbiguousPath Path (NonEmpty Role)
   | ErrorCyclicDefinition Name
   | ErrorIncorrectTypeParameterCount Name Int Int
-  | ErrorDuplicateTypeParameter Name Identifier
-  | ErrorEnumDuplicateEntries Name Identifier
+  | ErrorDuplicateTypeParameter Identifier
+  | ErrorEnumDuplicateEntries Identifier
   | ErrorWrongType [PathInfo Resolved] (PathInfo Resolved)
   | ErrorWrongCast (PathInfo Resolved) (PathInfo Resolved)
   | ErrorEnumOutOfBounds (EnumInfo Resolved) Int
@@ -45,7 +45,7 @@ data Diagnostic
   | ErrorFunctionIncompatibleTypes (PathInfo Resolved) Identifier (NonEmpty (PathInfo Resolved))
   | ErrorFieldAccessNotAStruct (PathInfo Resolved)
   | ErrorFieldAccessFieldNotFound (PathInfo Resolved) Identifier
-  | ErrorReservedIdentifier Name Identifier
+  | ErrorReservedIdentifier Identifier
   | ErrorPlaceholder Text
   | ErrorFunctionDuplicatedArg Identifier
   | ErrorBreakNotInLoop
@@ -56,12 +56,17 @@ data Diagnostic
   | ErrorReferenceNotLocalVariable (Expression Resolved)
   | ErrorFunctionCallArgExpectingReference Identifier
   | ErrorFunctionCallArgExpectingValue     Identifier
+  | ErrorRValueAssignment (Expression Resolved)
+  | ErrorIfExprNotBoolean (PathInfo Resolved)
+  | ErrorWhileExprNotBoolean (PathInfo Resolved)
   | WarningNameShadow (NonEmpty Role) Role
+  | WarningUnexpectedTopLevelExpression (Expression Resolved)
   deriving Show
 
 isError :: Diagnostic -> Bool
 isError = \case
   WarningNameShadow _ _ -> False
+  WarningUnexpectedTopLevelExpression _ -> False
   _ -> True
 
 
