@@ -264,10 +264,11 @@ class Analyzable p where
     -> AnalysisM (PathInfo Resolved)
 
 instance Analyzable Parsed where
-  forceDefinition loc info = toDefinition info
-    & WithLocation loc
-    & analyzeDefinition
-    & fmap (fromMaybe (error "ICE") . fromDefinition)
+  forceDefinition loc info = do
+    let definition = WithLocation loc $ toDefinition info
+    resolvedDefinition <- analyzeDefinition definition
+      `onNothingM` abort
+    pure $ fromMaybe (error "ICE") $ fromDefinition resolvedDefinition
   forceType = resolveType
 
 instance Analyzable Resolved where
@@ -388,7 +389,7 @@ processCallback callback resolvedPathInfo = \case
            -> AnalysisM r
       call = callback resolvedPathInfo . Just . (name,)
     foreignDefinition <- views infoForeignDefinitions (M.lookup name)
-    cachedDefinition  <- uses contextCache (M.lookup name)
+    cachedDefinition  <- uses contextCache (M.lookup name) `onNothingM` abort
     localDefinition   <- views infoLocalDefinitions (M.lookup name)
     let action = asum [ call <$> foreignDefinition
                       , call <$> cachedDefinition

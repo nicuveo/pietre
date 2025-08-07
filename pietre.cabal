@@ -26,6 +26,7 @@ source-repository head
 
 library
   exposed-modules:
+      Data.HashMap.Strict.Extra
       Prelude
       Lang.Pietre
       Lang.Pietre.Batteries.BuiltIn
@@ -36,6 +37,7 @@ library
       Lang.Pietre.Representations.IR
       Lang.Pietre.Representations.Location
       Lang.Pietre.Representations.Name
+      Lang.Pietre.Representations.Symbol
       Lang.Pietre.Representations.Tokens
       Lang.Pietre.Stages.Analysis
       Lang.Pietre.Stages.Analysis.Context
@@ -112,6 +114,7 @@ library
 executable gramviz
   main-is: Main.hs
   other-modules:
+      Data.HashMap.Strict.Extra
       Prelude
       Paths_pietre
   autogen-modules:
@@ -167,6 +170,7 @@ executable gramviz
 executable pc
   main-is: Main.hs
   other-modules:
+      Data.HashMap.Strict.Extra
       Prelude
       Paths_pietre
   autogen-modules:
@@ -222,6 +226,7 @@ test-suite tests
   type: exitcode-stdio-1.0
   main-is: Main.hs
   other-modules:
+      Data.HashMap.Strict.Extra
       Prelude
       Arbitrary
       Compile

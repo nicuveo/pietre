@@ -22,17 +22,19 @@ import Lang.Pietre.Stages.Analysis.Diagnostic
 
 type AnalysisM = MaybeT (RWS AnalysisInfo [Diagnostic] AnalysisContext)
 
+type Scope = HashMap Path (NonEmpty Role)
+
 data AnalysisInfo = AnalysisInfo
   { _infoModuleName         :: ModuleName
   , _infoStack              :: HashSet Name
   , _infoLocalDefinitions   :: HashMap Name (WithLocation (Definition Parsed))
   , _infoForeignDefinitions :: HashMap Name (WithLocation (Definition Resolved))
-  , _infoTopLevelScope      :: HashMap Path (NonEmpty Role)
+  , _infoTopLevelScope      :: Scope
   }
 
 data AnalysisContext = AnalysisContext
-  { _contextCache      :: HashMap Name (WithLocation (Definition Resolved))
-  , _contextScope      :: HashMap Path (NonEmpty Role)
+  { _contextCache      :: HashMap Name (Maybe (WithLocation (Definition Resolved)))
+  , _contextScope      :: Scope
   , _contextCurrent    :: Name
   , _contextLocation   :: Location
   , _contextFunType    :: PathInfo Resolved
@@ -65,13 +67,25 @@ runAnalysis info action = swap $ evalRWS (runMaybeT checkedAction) info initialC
   where
     checkedAction = action <* whenM (use contextAnyError) abort
 
-resetState :: AnalysisM ()
-resetState = do
-  topLevelScope <- view infoTopLevelScope
+withLocalState
+  :: Scope
+  -> AnalysisM a
+  -> AnalysisM (Maybe a)
+withLocalState topLevelScope action = do
+  previousScope      <- use contextScope
+  previousFunType    <- use contextFunType
+  previousWithinLoop <- use contextWithinLoop
+  previousNewError   <- use contextNewError
   contextScope      .= topLevelScope
   contextFunType    .= UnitType
   contextWithinLoop .= False
   contextNewError   .= False
+  result            <- try action
+  contextScope      .= previousScope
+  contextFunType    .= previousFunType
+  contextWithinLoop .= previousWithinLoop
+  contextNewError   .= previousNewError
+  pure result
 
 
 --------------------------------------------------------------------------------

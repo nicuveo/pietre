@@ -34,21 +34,29 @@ renderPath = intercalate "::" . map T.unpack . NE.toList
 main :: IO ()
 main = do
   filenames <- getArgs
-  (definitions, _) <-
-    flip execStateT (M.empty, M.empty) $
+  (_, definitions, _, _) <-
+    flip execStateT (M.empty, M.empty, M.empty, M.empty) $
       for filenames \filename -> do
-        (defCache, exports) <- get
+        (exports, definitions, symbols, functions) <- get
         let moduleName = pure $ T.pack $ takeBaseName filename
         source    <- liftIO $ readFile filename
         parsedAST <- parseModule filename source `onLeft` (error . show)
-        let (diagnostics, resolvedAST) = analyzeModule defCache exports moduleName parsedAST
+        let (diagnostics, resolvedAST) = analyzeModule
+              definitions
+              symbols
+              functions
+              exports
+              moduleName
+              parsedAST
         unless (null diagnostics) $
           liftIO $ print (moduleName, diagnostics)
         case simplifyModule <$> resolvedAST of
           Nothing -> error "aborting"
-          Just (ResolvedModule exported newDefinitions) -> do
-            put ( defCache <> newDefinitions
-                , M.insert moduleName exported exports
+          Just (ResolvedModule {..}) -> do
+            put ( M.insert moduleName _resmodExported exports
+                , definitions <> _resmodDefinitions
+                , symbols     <> _resmodSymbols
+                , functions   <> _resmodFunctions
                 )
   for_ (M.toList definitions) \(name, WithLocation _ decl) -> do
     let declName = T.intercalate "::" $ NE.toList $ _nameFullPath name

@@ -16,7 +16,7 @@ simplifyModule
   :: ResolvedModule
   -> ResolvedModule
 simplifyModule =
-  resmodDefinitionCache . traverse . traverse %~ simplify
+  resmodDefinitions . traverse . traverse %~ simplify
 
 
 --------------------------------------------------------------------------------

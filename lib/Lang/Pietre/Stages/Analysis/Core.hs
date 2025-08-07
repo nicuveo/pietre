@@ -221,7 +221,7 @@ mostSpecificType = NE.head . NE.sortWith numberOfParameters
 
 analyzeDefinition
   :: WithLocation (Definition Parsed)
-  -> AnalysisM (Definition Resolved)
+  -> AnalysisM (Maybe (Definition Resolved))
 analyzeDefinition definition = do
   moduleName <- view infoModuleName
   let exportedIdentifiers = definitionIdentifiers $ _located definition
@@ -231,26 +231,28 @@ analyzeDefinition definition = do
       report $ ErrorReservedIdentifier identifier
     pure $ Name (moduleName <> pure identifier) []
   uses contextCache (M.lookup rootName) >>= \case
-    Just def -> pure $ _located def
+    Just def -> pure $ _located <$> def
     Nothing -> do
-      resetState
       let defLocation = _location definition
       contextLocation .= defLocation
-      defCycle <- views infoStack (S.member rootName)
-      if defCycle
-      then fatal (ErrorCyclicDefinition rootName)
-      else local (infoStack %~ S.insert rootName) do
-        contextCurrent .= rootName
-        resolvedDefinition <- case _located definition of
-          TypeAliasDef info -> TypeAliasDef <$> analyzeTypeAlias info
-          StructDef    info -> StructDef    <$> analyzeStruct    info
-          EnumDef      info -> EnumDef      <$> analyzeEnum      info
-          ConstDef     info -> ConstDef     <$> analyzeConst     info
-          FunctionDef  info -> FunctionDef  <$> analyzeFunction  info
-        contextCache <>= M.fromList do
-          name <- NE.toList exportedNames
-          pure (name, WithLocation defLocation resolvedDefinition)
-        pure resolvedDefinition
+      topLevelScope <- view infoTopLevelScope
+      resolvedDefinition <-
+        withLocalState topLevelScope do
+          defCycle <- views infoStack (S.member rootName)
+          if defCycle
+          then fatal (ErrorCyclicDefinition rootName)
+          else local (infoStack %~ S.insert rootName) do
+            contextCurrent .= rootName
+            case _located definition of
+              TypeAliasDef info -> TypeAliasDef <$> analyzeTypeAlias info
+              StructDef    info -> StructDef    <$> analyzeStruct    info
+              EnumDef      info -> EnumDef      <$> analyzeEnum      info
+              ConstDef     info -> ConstDef     <$> analyzeConst     info
+              FunctionDef  info -> FunctionDef  <$> analyzeFunction  info
+      contextCache <>= M.fromList do
+        name <- NE.toList exportedNames
+        pure (name, WithLocation defLocation <$> resolvedDefinition)
+      pure resolvedDefinition
 
 analyzeTypeAlias
   :: TypeAliasInfo Parsed
