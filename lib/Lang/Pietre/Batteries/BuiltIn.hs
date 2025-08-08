@@ -28,16 +28,27 @@ reserved = S.fromList $ map (NE.head . fst) builtins
 isReserved :: Identifier -> Bool
 isReserved = flip S.member reserved
 
+pattern IntName  :: Name
+pattern IntName  = Name ("int"   :| []) []
+pattern CharName :: Name
+pattern CharName = Name ("char"  :| []) []
+pattern BoolName :: Name
+pattern BoolName = Name ("bool"  :| []) []
+pattern UnitName :: Name
+pattern UnitName = Name ("()"    :| []) []
+pattern VoidName :: Name
+pattern VoidName = Name ("!void" :| []) []
+
 pattern IntType  :: PathInfo Resolved
-pattern IntType  = PathInfo (BuiltinType "int")  []
+pattern IntType  = PathInfo (BuiltinType IntName)  []
 pattern CharType :: PathInfo Resolved
-pattern CharType = PathInfo (BuiltinType "char") []
+pattern CharType = PathInfo (BuiltinType CharName) []
 pattern BoolType :: PathInfo Resolved
-pattern BoolType = PathInfo (BuiltinType "bool") []
+pattern BoolType = PathInfo (BuiltinType BoolName) []
 pattern UnitType :: PathInfo Resolved
-pattern UnitType = PathInfo (BuiltinType "()") []
+pattern UnitType = PathInfo (BuiltinType UnitName) []
 pattern VoidType :: PathInfo Resolved
-pattern VoidType = PathInfo (BuiltinType "!void") []
+pattern VoidType = PathInfo (BuiltinType VoidName) []
 pattern PlaceholderType :: PathInfo Resolved
 pattern PlaceholderType = PathInfo Placeholder []
 

@@ -31,10 +31,17 @@ help = do
 renderPath :: NonEmpty Text -> String
 renderPath = intercalate "::" . map T.unpack . NE.toList
 
+renderName :: Name -> Text
+renderName Name {..} = case _nameParameters of
+  [] -> baseName
+  ps -> baseName <> "<" <> T.intercalate "," (map renderName ps) <> ">"
+  where
+    baseName = T.intercalate "::" (NE.toList _nameFullPath)
+
 main :: IO ()
 main = do
   filenames <- getArgs
-  (_, definitions, _, _) <-
+  (_, _definitions, _symbols, _functions) <-
     flip execStateT (M.empty, M.empty, M.empty, M.empty) $
       for filenames \filename -> do
         (exports, definitions, symbols, functions) <- get
@@ -58,6 +65,14 @@ main = do
                 , symbols     <> _resmodSymbols
                 , functions   <> _resmodFunctions
                 )
-  for_ (M.toList definitions) \(name, WithLocation _ decl) -> do
-    let declName = T.intercalate "::" $ NE.toList $ _nameFullPath name
-    putStrLn $ T.unpack declName ++ ": " ++ show decl
+            liftIO $ putStrLn $ "### " ++ show moduleName
+            liftIO $ putStrLn $ "### Definitions"
+            for_ (M.toList _resmodDefinitions) \(name, WithLocation _ decl) -> do
+              liftIO $ putStrLn $ T.unpack (renderName name) ++ ": " ++ show decl
+            liftIO $ putStrLn $ "### Symbols"
+            for_ (M.toList _resmodSymbols) \(name, symbol) -> do
+              liftIO $ putStrLn $ T.unpack (renderName name) ++ ": " ++ show symbol
+            liftIO $ putStrLn $ "### Generic functions"
+            for_ (M.toList _resmodFunctions) \(name, (_, definition)) -> do
+              liftIO $ putStrLn $ T.unpack (renderName name) ++ ": " ++ show definition
+  pass

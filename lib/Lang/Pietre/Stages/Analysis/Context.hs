@@ -40,7 +40,7 @@ lookupRole
   :: Identifier
   -> AnalysisM (Maybe (NonEmpty Role))
 lookupRole path =
-  uses contextScope (M.lookup $ pure path)
+  uses currentScope (M.lookup $ pure path)
 
 lookupEnumType
   :: PathInfo Resolved
@@ -187,11 +187,11 @@ resolveExprValue =
       LetVariable _ varType ->
         pure $ LValueExpression varType $ PathExpr resolvedPath
       BuiltinFunction _ -> case info of
-        Just (name, WithLocation _ (FunctionDef funInfo)) -> do
-          (_, functionType, _) <- partiallyResolveFunctionType mode resolvedPath name funInfo
+        Just (name, WithLocation loc (FunctionDef funInfo)) -> do
+          (truePath, functionType, _, _) <- partiallyResolveFunctionType mode resolvedPath name loc funInfo
           pure $ RValueExpression
             (PathInfo (FunctionPointer functionType) [])
-            (PathExpr resolvedPath)
+            (PathExpr truePath)
         _ -> error "ICE"
       TopLevelDeclaration _ -> case info of
         Nothing -> error "ICE"
@@ -201,10 +201,10 @@ resolveExprValue =
           EnumDef     eInfo -> verifyEnumValue resolvedPath name eInfo
           ConstDef    cInfo -> verifyConstValue resolvedPath name (_location def) cInfo
           FunctionDef fInfo -> do
-            (_, functionType, _) <- partiallyResolveFunctionType mode resolvedPath name fInfo
+            (truePath, functionType, _, _) <- partiallyResolveFunctionType mode resolvedPath name (_location def) fInfo
             pure $ RValueExpression
               (PathInfo (FunctionPointer functionType) [])
-              (PathExpr resolvedPath)
+              (PathExpr truePath)
       _ -> error "ICE"
 
 resolveFunctionCallValue
@@ -213,6 +213,7 @@ resolveFunctionCallValue
      ( PathInfo Resolved
      , FunctionType Resolved
      , HashMap Identifier (PathInfo Resolved)
+     , Maybe Name
      )
 resolveFunctionCallValue = do
   resolvePath AllowPlaceholder >=> resolveValueWith go
@@ -221,6 +222,7 @@ resolveFunctionCallValue = do
           ( PathInfo Resolved
           , FunctionType Resolved
           , HashMap Identifier (PathInfo Resolved)
+          , Maybe Name
           )
     go resolvedPath@PathInfo {..} info = case _pathName of
       FunctionArgument _ (ByValue argType) ->
@@ -230,8 +232,8 @@ resolveFunctionCallValue = do
       LetVariable _ varType ->
         checkFunctionType resolvedPath varType
       BuiltinFunction _ -> case info of
-        Just (name, WithLocation _ (FunctionDef fInfo)) -> do
-          partiallyResolveFunctionType AllowPlaceholder resolvedPath name fInfo
+        Just (name, WithLocation loc (FunctionDef fInfo)) -> do
+          partiallyResolveFunctionType AllowPlaceholder resolvedPath name loc fInfo
         _ -> error "ICE"
       TopLevelDeclaration _ -> case info of
         Nothing -> error "ICE"
@@ -240,11 +242,11 @@ resolveFunctionCallValue = do
           StructDef       _ -> fatal $ ErrorNotAFunction _pathName
           EnumDef         _ -> fatal $ ErrorNotAFunction _pathName
           ConstDef        _ -> fatal $ ErrorNotAFunction _pathName
-          FunctionDef fInfo -> partiallyResolveFunctionType AllowPlaceholder resolvedPath name fInfo
+          FunctionDef fInfo -> partiallyResolveFunctionType AllowPlaceholder resolvedPath name (_location def) fInfo
       _ -> error "ICE"
     checkFunctionType resultPath PathInfo {..} = case _pathName of
       FunctionPointer functionType ->
-        pure (resultPath, functionType, M.empty)
+        pure (resultPath, functionType, M.empty, Nothing)
       _ ->
         fatal $ ErrorNotAFunction _pathName
 
@@ -326,12 +328,21 @@ resolvePath
   -> AnalysisM (PathInfo Resolved)
 resolvePath mode PathInfo {..} = do
   roles@(role :| others) <-
-    uses contextScope (M.lookup _pathName) `onNothingM`
+    uses currentScope (M.lookup _pathName) `onNothingM`
       fatal (ErrorRoleNotFound _pathName)
   unless (null others) $
     fatal $ ErrorAmbiguousPath _pathName roles
   params <- traverse (resolveType mode) _pathParams
-  pure $ PathInfo role params
+  let resultRole = PathInfo role params
+  case role of
+    TypeParameter _ t ->
+      uses currentParams (M.lookup t) >>= \case
+        Nothing -> pure resultRole
+        Just p  -> do
+          unless (null _pathParams) $
+            fatal $ ErrorTypeParametersToTypeParameter t
+          pure p
+    _ -> pure resultRole
 
 resolveTypeWith
   :: forall r
@@ -389,7 +400,10 @@ processCallback callback resolvedPathInfo = \case
            -> AnalysisM r
       call = callback resolvedPathInfo . Just . (name,)
     foreignDefinition <- views infoForeignDefinitions (M.lookup name)
-    cachedDefinition  <- uses contextCache (M.lookup name) `onNothingM` abort
+    cachedDefinition  <- uses moduleDefinitions (M.lookup name) >>= \case
+      Nothing       -> pure Nothing
+      Just (Just x) -> pure $ Just x
+      Just Nothing  -> abort
     localDefinition   <- views infoLocalDefinitions (M.lookup name)
     let action = asum [ call <$> foreignDefinition
                       , call <$> cachedDefinition
@@ -403,15 +417,23 @@ partiallyResolveFunctionType
   => TypeResolutionMode
   -> PathInfo Resolved
   -> Name
+  -> Location
   -> FunctionInfo p
   -> AnalysisM
      ( PathInfo Resolved
      , FunctionType Resolved
      , HashMap Identifier (PathInfo Resolved)
+     , Maybe Name
      )
-partiallyResolveFunctionType mode resolvedPath@PathInfo {..} name FunctionInfo {..} = do
-  resolvedArgs   <- (traverse . traverse) forceFunArg _funArgs
-  resolvedReturn <- traverse forceFunType _funReturn
+partiallyResolveFunctionType mode resolvedPath@PathInfo {..} name loc FunctionInfo {..} = do
+  topLevelScope <- view infoTopLevelScope
+  (resolvedArgs, resolvedReturn) <-
+    withContext topLevelScope name loc do
+      setTypeParameters _funParams
+      liftA2 (,)
+        ((traverse . traverse) forceFunArg _funArgs)
+        (traverse forceFunType _funReturn)
+    `onNothingM` abort
   let expected = length _funParams
       actual   = length _pathParams
       invalid  = case mode of
@@ -423,10 +445,18 @@ partiallyResolveFunctionType mode resolvedPath@PathInfo {..} name FunctionInfo {
         if null _pathParams
         then [(paramName, PlaceholderType) | paramName <- _funParams]
         else zip _funParams _pathParams
-  -- TODO: register function for instantiation
-  pure (resolvedPath, FunctionType _funParams resolvedArgs resolvedReturn, mapping)
+  (truePath, trueName) <- tryInstantiateGenericFunction _funParams name mapping <&> \case
+    Nothing -> (resolvedPath, name)
+    Just trueName ->
+      ( resolvedPath & pathName %~ \case
+          TopLevelDeclaration _ -> TopLevelDeclaration trueName
+          BuiltinFunction _ -> BuiltinFunction trueName
+          _ -> error "ICE"
+      , trueName
+      )
+  pure (truePath, FunctionType _funParams resolvedArgs resolvedReturn, mapping, Just trueName)
   where
-    forceFunType = forceType @p $ ForbidPlaceholder "function call"
+    forceFunType = forceType @p $ ForbidPlaceholder "function definition"
     forceFunArg = \case
       ByValue     path -> ByValue     <$> forceFunType path
       ByReference path -> ByReference <$> forceFunType path

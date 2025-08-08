@@ -4,6 +4,7 @@ import "this" Prelude
 
 import Control.Lens                              hiding (mapping, op, (...))
 import Control.Monad.Extra                       (unlessM, whenJustM)
+import Control.Monad.Trans.Maybe
 import Data.HashMap.Strict                       qualified as M
 import Data.HashSet                              qualified as S
 import Data.List                                 qualified as L
@@ -14,11 +15,14 @@ import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
+import Lang.Pietre.Representations.Symbol        qualified as Symbol
 import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Analysis.Context
 import Lang.Pietre.Stages.Analysis.Diagnostic
 import Lang.Pietre.Stages.Analysis.Instantiation
 import Lang.Pietre.Stages.Analysis.Monad
+
+import Debug.Trace
 
 
 --------------------------------------------------------------------------------
@@ -131,12 +135,12 @@ setTypeParameters parameters = do
         [identifier]     -> do
           when (isReserved identifier) $
             report $ ErrorReservedIdentifier identifier
-          declName <- use contextCurrent
+          declName <- use currentName
           let parameterRole = TypeParameter declName identifier
           whenJustM (lookupRole identifier) \names ->
             report $ WarningNameShadow names parameterRole
           pure (pure identifier, pure parameterRole)
-  contextScope %= M.union typeNames
+  currentScope %= M.union typeNames
 
 typeDiff
   :: PathInfo Resolved
@@ -147,8 +151,8 @@ typeDiff p1 p2 = case (_pathName p1, _pathName p2) of
     if t1 == t2 then similar else different
   (BuiltinType t1, BuiltinType t2) ->
     if t1 == t2 then similar else different
-  (TypeParameter n1 t1, TypeParameter n2 t2) ->
-    if t1 == t2 && n1 == n2 then similar else different
+  (TypeParameter _ _, _) ->
+    different
   (Placeholder, Placeholder) ->
     similar
   (FunctionPointer t1, FunctionPointer t2) ->
@@ -174,8 +178,8 @@ typeMatches
   -> PathInfo Resolved
   -> Bool
 typeMatches p1 p2 = case (_pathName p1, _pathName p2) of
-  (BuiltinType "!void", _) -> True
-  (_, BuiltinType "!void") -> True
+  (BuiltinType VoidName, _) -> True
+  (_, BuiltinType VoidName) -> True
   (TypeParameter _ _, _) -> True
   (_, TypeParameter _ _) -> True
   (Placeholder, _) -> True
@@ -230,26 +234,32 @@ analyzeDefinition definition = do
     when (isReserved identifier) $
       report $ ErrorReservedIdentifier identifier
     pure $ Name (moduleName <> pure identifier) []
-  uses contextCache (M.lookup rootName) >>= \case
+  uses moduleDefinitions (M.lookup rootName) >>= \case
     Just def -> pure $ _located <$> def
     Nothing -> do
       let defLocation = _location definition
-      contextLocation .= defLocation
       topLevelScope <- view infoTopLevelScope
       resolvedDefinition <-
-        withLocalState topLevelScope do
+        withContext topLevelScope rootName defLocation do
           defCycle <- views infoStack (S.member rootName)
           if defCycle
           then fatal (ErrorCyclicDefinition rootName)
           else local (infoStack %~ S.insert rootName) do
-            contextCurrent .= rootName
             case _located definition of
               TypeAliasDef info -> TypeAliasDef <$> analyzeTypeAlias info
               StructDef    info -> StructDef    <$> analyzeStruct    info
               EnumDef      info -> EnumDef      <$> analyzeEnum      info
-              ConstDef     info -> ConstDef     <$> analyzeConst     info
-              FunctionDef  info -> FunctionDef  <$> analyzeFunction  info
-      contextCache <>= M.fromList do
+              ConstDef     info -> do
+                resolvedInfo <- analyzeConst info
+                moduleSymbols %= M.insert rootName (Symbol.Constant resolvedInfo)
+                pure $ ConstDef resolvedInfo
+              FunctionDef  info -> do
+                resolvedInfo <- analyzeFunction info
+                if isGeneric resolvedInfo
+                then moduleFunctions %= M.insert rootName (topLevelScope, info <$ definition)
+                else moduleSymbols   %= M.insert rootName (Symbol.Function resolvedInfo)
+                pure $ FunctionDef resolvedInfo
+      moduleDefinitions <>= M.fromList do
         name <- NE.toList exportedNames
         pure (name, WithLocation defLocation <$> resolvedDefinition)
       pure resolvedDefinition
@@ -369,7 +379,7 @@ analyzeConst ConstInfo {..} = do
       :: WithLocation (Expression Parsed)
       -> AnalysisM TypedExpression
     go WithLocation {..} = do
-      contextLocation .= _location
+      currentLocation .= _location
       case _located of
         PathExpr p ->
           resolveConstValue p
@@ -543,9 +553,9 @@ analyzeFunction FunctionInfo {..} = do
     when (argCount > 1) $
       report $ ErrorFunctionDuplicatedArg argName
   resolvedArgs <- traverse analyzeArg _funArgs
-  contextFunType .= fromMaybe UnitType resolvedType
+  currentFunType .= resolvedType
   validate
-  resolvedStatements <- analyzeBlock _funBody
+  resolvedStatements <- analyzeBlock pass _funBody
   pure $ FunctionInfo _funName _funParams resolvedArgs resolvedType resolvedStatements
   where
     analyzeArg (argName, argType) = do
@@ -559,36 +569,37 @@ analyzeFunction FunctionInfo {..} = do
       let resolvedRole = FunctionArgument argName resolvedType
       whenJustM (lookupRole argName) \names ->
         report $ WarningNameShadow names resolvedRole
-      contextScope %= M.insert (pure argName) (pure resolvedRole)
+      currentScope %= M.insert (pure argName) (pure resolvedRole)
       pure (argName, resolvedType)
 
 analyzeBlock
-  :: [WithLocation (Statement Parsed)]
+  :: AnalysisM ()
+  -> [WithLocation (Statement Parsed)]
   -> AnalysisM [Statement Resolved]
-analyzeBlock statements = do
-  previousScope <- use contextScope
-  result <- fold <$> try (traverse analyzeStatement statements)
-  contextScope .= previousScope
-  pure result
+analyzeBlock setContext statements =
+  fold <$>
+    withNestedContext do
+      setContext
+      traverse analyzeStatement statements
 
 analyzeStatement
   :: WithLocation (Statement Parsed)
   -> AnalysisM (Statement Resolved)
 analyzeStatement statement = do
-  contextLocation .= _location statement
+  currentLocation .= _location statement
   case _located statement of
     ContinueStmt -> do
-      unlessM (use contextWithinLoop) $
+      unlessM (use currentlyWithinLoop) $
         report ErrorContinueNotInLoop
       pure ContinueStmt
     BreakStmt -> do
-      unlessM (use contextWithinLoop) $
+      unlessM (use currentlyWithinLoop) $
         report ErrorBreakNotInLoop
       pure BreakStmt
     ReturnStmt returnExpr -> do
       resolvedReturnExpr <- traverse analyzeFunctionExpression returnExpr
       let returnType = maybe UnitType _exprType resolvedReturnExpr
-      funReturnType <- use contextFunType
+      funReturnType <- uses currentFunType (fromMaybe UnitType)
       unless (funReturnType `typeMatches` returnType) $
         report $ ErrorWrongType [funReturnType] returnType
       pure $ ReturnStmt resolvedReturnExpr
@@ -618,17 +629,16 @@ analyzeStatement statement = do
       let resolvedRole = LetVariable _letName $ _exprType resolvedExpr
       whenJustM (lookupRole _letName) \names ->
         report $ WarningNameShadow names resolvedRole
-      contextScope %= M.insert (pure _letName) (pure resolvedRole)
+      currentScope %= M.insert (pure _letName) (pure resolvedRole)
       pure $ LetStmt $ LetInfo _letName resolvedType resolvedExpr
     IfStmt ifInfo -> IfStmt <$> analyzeIf ifInfo
     WhileStmt WhileInfo {..} -> do
       resolvedExpr <- analyzeFunctionExpression _whileExpr
       unless (_exprType resolvedExpr `typeMatches` BoolType) $
         report $ ErrorWhileExprNotBoolean $ _exprType resolvedExpr
-      wasInLoop <- use contextWithinLoop
-      contextWithinLoop .= True
-      resolvedBody <- analyzeBlock _whileBody
-      contextWithinLoop .= wasInLoop
+      let initLoopContext = do
+            currentlyWithinLoop .= True
+      resolvedBody <- analyzeBlock initLoopContext _whileBody
       validate
       pure $ WhileStmt $ WhileInfo resolvedExpr resolvedBody
     ForStmt ForInfo {..} -> do
@@ -641,13 +651,10 @@ analyzeStatement statement = do
       let resolvedRole = LetVariable _forVariableName innerType
       whenJustM (lookupRole _forVariableName) \names ->
         report $ WarningNameShadow names resolvedRole
-      previousScope <- use contextScope
-      wasInLoop <- use contextWithinLoop
-      contextWithinLoop .= True
-      contextScope %= M.insert (pure _forVariableName) (pure resolvedRole)
-      resolvedBody <- fold <$> try (traverse analyzeStatement _forBody)
-      contextScope .= previousScope
-      contextWithinLoop .= wasInLoop
+      let initLoopContext = do
+            currentlyWithinLoop .= True
+            currentScope %= M.insert (pure _forVariableName) (pure resolvedRole)
+      resolvedBody <- analyzeBlock initLoopContext _forBody
       pure $ ForStmt $ ForInfo _forVariableName resolvedExpr resolvedBody
 
 analyzeIf
@@ -657,7 +664,7 @@ analyzeIf IfInfo {..} = do
   resolvedExpr <- analyzeFunctionExpression _ifExpr
   unless (_exprType resolvedExpr `typeMatches` BoolType) $
     report $ ErrorIfExprNotBoolean $ _exprType resolvedExpr
-  resolvedBody <- analyzeBlock _ifBody
+  resolvedBody <- analyzeBlock pass _ifBody
   resolvedElse <- traverse analyzeElse _ifElse
   validate
   pure $ IfInfo resolvedExpr resolvedBody resolvedElse
@@ -667,7 +674,7 @@ analyzeElse
   -> AnalysisM (ElseInfo Resolved)
 analyzeElse = \case
   ElseIf    ifInfo -> ElseIf    <$> analyzeIf    ifInfo
-  ElseBlock block  -> ElseBlock <$> analyzeBlock block
+  ElseBlock block  -> ElseBlock <$> analyzeBlock pass block
 
 analyzeFunctionCallArgs
   :: PathInfo Resolved
@@ -684,6 +691,7 @@ analyzeFunctionCallArgs resolvedPath FunctionType {..} paramMapping values = do
         (ByValue _,     ReferenceExpr _) -> report $ ErrorFunctionCallArgExpectingValue     argName
         (ByValue _,     _)               -> pure ()
       let fieldType = functionArgType argType
+      traceM $ "DIFF? lhs: " ++ show fieldType ++ ", rhs: " ++ show (_exprType expr)
       for (typeDiff fieldType (_exprType expr)) \(lhs, rhs) -> do
         case (_pathName lhs, _pathName rhs) of
           (TypeParameter _ paramName, _) -> do
@@ -698,6 +706,7 @@ analyzeFunctionCallArgs resolvedPath FunctionType {..} paramMapping values = do
             report $ ErrorWrongType [fieldType] (_exprType expr)
             pure Nothing
   validate
+  traceM $ "CALL ARGS: " ++ show resolvedPath ++ " - " ++ show allDiffs
   case allDiffs of
     Nothing ->
       pure (resolvedPath, paramMapping)
@@ -720,7 +729,7 @@ analyzeFunctionExpression
   :: WithLocation (Expression Parsed)
   -> AnalysisM TypedExpression
 analyzeFunctionExpression expr = do
-  contextLocation .= _location expr
+  currentLocation .= _location expr
   case _located expr of
     CastExpr e t -> do
       resolvedExpr <- analyzeFunctionExpression e
@@ -824,16 +833,22 @@ analyzeFunctionExpression expr = do
             resolvedFieldType <- substituteTypes paramMapping fieldType
             pure $ TypedExpression lValue resolvedFieldType $ FieldAccessExpr lhs field
     CallExpr funPath arguments  -> do
-      (resolvedPath, funType, mapping) <- resolveFunctionCallValue funPath
+      (resolvedPath, funType, mapping, functionName) <- resolveFunctionCallValue funPath
       resolvedArgs <- traverse analyzeFunctionExpression arguments
       let expected = length (_funtypeArgs funType)
           actual   = length resolvedArgs
       when (expected /= actual) $
         report $ ErrorFunctionCallWrongNumberOfArguments resolvedPath expected actual
       (fullyResolvedPath, fullMapping) <- analyzeFunctionCallArgs resolvedPath funType mapping resolvedArgs
-      -- TODO: register function for instantiation
+      truePath <- fromMaybe fullyResolvedPath <$> runMaybeT do
+        name <- hoistMaybe functionName
+        trueName <- MaybeT $ tryInstantiateGenericFunction (_funtypeParams funType) name fullMapping
+        pure $ fullyResolvedPath & pathName %~ \case
+          TopLevelDeclaration _ -> TopLevelDeclaration trueName
+          BuiltinFunction _ -> BuiltinFunction trueName
+          _ -> error "ICE"
       returnType <- substituteTypes fullMapping $ fromMaybe UnitType (_funtypeReturn funType)
-      pure $ RValueExpression returnType $ CallExpr fullyResolvedPath resolvedArgs
+      pure $ RValueExpression returnType $ CallExpr truePath resolvedArgs
     IntLiteralExpr    i -> pure $ IntExpression  i
     BoolLiteralExpr   b -> pure $ BoolExpression b
     CharLiteralExpr   c -> pure $ CharExpression c

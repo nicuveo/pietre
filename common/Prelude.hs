@@ -27,6 +27,8 @@ module Prelude
     -- * hashmap helpers
   , unionWithM
   , unionWithKeyM
+    -- * monad helpers
+  , pass
   ) where
 
 
@@ -109,6 +111,9 @@ onNothing a d = maybe d pure a
 onNothingM :: Monad m => m (Maybe a) -> m a -> m a
 onNothingM a d = a >>= flip onNothing d
 
+infixr 7 `onNothing`
+infixr 7 `onNothingM`
+
 
 -- either helpers
 
@@ -148,3 +153,9 @@ unionWithKeyM f m1 m2 = foldM step m1 (M.toList m2)
       Just old -> do
         combined <- f k new old
         pure $ M.insert k combined m
+
+
+-- monadic helpers
+
+pass :: Applicative m => m ()
+pass = pure ()

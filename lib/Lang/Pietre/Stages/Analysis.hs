@@ -4,25 +4,23 @@ module Lang.Pietre.Stages.Analysis where
 
 import "this" Prelude
 
-import Control.Lens                           hiding (mapping, op)
+import Control.Lens                              hiding (mapping, op)
+import Control.Monad.Loops                       (whileJust)
 import Control.Monad.RWS.Strict
-import Control.Monad.Trans.Maybe              (hoistMaybe)
-import Data.HashMap.Strict.Extra              qualified as M
-import Data.HashSet                           qualified as S
+import Control.Monad.Trans.Maybe                 (hoistMaybe)
+import Data.HashMap.Strict.Extra                 qualified as M
+import Data.HashSet                              qualified as S
+import Data.Set                                  qualified as Set
 
 import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Representations.AST
-import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Representations.Symbol
 import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Analysis.Core
 import Lang.Pietre.Stages.Analysis.Diagnostic
+import Lang.Pietre.Stages.Analysis.Instantiation
 import Lang.Pietre.Stages.Analysis.Monad
 
-type DefinitionCache = HashMap Name (WithLocation (Definition Resolved))
-type SymbolCache     = HashMap Name Symbol
-type FunctionCache   = HashMap Name (Scope, WithLocation (FunctionInfo Parsed))
 
 data ResolvedModule = ResolvedModule
   { _resmodExported    :: HashSet Identifier
@@ -44,22 +42,39 @@ analyzeModule
   -> ([Diagnostic], Maybe ResolvedModule)
 analyzeModule
   foreignDefinitions
-  _foreignSymbols
-  _foreignFunctions
+  foreignSymbols
+  foreignFunctions
   moduleExports
   moduleName
   Module {..} = runMaybeT do
-  (exported, localDefinitions, localScope) <- createLocalScope moduleName _modDefinitions
-  foreignScope <- createForeignScope moduleExports _modImports
-  let builtinScope = M.fromList $ map (fmap pure) builtins
-  let topLevelScope = builtinScope `combineMaps` localScope `combineMaps` foreignScope
-  let analysisInfo = AnalysisInfo moduleName S.empty localDefinitions foreignDefinitions topLevelScope
-  let (diagnostics, resolvedModule) =
-        runAnalysis analysisInfo do
-          traverse_ analyzeDefinition _modDefinitions
-          definitions <- use contextCache
-          pure $ ResolvedModule exported (M.catMaybes definitions) M.empty M.empty
-  tell diagnostics
-  hoistMaybe resolvedModule
+    (exported, localDefinitions, localScope) <- createLocalScope moduleName _modDefinitions
+    foreignScope <- createForeignScope moduleExports _modImports
+    let builtinScope = M.fromList $ map (fmap pure) builtins
+        topLevelScope = builtinScope `combineMaps` localScope `combineMaps` foreignScope
+        analysisInfo = AnalysisInfo
+          moduleName
+          S.empty
+          localDefinitions
+          foreignDefinitions
+          foreignSymbols
+          foreignFunctions
+          topLevelScope
+        (diagnostics, resolvedModule) =
+          runAnalysis analysisInfo do
+            traverse_ analyzeDefinition _modDefinitions
+            whileJust (uses moduleInstances Set.minView) \((name, params), remainingInstances) -> do
+              moduleInstances .= remainingInstances
+              (_, functionDefinition) <- uses moduleFunctions (M.lookup name)
+                `onNothingM` error "ICE"
+              instantiateGenericFunction topLevelScope name functionDefinition params
+            AnalysisState {..} <- get
+            pure $ ResolvedModule
+              { _resmodExported    = exported
+              , _resmodDefinitions = M.catMaybes _moduleDefinitions
+              , _resmodSymbols     = _moduleSymbols
+              , _resmodFunctions   = _moduleFunctions
+              }
+    tell diagnostics
+    hoistMaybe resolvedModule
   where
     combineMaps = M.unionWith (<>)

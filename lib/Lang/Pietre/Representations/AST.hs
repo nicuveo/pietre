@@ -183,7 +183,11 @@ data FunctionType (p :: ASTPhase) = FunctionType
   { _funtypeParams :: [Identifier]
   , _funtypeArgs   :: [(Identifier, FunctionArgType p)]
   , _funtypeReturn :: Maybe (PathInfo p)
-  }
+  } deriving Generic
+
+deriving instance Eq  (FunctionType Resolved)
+deriving instance Ord (FunctionType Resolved)
+instance Hashable (FunctionType Resolved)
 
 deriving instance ShowConstraints p => Show (FunctionType p)
 
@@ -191,6 +195,10 @@ data FunctionArgType (p :: ASTPhase)
   = ByValue     (PathInfo p)
   | ByReference (PathInfo p)
   deriving Generic
+
+deriving instance Eq  (FunctionArgType Resolved)
+deriving instance Ord (FunctionArgType Resolved)
+instance Hashable (FunctionArgType Resolved)
 
 functionArgType :: FunctionArgType p -> PathInfo p
 functionArgType = \case
@@ -300,7 +308,11 @@ deriving instance ShowConstraints p => Show (Expression p)
 data PathInfo (p :: ASTPhase) = PathInfo
   { _pathName   :: NameType p
   , _pathParams :: [PathInfo p]
-  } deriving Generic
+  } deriving (Generic)
+
+deriving instance Eq  (PathInfo Resolved)
+deriving instance Ord (PathInfo Resolved)
+instance Hashable (PathInfo Resolved)
 
 deriving instance ShowConstraints p => Show (PathInfo p)
 

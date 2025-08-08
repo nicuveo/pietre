@@ -18,11 +18,13 @@ instance Hashable Name
 
 data Role
   = TopLevelDeclaration Name
-  | BuiltinType Identifier
+  | BuiltinType Name
   | BuiltinFunction Name
   | TypeParameter Name Identifier
   | Placeholder
   | FunctionPointer (FunctionType Resolved)
   | FunctionArgument Identifier (FunctionArgType Resolved)
   | LetVariable Identifier (PathInfo Resolved)
-  deriving (Show)
+  deriving (Show, Eq, Ord, Generic)
+
+instance Hashable Role

@@ -9,16 +9,13 @@ import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 import Lang.Pietre.Representations.Tokens
 
-{-
 data Diagnostic = Diagnostic
-  { _diagnosticModule      :: ModuleName
-  , _diganosticDeclaration :: Identifier
+  { _diganosticDeclaration :: Maybe Name
   , _diagnosticLocation    :: Location
-  , _diagnosticInfo        :: DiagnosticInfo
-  }
--}
+  , _diagnosticMessage     :: Message
+  } deriving Show
 
-data Diagnostic
+data Message
   = ErrorImportPath ModuleName
   | ErrorImportSymbol ModuleName Identifier
   | ErrorMultipleDeclaration Identifier (NonEmpty Location)
@@ -59,24 +56,28 @@ data Diagnostic
   | ErrorRValueAssignment (Expression Resolved)
   | ErrorIfExprNotBoolean (PathInfo Resolved)
   | ErrorWhileExprNotBoolean (PathInfo Resolved)
+  | ErrorTypeParametersToTypeParameter Identifier
   | WarningNameShadow (NonEmpty Role) Role
   | WarningUnexpectedTopLevelExpression (Expression Resolved)
   deriving Show
 
-isError :: Diagnostic -> Bool
-isError = \case
-  WarningNameShadow _ _ -> False
+isErrorMsg :: Message -> Bool
+isErrorMsg = \case
+  WarningNameShadow _ _                 -> False
   WarningUnexpectedTopLevelExpression _ -> False
-  _ -> True
+  _                                     -> True
+
+isError :: Diagnostic -> Bool
+isError = isErrorMsg . _diagnosticMessage
 
 
 class Monad m => MonadDiagnostic m where
-  report :: Diagnostic -> m ()
+  report :: Message -> m ()
   abort  :: m a
 
-  fatal  :: Diagnostic -> m a
+  fatal  :: Message -> m a
   fatal d = report d >> abort
 
 instance MonadDiagnostic (MaybeT ((,) [Diagnostic])) where
-  report = tell . pure
+  report msg = tell $ pure $ Diagnostic Nothing (initialLocation "") msg
   abort = mzero
