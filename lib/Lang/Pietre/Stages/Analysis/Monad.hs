@@ -44,6 +44,7 @@ data AnalysisState = AnalysisState
   { _moduleDefinitions :: HashMap Name (Maybe (WithLocation (Definition Resolved)))
   , _moduleSymbols     :: SymbolCache
   , _moduleFunctions   :: FunctionCache
+  , _moduleFunTypes    :: HashMap Name (FunctionType Resolved)
   , _moduleInstances   :: S.Set (Name, HashMap Identifier (PathInfo Resolved))
   , _moduleAnyError    :: Bool
   , _moduleNewError    :: Bool
@@ -95,6 +96,7 @@ initialState = AnalysisState
   { _moduleDefinitions = M.empty
   , _moduleSymbols     = M.empty
   , _moduleFunctions   = M.empty
+  , _moduleFunTypes    = M.empty
   , _moduleInstances   = S.empty
   , _moduleAnyError    = False
   , _moduleNewError    = False

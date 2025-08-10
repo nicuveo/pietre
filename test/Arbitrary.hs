@@ -110,14 +110,21 @@ instance Arbitrary (FunctionInfo Parsed) where
     <$> arbitrary
     <*> arbitrary
     <*> arbitrary
+  shrink (FunctionInfo name ftype body) = concat
+    [ [FunctionInfo x    ftype body | x <- shrink name  ]
+    , [FunctionInfo name x     body | x <- shrink ftype ]
+    , [FunctionInfo name ftype x    | x <- shrink body  ]
+    ]
+
+instance Arbitrary (FunctionType Parsed) where
+  arbitrary = FunctionType
+    <$> arbitrary
     <*> arbitrary
     <*> arbitrary
-  shrink (FunctionInfo name params args rtype body) = concat
-    [ [FunctionInfo x    params args rtype body | x <- shrink name  ]
-    , [FunctionInfo name x      args rtype body | x <- shrink params]
-    , [FunctionInfo name params x    rtype body | x <- shrink args  ]
-    , [FunctionInfo name params args x     body | x <- shrink rtype ]
-    , [FunctionInfo name params args rtype x    | x <- shrink body  ]
+  shrink (FunctionType params args rtype) = concat
+    [ [FunctionType x      args rtype | x <- shrink params]
+    , [FunctionType params x    rtype | x <- shrink args  ]
+    , [FunctionType params args x     | x <- shrink rtype ]
     ]
 
 instance Arbitrary (FunctionArgType Parsed) where

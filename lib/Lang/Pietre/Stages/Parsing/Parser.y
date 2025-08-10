@@ -150,7 +150,7 @@ const_decl :: { WithLocation (Definition Parsed) }
 
 
 fun_decl :: { WithLocation (Definition Parsed) }
-  : "fn" IDENTIFIER optional(generic_params) "(" optional(comma_list(fun_arg)) ")" optional(fun_return) block { WithLocation $1 (FunctionDef (FunctionInfo (getIdentifierLiteral $2) (fold $3) (fold $5) $7 $8)) }
+  : "fn" IDENTIFIER optional(generic_params) "(" optional(comma_list(fun_arg)) ")" optional(fun_return) block { WithLocation $1 (FunctionDef (FunctionInfo (getIdentifierLiteral $2) (FunctionType (fold $3) (fold $5) $7) $8)) }
 
 fun_arg :: { (Identifier, FunctionArgType Parsed) }
   : IDENTIFIER ":" fun_arg_type { (getIdentifierLiteral $1, $3) }

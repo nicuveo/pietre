@@ -48,16 +48,14 @@ instance Simplifiable (ConstInfo Resolved) where
 instance Simplifiable (FunctionInfo Resolved) where
   simplify FunctionInfo {..} = FunctionInfo
     _funName
-    _funParams
-    (fmap2 simplify _funArgs)
-    (fmap  simplify _funReturn)
-    (fmap  simplify _funBody)
+    (simplify _funType)
+    (fmap simplify _funBody)
 
 instance Simplifiable (FunctionType Resolved) where
   simplify FunctionType {..} = FunctionType
-    _funtypeParams
-    (fmap2 simplify _funtypeArgs)
-    (fmap  simplify _funtypeReturn)
+    _funParams
+    (fmap2 simplify _funArgs)
+    (fmap  simplify _funReturn)
 
 instance Simplifiable (FunctionArgType Resolved) where
   simplify = \case

@@ -18,7 +18,7 @@ import                Lang.Pietre.Stages.Analysis.Monad
 
 
 isGeneric :: FunctionInfo p -> Bool
-isGeneric = not . null . _funParams
+isGeneric = not . null . _funParams . _funType
 
 tryInstantiateGenericFunction
   :: [Identifier]
@@ -74,7 +74,8 @@ instantiateGenericFunction topLevelScope name locatedDefinition params = do
   moduleSymbols %= M.insert fullName symbol
   pure fullName
   where
-    fullName = generateFullFunctionName name (_funParams $ _located locatedDefinition) params
+    paramNames = _funParams $ _funType $ _located locatedDefinition
+    fullName = generateFullFunctionName name paramNames params
     doAnalysis =
       withContext topLevelScope fullName (_location locatedDefinition) do
         currentParams .= params

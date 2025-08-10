@@ -170,19 +170,17 @@ deriving instance ShowConstraints p => Show (ConstInfo p)
 
 
 data FunctionInfo (p :: ASTPhase) = FunctionInfo
-  { _funName   :: Identifier
-  , _funParams :: [Identifier]
-  , _funArgs   :: [(Identifier, FunctionArgType p)]
-  , _funReturn :: Maybe (PathInfo p)
-  , _funBody   :: [Annotated Statement p]
+  { _funName :: Identifier
+  , _funType :: FunctionType p
+  , _funBody :: [Annotated Statement p]
   }
 
 deriving instance ShowConstraints p => Show (FunctionInfo p)
 
 data FunctionType (p :: ASTPhase) = FunctionType
-  { _funtypeParams :: [Identifier]
-  , _funtypeArgs   :: [(Identifier, FunctionArgType p)]
-  , _funtypeReturn :: Maybe (PathInfo p)
+  { _funParams :: [Identifier]
+  , _funArgs   :: [(Identifier, FunctionArgType p)]
+  , _funReturn :: Maybe (PathInfo p)
   } deriving Generic
 
 deriving instance Eq  (FunctionType Resolved)
@@ -400,6 +398,8 @@ instance Pretty (FunctionInfo Parsed) where
     , foldMap (\t -> "->" <+> prettyTypeExpr t) _funReturn
     , prettyBlock _funBody
     ]
+    where
+      FunctionType {..} = _funType
 
 instance Pretty (Statement Parsed) where
   pretty = \case

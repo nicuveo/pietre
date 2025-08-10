@@ -22,8 +22,6 @@ import Lang.Pietre.Stages.Analysis.Diagnostic
 import Lang.Pietre.Stages.Analysis.Instantiation
 import Lang.Pietre.Stages.Analysis.Monad
 
-import Debug.Trace
-
 
 --------------------------------------------------------------------------------
 -- Internals
@@ -123,55 +121,43 @@ createLocalScope moduleName definitions = do
        , M.fromList (concat localScope)
        )
 
-setTypeParameters
-  :: [Identifier]
-  -> AnalysisM ()
-setTypeParameters parameters = do
-  typeNames <-
-    fmap M.fromList $
-      for (group $ sort parameters) \case
-        []               -> error "ICE"
-        (identifier:_:_) -> fatal $ ErrorDuplicateTypeParameter identifier
-        [identifier]     -> do
-          when (isReserved identifier) $
-            report $ ErrorReservedIdentifier identifier
-          declName <- use currentName
-          let parameterRole = TypeParameter declName identifier
-          whenJustM (lookupRole identifier) \names ->
-            report $ WarningNameShadow names parameterRole
-          pure (pure identifier, pure parameterRole)
-  currentScope %= M.union typeNames
-
-typeDiff
+buildTypeParameterMap
   :: PathInfo Resolved
   -> PathInfo Resolved
-  -> [(PathInfo Resolved, PathInfo Resolved)]
-typeDiff p1 p2 = case (_pathName p1, _pathName p2) of
-  (TopLevelDeclaration t1, TopLevelDeclaration t2) ->
-    if t1 == t2 then similar else different
-  (BuiltinType t1, BuiltinType t2) ->
-    if t1 == t2 then similar else different
-  (TypeParameter _ _, _) ->
-    different
-  (Placeholder, Placeholder) ->
-    similar
-  (FunctionPointer t1, FunctionPointer t2) ->
-    let args1 = map (functionArgType . snd) $ _funtypeArgs t1
-        args2 = map (functionArgType . snd) $ _funtypeArgs t2
-        return1 = fromMaybe UnitType $ _funtypeReturn t1
-        return2 = fromMaybe UnitType $ _funtypeReturn t2
-    in concat (zipWith typeDiff args1 args2) ++ typeDiff return1 return2
-  _ ->
-    different
+  -> AnalysisM [(Identifier, PathInfo Resolved)]
+buildTypeParameterMap type1 type2 =
+  go type1 type2 `onNothing` do
+    report (ErrorWrongType [type1] type2)
+    pure []
   where
-    different = [(p1, p2)]
-    similar =
-      concatMap (uncurry typeDiff) $
-      zipWithLongest defaultToPlaceholder (_pathParams p1) (_pathParams p2)
-    defaultToPlaceholder l r =
-      ( fromMaybe PlaceholderType l
-      , fromMaybe PlaceholderType r
-      )
+    go p1 p2 = case (_pathName p1, _pathName p2) of
+      (TopLevelDeclaration t1, TopLevelDeclaration t2) ->
+        if t1 == t2 then checkParams p1 p2 else Nothing
+      (BuiltinType t1, BuiltinType t2) ->
+        if t1 == t2 then checkParams p1 p2 else Nothing
+      (TypeParameter _ name, _) ->
+        Just [(name, p2)]
+      (Placeholder, _) ->
+        Just []
+      (_, Placeholder) ->
+        Just []
+      (FunctionPointer t1, FunctionPointer t2) -> do
+        let args1 = map (functionArgType . snd) $ _funArgs t1
+            args2 = map (functionArgType . snd) $ _funArgs t2
+            return1 = fromMaybe UnitType $ _funReturn t1
+            return2 = fromMaybe UnitType $ _funReturn t2
+        argsResult   <- sequence $ zipWith go args1 args2
+        returnResult <- go return1 return2
+        Just $ concat argsResult ++ returnResult
+      _ ->
+        Nothing
+    checkParams p1 p2 =
+      zipWithLongest goParam (_pathParams p1) (_pathParams p2)
+      & sequence
+      & fmap concat
+    goParam l r = go
+      (fromMaybe PlaceholderType l)
+      (fromMaybe PlaceholderType r)
 
 typeMatches
   :: PathInfo Resolved
@@ -189,10 +175,10 @@ typeMatches p1 p2 = case (_pathName p1, _pathName p2) of
   (BuiltinType t1, BuiltinType t2) ->
     t1 == t2 && argMatches
   (FunctionPointer t1, FunctionPointer t2) ->
-    let args1 = map snd $ _funtypeArgs t1
-        args2 = map snd $ _funtypeArgs t2
-        return1 = fromMaybe UnitType $ _funtypeReturn t1
-        return2 = fromMaybe UnitType $ _funtypeReturn t2
+    let args1 = map snd $ _funArgs t1
+        args2 = map snd $ _funArgs t2
+        return1 = fromMaybe UnitType $ _funReturn t1
+        return2 = fromMaybe UnitType $ _funReturn t2
     in and (zipWith checkArgs args1 args2) && typeMatches return1 return2
   _ -> False
   where
@@ -264,11 +250,30 @@ analyzeDefinition definition = do
         pure (name, WithLocation defLocation <$> resolvedDefinition)
       pure resolvedDefinition
 
+analyzeTypeParameters
+  :: [Identifier]
+  -> AnalysisM ()
+analyzeTypeParameters parameters = do
+  typeNames <-
+    fmap M.fromList $
+      for (group $ sort parameters) \case
+        []               -> error "ICE"
+        (identifier:_:_) -> fatal $ ErrorDuplicateTypeParameter identifier
+        [identifier]     -> do
+          when (isReserved identifier) $
+            report $ ErrorReservedIdentifier identifier
+          declName <- use currentName
+          let parameterRole = TypeParameter declName identifier
+          whenJustM (lookupRole identifier) \names ->
+            report $ WarningNameShadow names parameterRole
+          pure (pure identifier, pure parameterRole)
+  currentScope %= M.union typeNames
+
 analyzeTypeAlias
   :: TypeAliasInfo Parsed
   -> AnalysisM (TypeAliasInfo Resolved)
 analyzeTypeAlias TypeAliasInfo {..} = do
-  setTypeParameters _aliasParams
+  analyzeTypeParameters _aliasParams
   resolved <- resolveType (ForbidPlaceholder "type alias definition") _aliasValue
   pure $ TypeAliasInfo _aliasName _aliasParams resolved
 
@@ -276,7 +281,7 @@ analyzeStruct
   :: StructInfo Parsed
   -> AnalysisM (StructInfo Resolved)
 analyzeStruct info = do
-  setTypeParameters (_structParams info)
+  analyzeTypeParameters (_structParams info)
   structValues ((traverse . traverse) (resolveType $ ForbidPlaceholder "struct fields definition")) info
 
 analyzeEnum
@@ -516,19 +521,14 @@ analyzeStructFields typeName StructInfo {..} paramMapping values = do
         report $ ErrorStructDuplicatedField typeName fieldName
         pure []
       [expr]  -> do
-        catMaybes <$>
-          for (typeDiff fieldType (_exprType expr)) \(lhs, rhs) -> do
-            case (_pathName lhs, _pathName rhs) of
-              (TypeParameter _ paramName, _) -> do
-                typePattern <- M.lookup paramName paramMapping `onNothing` error "ICE"
-                unless (typePattern `typeMatches` rhs) $
-                  report $ ErrorWrongType [typePattern] rhs
-                pure $ Just (paramName, pure rhs)
-              (_, TypeParameter _ _) ->
-                pure Nothing
-              _ -> do
-                report $ ErrorWrongType [fieldType] (_exprType expr)
-                pure Nothing
+        fieldMapping <- buildTypeParameterMap fieldType (_exprType expr)
+        for fieldMapping \(paramName, rhs) -> do
+          typePattern <- M.lookup paramName paramMapping
+            `onNothing` error "ICE"
+          unless (typePattern `typeMatches` rhs) $
+            report $ ErrorWrongType [typePattern] rhs
+          pure (paramName, pure rhs)
+  validate
   let tempMapping :: HashMap Identifier (NonEmpty (PathInfo Resolved))
       tempMapping = M.unionWith (<>) (filterMapping paramMapping) (M.fromListWith (<>) $ concat $ NE.toList allDiffs)
   resolvedTypeParams <- for _structParams \paramName -> do
@@ -544,20 +544,47 @@ analyzeFunction
   :: FunctionInfo Parsed
   -> AnalysisM (FunctionInfo Resolved)
 analyzeFunction FunctionInfo {..} = do
-  setTypeParameters _funParams
-  resolvedType <- traverse (resolveType $ ForbidPlaceholder "function definition") _funReturn
-  let argNames = M.fromListWith (+) do
-        (argName, _) <- _funArgs
-        pure (argName, 1 :: Int)
-  for_ (M.toList argNames) \(argName, argCount) -> do
-    when (argCount > 1) $
-      report $ ErrorFunctionDuplicatedArg argName
-  resolvedArgs <- traverse analyzeArg _funArgs
-  currentFunType .= resolvedType
-  validate
-  resolvedStatements <- analyzeBlock pass _funBody
-  pure $ FunctionInfo _funName _funParams resolvedArgs resolvedType resolvedStatements
+  resolvedFunType <- analyzeFunctionType _funType
+  resolvedBody    <- analyzeBlock pass _funBody
+  pure $ FunctionInfo
+    { _funName
+    , _funType = resolvedFunType
+    , _funBody = resolvedBody
+    }
+
+analyzeFunctionType
+  :: FunctionType Parsed
+  -> AnalysisM (FunctionType Resolved)
+analyzeFunctionType info = do
+  name <- use currentName
+  analyzeTypeParameters (_funParams info)
+  result <- uses moduleFunTypes (M.lookup name)
+    `onNothingM` doAnalysis name
+  currentFunType .= _funReturn result
+  for (_funArgs result) \(argName, resolvedType) -> do
+    let resolvedRole = FunctionArgument argName resolvedType
+    currentScope %= M.insert (pure argName) (pure resolvedRole)
+  pure result
   where
+    doAnalysis name = do
+      let FunctionType {..} = info
+      resolvedType <- for _funReturn $
+        resolveType $ ForbidPlaceholder "function definition"
+      let argNames = M.fromListWith (+) do
+            (argName, _) <- _funArgs
+            pure (argName, 1 :: Int)
+      for_ (M.toList argNames) \(argName, argCount) -> do
+        when (argCount > 1) $
+          report $ ErrorFunctionDuplicatedArg argName
+      resolvedArgs <- traverse analyzeArg _funArgs
+      validate
+      let result = FunctionType
+            { _funParams
+            , _funArgs   = resolvedArgs
+            , _funReturn = resolvedType
+            }
+      moduleFunTypes %= M.insert name result
+      pure result
     analyzeArg (argName, argType) = do
       resolvedType <- case argType of
         ByValue t -> ByValue <$>
@@ -569,7 +596,6 @@ analyzeFunction FunctionInfo {..} = do
       let resolvedRole = FunctionArgument argName resolvedType
       whenJustM (lookupRole argName) \names ->
         report $ WarningNameShadow names resolvedRole
-      currentScope %= M.insert (pure argName) (pure resolvedRole)
       pure (argName, resolvedType)
 
 analyzeBlock
@@ -683,47 +709,35 @@ analyzeFunctionCallArgs
   -> [TypedExpression]
   -> AnalysisM (PathInfo Resolved, HashMap Identifier (PathInfo Resolved))
 analyzeFunctionCallArgs resolvedPath FunctionType {..} paramMapping values = do
-  allDiffs <- sequence . concat <$>
-    for (zip _funtypeArgs values) \((argName, argType), expr) -> do
+  argsParamMapping <- concat <$>
+    for (zip _funArgs values) \((argName, argType), expr) -> do
       case (argType, _exprValue expr) of
         (ByReference _, ReferenceExpr _) -> pure ()
         (ByReference _, _)               -> report $ ErrorFunctionCallArgExpectingReference argName
         (ByValue _,     ReferenceExpr _) -> report $ ErrorFunctionCallArgExpectingValue     argName
         (ByValue _,     _)               -> pure ()
       let fieldType = functionArgType argType
-      traceM $ "DIFF? lhs: " ++ show fieldType ++ ", rhs: " ++ show (_exprType expr)
-      for (typeDiff fieldType (_exprType expr)) \(lhs, rhs) -> do
-        case (_pathName lhs, _pathName rhs) of
-          (TypeParameter _ paramName, _) -> do
-            typePattern <- M.lookup paramName paramMapping `onNothing`
-              error "ICE"
-            unless (typePattern `typeMatches` rhs) $
-              report $ ErrorWrongType [typePattern] rhs
-            pure $ Just (paramName, pure rhs)
-          (_, TypeParameter _ _) ->
-            pure Nothing
-          _ -> do
-            report $ ErrorWrongType [fieldType] (_exprType expr)
-            pure Nothing
+      fieldMapping <- buildTypeParameterMap fieldType (_exprType expr)
+      for fieldMapping \(paramName, rhs) -> do
+        typePattern <- M.lookup paramName paramMapping
+          `onNothing` error "ICE"
+        unless (typePattern `typeMatches` rhs) $
+          report $ ErrorWrongType [typePattern] rhs
+        pure (paramName, pure rhs)
   validate
-  traceM $ "CALL ARGS: " ++ show resolvedPath ++ " - " ++ show allDiffs
-  case allDiffs of
-    Nothing ->
-      pure (resolvedPath, paramMapping)
-    Just ds -> do
-      let tempMapping :: HashMap Identifier [PathInfo Resolved]
-          tempMapping = M.unionWith (<>) (filterMapping paramMapping) (M.fromListWith (<>) ds)
-      resolvedTypeParams <- for _funtypeParams \paramName -> do
-        possibleTypes <- M.lookup paramName tempMapping `onNothing`
-          fatal (ErrorFunctionAmbiguousType resolvedPath paramName)
-        possibleTypesNE <- NE.nonEmpty possibleTypes `onNothing`
-          fatal (ErrorFunctionAmbiguousType resolvedPath paramName)
-        unless (typesAllMatch possibleTypes) $
-          report $ ErrorFunctionIncompatibleTypes resolvedPath paramName possibleTypesNE
-        pure $ mostSpecificType possibleTypesNE
-      validate
-      let newMapping = M.fromList $ zip _funtypeParams resolvedTypeParams
-      pure (resolvedPath & pathParams .~ resolvedTypeParams, newMapping)
+  let tempMapping :: HashMap Identifier [PathInfo Resolved]
+      tempMapping = M.unionWith (<>) (filterMapping paramMapping) (M.fromListWith (<>) argsParamMapping)
+  resolvedTypeParams <- for _funParams \paramName -> do
+    possibleTypes <- M.lookup paramName tempMapping `onNothing`
+      fatal (ErrorFunctionAmbiguousType resolvedPath paramName)
+    possibleTypesNE <- NE.nonEmpty possibleTypes `onNothing`
+      fatal (ErrorFunctionAmbiguousType resolvedPath paramName)
+    unless (typesAllMatch possibleTypes) $
+      report $ ErrorFunctionIncompatibleTypes resolvedPath paramName possibleTypesNE
+    pure $ mostSpecificType possibleTypesNE
+  validate
+  let newMapping = M.fromList $ zip _funParams resolvedTypeParams
+  pure (resolvedPath & pathParams .~ resolvedTypeParams, newMapping)
 
 analyzeFunctionExpression
   :: WithLocation (Expression Parsed)
@@ -833,21 +847,21 @@ analyzeFunctionExpression expr = do
             resolvedFieldType <- substituteTypes paramMapping fieldType
             pure $ TypedExpression lValue resolvedFieldType $ FieldAccessExpr lhs field
     CallExpr funPath arguments  -> do
-      (resolvedPath, funType, mapping, functionName) <- resolveFunctionCallValue funPath
+      (resolvedPath, resolvedFunType, mapping, functionName) <- resolveFunctionCallValue funPath
       resolvedArgs <- traverse analyzeFunctionExpression arguments
-      let expected = length (_funtypeArgs funType)
+      let expected = length (_funArgs resolvedFunType)
           actual   = length resolvedArgs
       when (expected /= actual) $
         report $ ErrorFunctionCallWrongNumberOfArguments resolvedPath expected actual
-      (fullyResolvedPath, fullMapping) <- analyzeFunctionCallArgs resolvedPath funType mapping resolvedArgs
+      (fullyResolvedPath, fullMapping) <- analyzeFunctionCallArgs resolvedPath resolvedFunType mapping resolvedArgs
       truePath <- fromMaybe fullyResolvedPath <$> runMaybeT do
         name <- hoistMaybe functionName
-        trueName <- MaybeT $ tryInstantiateGenericFunction (_funtypeParams funType) name fullMapping
+        trueName <- MaybeT $ tryInstantiateGenericFunction (_funParams resolvedFunType) name fullMapping
         pure $ fullyResolvedPath & pathName %~ \case
           TopLevelDeclaration _ -> TopLevelDeclaration trueName
           BuiltinFunction _ -> BuiltinFunction trueName
           _ -> error "ICE"
-      returnType <- substituteTypes fullMapping $ fromMaybe UnitType (_funtypeReturn funType)
+      returnType <- substituteTypes fullMapping $ fromMaybe UnitType (_funReturn resolvedFunType)
       pure $ RValueExpression returnType $ CallExpr truePath resolvedArgs
     IntLiteralExpr    i -> pure $ IntExpression  i
     BoolLiteralExpr   b -> pure $ BoolExpression b

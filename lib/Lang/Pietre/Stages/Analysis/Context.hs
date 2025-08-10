@@ -188,7 +188,13 @@ resolveExprValue =
         pure $ LValueExpression varType $ PathExpr resolvedPath
       BuiltinFunction _ -> case info of
         Just (name, WithLocation loc (FunctionDef funInfo)) -> do
-          (truePath, functionType, _, _) <- partiallyResolveFunctionType mode resolvedPath name loc funInfo
+          (truePath, functionType, _, _) <-
+            partiallyResolveFunctionType
+              mode
+              resolvedPath
+              name
+              loc
+              (_funType funInfo)
           pure $ RValueExpression
             (PathInfo (FunctionPointer functionType) [])
             (PathExpr truePath)
@@ -201,7 +207,13 @@ resolveExprValue =
           EnumDef     eInfo -> verifyEnumValue resolvedPath name eInfo
           ConstDef    cInfo -> verifyConstValue resolvedPath name (_location def) cInfo
           FunctionDef fInfo -> do
-            (truePath, functionType, _, _) <- partiallyResolveFunctionType mode resolvedPath name (_location def) fInfo
+            (truePath, functionType, _, _) <-
+              partiallyResolveFunctionType
+                mode
+                resolvedPath
+                name
+                (_location def)
+                (_funType fInfo)
             pure $ RValueExpression
               (PathInfo (FunctionPointer functionType) [])
               (PathExpr truePath)
@@ -233,7 +245,12 @@ resolveFunctionCallValue = do
         checkFunctionType resolvedPath varType
       BuiltinFunction _ -> case info of
         Just (name, WithLocation loc (FunctionDef fInfo)) -> do
-          partiallyResolveFunctionType AllowPlaceholder resolvedPath name loc fInfo
+          partiallyResolveFunctionType
+            AllowPlaceholder
+            resolvedPath
+            name
+            loc
+            (_funType fInfo)
         _ -> error "ICE"
       TopLevelDeclaration _ -> case info of
         Nothing -> error "ICE"
@@ -242,7 +259,13 @@ resolveFunctionCallValue = do
           StructDef       _ -> fatal $ ErrorNotAFunction _pathName
           EnumDef         _ -> fatal $ ErrorNotAFunction _pathName
           ConstDef        _ -> fatal $ ErrorNotAFunction _pathName
-          FunctionDef fInfo -> partiallyResolveFunctionType AllowPlaceholder resolvedPath name (_location def) fInfo
+          FunctionDef fInfo ->
+            partiallyResolveFunctionType
+              AllowPlaceholder
+              resolvedPath
+              name
+              (_location def)
+              (_funType fInfo)
       _ -> error "ICE"
     checkFunctionType resultPath PathInfo {..} = case _pathName of
       FunctionPointer functionType ->
@@ -260,10 +283,11 @@ class Analyzable p where
     => Location
     -> i p
     -> AnalysisM (i Resolved)
-  forceType
-    :: TypeResolutionMode
-    -> PathInfo p
-    -> AnalysisM (PathInfo Resolved)
+  forceFunType
+    :: Name
+    -> Location
+    -> FunctionType p
+    -> AnalysisM (FunctionType Resolved)
 
 instance Analyzable Parsed where
   forceDefinition loc info = do
@@ -271,11 +295,14 @@ instance Analyzable Parsed where
     resolvedDefinition <- analyzeDefinition definition
       `onNothingM` abort
     pure $ fromMaybe (error "ICE") $ fromDefinition resolvedDefinition
-  forceType = resolveType
+  forceFunType name loc info = do
+    topLevelScope <- view infoTopLevelScope
+    withContext topLevelScope name loc (analyzeFunctionType info)
+      `onNothingM` abort
 
 instance Analyzable Resolved where
   forceDefinition _ = pure
-  forceType _ = pure
+  forceFunType _ _ = pure
 
 class IsDefinition i where
   toDefinition :: i p -> Definition p
@@ -418,22 +445,15 @@ partiallyResolveFunctionType
   -> PathInfo Resolved
   -> Name
   -> Location
-  -> FunctionInfo p
+  -> FunctionType p
   -> AnalysisM
      ( PathInfo Resolved
      , FunctionType Resolved
      , HashMap Identifier (PathInfo Resolved)
      , Maybe Name
      )
-partiallyResolveFunctionType mode resolvedPath@PathInfo {..} name loc FunctionInfo {..} = do
-  topLevelScope <- view infoTopLevelScope
-  (resolvedArgs, resolvedReturn) <-
-    withContext topLevelScope name loc do
-      setTypeParameters _funParams
-      liftA2 (,)
-        ((traverse . traverse) forceFunArg _funArgs)
-        (traverse forceFunType _funReturn)
-    `onNothingM` abort
+partiallyResolveFunctionType mode resolvedPath@PathInfo {..} name loc info@FunctionType {..} = do
+  resolvedFunctionType <- forceFunType name loc info
   let expected = length _funParams
       actual   = length _pathParams
       invalid  = case mode of
@@ -454,12 +474,7 @@ partiallyResolveFunctionType mode resolvedPath@PathInfo {..} name loc FunctionIn
           _ -> error "ICE"
       , trueName
       )
-  pure (truePath, FunctionType _funParams resolvedArgs resolvedReturn, mapping, Just trueName)
-  where
-    forceFunType = forceType @p $ ForbidPlaceholder "function definition"
-    forceFunArg = \case
-      ByValue     path -> ByValue     <$> forceFunType path
-      ByReference path -> ByReference <$> forceFunType path
+  pure (truePath, resolvedFunctionType, mapping, Just trueName)
 
 verifyEnumValue
   :: forall p
