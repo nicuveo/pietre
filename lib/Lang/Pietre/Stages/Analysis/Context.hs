@@ -196,6 +196,7 @@ resolveExprValue =
               loc
               (_funType funInfo)
           pure $ RValueExpression
+            Impure
             (PathInfo (FunctionPointer functionType) [])
             (PathExpr truePath)
         _ -> error "ICE"
@@ -215,6 +216,7 @@ resolveExprValue =
                 (_location def)
                 (_funType fInfo)
             pure $ RValueExpression
+              Impure
               (PathInfo (FunctionPointer functionType) [])
               (PathExpr truePath)
       _ -> error "ICE"
@@ -491,7 +493,7 @@ verifyEnumValue resolvedPath@PathInfo {..} name EnumInfo {..} = do
     report $ ErrorNotAConst _pathName
   case L.elemIndex identifier _enumValues of
     Nothing -> error "ICE"
-    Just i  -> pure $ RValueExpression resolvedPath $ IntLiteralExpr i
+    Just i  -> pure $ RValueExpression Pure resolvedPath $ IntLiteralExpr i
 
 verifyConstValue
   :: forall p

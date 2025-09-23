@@ -101,8 +101,22 @@ data ImportType
 type Path = NonEmpty Identifier
 
 
+data Purity
+  = Pure
+  | Impure
+  deriving (Show, Eq, Ord)
+
+instance Semigroup Purity where
+  Pure <> Pure = Pure
+  _    <> _    = Impure
+
+instance Monoid Purity where
+  mempty = Pure
+
+
 data TypedExpression = TypedExpression
   { _exprIsLValue :: Bool
+  , _exprPurity   :: Purity
   , _exprType     :: PathInfo Resolved
   , _exprValue    :: Expression Resolved
   }
@@ -114,13 +128,19 @@ pattern LValueExpression
   :: PathInfo Resolved
   -> Expression Resolved
   -> TypedExpression
-pattern LValueExpression eType eValue = TypedExpression True eType eValue
+pattern LValueExpression eType eValue = TypedExpression True Pure eType eValue
 
 pattern RValueExpression
-  :: PathInfo Resolved
+  :: Purity
+  -> PathInfo Resolved
   -> Expression Resolved
   -> TypedExpression
-pattern RValueExpression eType eValue = TypedExpression False eType eValue
+pattern RValueExpression purity eType eValue = TypedExpression False purity eType eValue
+
+isPure :: TypedExpression -> Bool
+isPure = _exprPurity >>> \case
+  Pure   -> True
+  Impure -> False
 
 
 --------------------------------------------------------------------------------
@@ -569,7 +589,7 @@ instance Annotation Expression p => Plated (Expression p) where
     e                                  -> pure e
 
 instance Plated TypedExpression where
-  plate f TypedExpression {..} = TypedExpression _exprIsLValue _exprType <$> case _exprValue of
+  plate f TypedExpression {..} = TypedExpression _exprIsLValue _exprPurity _exprType <$> case _exprValue of
     FieldAccessExpr              e i   -> liftA2 FieldAccessExpr              (f e) (pure i)
     CallExpr                     p es  -> liftA2 CallExpr                     (pure p) (traverse f es)
     ArrayExpr                    es    -> fmap   ArrayExpr                    (traverse f es)
