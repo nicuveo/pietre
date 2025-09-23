@@ -105,43 +105,37 @@ instance Simplifiable (PathInfo Resolved) where
   simplify = pathParams . traverse %~ simplify
 
 instance Simplifiable TypedExpression where
-  simplify TypedExpression {..} = TypedExpression
-    _exprIsLValue
-    (simplify _exprType)
-    (simplify _exprValue)
+  simplify = rewrite \ref -> case _exprValue ref of
+    AdditionExpr lhs (IntExpression 0) -> Just lhs
+    AdditionExpr (IntExpression 0) rhs -> Just rhs
 
-instance Simplifiable (Expression Resolved) where
-  simplify = rewrite \case
-    AdditionExpr lhs (IntExpression 0) -> Just $ _exprValue lhs
-    AdditionExpr (IntExpression 0) rhs -> Just $ _exprValue rhs
+    SubtractionExpr lhs (IntExpression 0) -> Just lhs
+    SubtractionExpr (IntExpression 0) rhs -> Just (ref & exprValue .~ IntNegationExpr rhs)
 
-    SubtractionExpr lhs (IntExpression 0) -> Just $ _exprValue lhs
-    SubtractionExpr (IntExpression 0) rhs -> Just $ IntNegationExpr rhs
+    MultiplicationExpr lhs (IntExpression 1) -> Just lhs
+    MultiplicationExpr (IntExpression 1) rhs -> Just rhs
 
-    MultiplicationExpr lhs (IntExpression 1) -> Just $ _exprValue lhs
-    MultiplicationExpr (IntExpression 1) rhs -> Just $ _exprValue rhs
+    DivisionExpr lhs (IntExpression 1) -> Just lhs
 
-    DivisionExpr lhs (IntExpression 1) -> Just $ _exprValue lhs
+    ExponentiationExpr lhs (IntExpression 1) -> Just lhs
 
-    ExponentiationExpr lhs (IntExpression 1) -> Just $ _exprValue lhs
+    BoolAndExpr (BoolExpression True ) rhs -> Just rhs
+    BoolAndExpr (BoolExpression False) _   -> Just (ref & exprValue .~ BoolLiteralExpr False)
 
-    BoolAndExpr (BoolExpression True ) rhs -> Just $ _exprValue rhs
-    BoolAndExpr (BoolExpression False) _   -> Just $ BoolLiteralExpr False
+    BoolOrExpr (BoolExpression True ) _   -> Just (ref & exprValue .~ BoolLiteralExpr True)
+    BoolOrExpr (BoolExpression False) rhs -> Just rhs
 
-    BoolOrExpr (BoolExpression True ) _   -> Just $ BoolLiteralExpr True
-    BoolOrExpr (BoolExpression False) rhs -> Just $ _exprValue rhs
+    BoolNegationExpr (TypedExpression _ BoolType (BoolNegationExpr expr)) -> Just expr
+    IntNegationExpr  (TypedExpression _ IntType  (IntNegationExpr  expr)) -> Just expr
 
-    BoolNegationExpr (TypedExpression _ BoolType (BoolNegationExpr expr)) -> Just $ _exprValue expr
-    IntNegationExpr  (TypedExpression _ IntType  (IntNegationExpr  expr)) -> Just $ _exprValue expr
+    EqualityExpr (BoolExpression True) rhs  -> Just rhs
+    EqualityExpr lhs (BoolExpression True)  -> Just lhs
+    EqualityExpr (BoolExpression False) rhs -> Just (ref & exprValue .~ BoolNegationExpr rhs)
+    EqualityExpr lhs (BoolExpression False) -> Just (ref & exprValue .~ BoolNegationExpr lhs)
 
-    EqualityExpr (BoolExpression True) rhs  -> Just $ _exprValue rhs
-    EqualityExpr lhs (BoolExpression True)  -> Just $ _exprValue lhs
-    EqualityExpr (BoolExpression False) rhs -> Just $ BoolNegationExpr rhs
-    EqualityExpr lhs (BoolExpression False) -> Just $ BoolNegationExpr lhs
-
-    DifferenceExpr (BoolExpression True) rhs  -> Just $ BoolNegationExpr rhs
-    DifferenceExpr lhs (BoolExpression True)  -> Just $ BoolNegationExpr lhs
-    DifferenceExpr (BoolExpression False) rhs -> Just $ _exprValue rhs
-    DifferenceExpr lhs (BoolExpression False) -> Just $ _exprValue lhs
+    DifferenceExpr (BoolExpression True) rhs  -> Just (ref & exprValue .~ BoolNegationExpr rhs)
+    DifferenceExpr lhs (BoolExpression True)  -> Just (ref & exprValue .~ BoolNegationExpr lhs)
+    DifferenceExpr (BoolExpression False) rhs -> Just rhs
+    DifferenceExpr lhs (BoolExpression False) -> Just lhs
 
     _ -> Nothing

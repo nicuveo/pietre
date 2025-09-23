@@ -60,7 +60,7 @@ instance ASTRepresentation Resolved where
 
 
 type ShowConstraints p =
-  ( Show (Annotated Definition p)
+  ( Show (Annotated Definition  p)
   , Show (Annotated Statement   p)
   , Show (Annotated Expression  p)
   , Show (NameType p)
@@ -108,6 +108,7 @@ data TypedExpression = TypedExpression
   }
 
 deriving instance ShowConstraints Resolved => Show TypedExpression
+deriving instance Eq (Annotated Expression Resolved) => Eq TypedExpression
 
 pattern LValueExpression
   :: PathInfo Resolved
@@ -301,6 +302,7 @@ data Expression (p :: ASTPhase)
   | ExponentiationAssignmentExpr (Annotated Expression p) (Annotated Expression p)
 
 deriving instance ShowConstraints p => Show (Expression p)
+deriving instance Eq (Annotated Expression Resolved) => Eq (Expression Resolved)
 
 
 data PathInfo (p :: ASTPhase) = PathInfo
@@ -308,11 +310,10 @@ data PathInfo (p :: ASTPhase) = PathInfo
   , _pathParams :: [PathInfo p]
   } deriving (Generic)
 
+deriving instance ShowConstraints p => Show (PathInfo p)
 deriving instance Eq  (PathInfo Resolved)
 deriving instance Ord (PathInfo Resolved)
 instance Hashable (PathInfo Resolved)
-
-deriving instance ShowConstraints p => Show (PathInfo p)
 
 
 --------------------------------------------------------------------------------
@@ -566,6 +567,42 @@ instance Annotation Expression p => Plated (Expression p) where
     ModuloAssignmentExpr         e1 e2 -> liftA2 ModuloAssignmentExpr         (within f e1) (within f e2)
     ExponentiationAssignmentExpr e1 e2 -> liftA2 ExponentiationAssignmentExpr (within f e1) (within f e2)
     e                                  -> pure e
+
+instance Plated TypedExpression where
+  plate f TypedExpression {..} = TypedExpression _exprIsLValue _exprType <$> case _exprValue of
+    FieldAccessExpr              e i   -> liftA2 FieldAccessExpr              (f e) (pure i)
+    CallExpr                     p es  -> liftA2 CallExpr                     (pure p) (traverse f es)
+    ArrayExpr                    es    -> fmap   ArrayExpr                    (traverse f es)
+    IndexExpr                    e1 e2 -> liftA2 IndexExpr                    (f e1) (f e2)
+    StructExpr                   p fs  -> liftA2 StructExpr                   (pure p) (traverse (traverse f) fs)
+    IntNegationExpr              e     -> fmap   IntNegationExpr              (f e)
+    BoolNegationExpr             e     -> fmap   BoolNegationExpr             (f e)
+    CastExpr                     e t   -> liftA2 CastExpr                     (f e) (pure t)
+    AdditionExpr                 e1 e2 -> liftA2 AdditionExpr                 (f e1) (f e2)
+    SubtractionExpr              e1 e2 -> liftA2 SubtractionExpr              (f e1) (f e2)
+    MultiplicationExpr           e1 e2 -> liftA2 MultiplicationExpr           (f e1) (f e2)
+    DivisionExpr                 e1 e2 -> liftA2 DivisionExpr                 (f e1) (f e2)
+    ModuloExpr                   e1 e2 -> liftA2 ModuloExpr                   (f e1) (f e2)
+    ExponentiationExpr           e1 e2 -> liftA2 ExponentiationExpr           (f e1) (f e2)
+    EqualityExpr                 e1 e2 -> liftA2 EqualityExpr                 (f e1) (f e2)
+    DifferenceExpr               e1 e2 -> liftA2 DifferenceExpr               (f e1) (f e2)
+    GreaterExpr                  e1 e2 -> liftA2 GreaterExpr                  (f e1) (f e2)
+    LesserExpr                   e1 e2 -> liftA2 LesserExpr                   (f e1) (f e2)
+    GreaterEqExpr                e1 e2 -> liftA2 GreaterEqExpr                (f e1) (f e2)
+    LesserEqExpr                 e1 e2 -> liftA2 LesserEqExpr                 (f e1) (f e2)
+    BoolAndExpr                  e1 e2 -> liftA2 BoolAndExpr                  (f e1) (f e2)
+    BoolOrExpr                   e1 e2 -> liftA2 BoolOrExpr                   (f e1) (f e2)
+    RangeInclusiveExpr           e1 e2 -> liftA2 RangeInclusiveExpr           (f e1) (f e2)
+    RangeExclusiveExpr           e1 e2 -> liftA2 RangeExclusiveExpr           (f e1) (f e2)
+    AssignmentExpr               e1 e2 -> liftA2 AssignmentExpr               (f e1) (f e2)
+    AdditionAssignmentExpr       e1 e2 -> liftA2 AdditionAssignmentExpr       (f e1) (f e2)
+    SubtractionAssignmentExpr    e1 e2 -> liftA2 SubtractionAssignmentExpr    (f e1) (f e2)
+    MultiplicationAssignmentExpr e1 e2 -> liftA2 MultiplicationAssignmentExpr (f e1) (f e2)
+    DivisionAssignmentExpr       e1 e2 -> liftA2 DivisionAssignmentExpr       (f e1) (f e2)
+    ModuloAssignmentExpr         e1 e2 -> liftA2 ModuloAssignmentExpr         (f e1) (f e2)
+    ExponentiationAssignmentExpr e1 e2 -> liftA2 ExponentiationAssignmentExpr (f e1) (f e2)
+    e                                  -> pure e
+
 
 
 --------------------------------------------------------------------------------

@@ -231,6 +231,7 @@ test-suite tests
       Arbitrary
       Compile
       Integration.Parsing
+      Integration.Simplification
       Locate
       Unit.Encode
       Paths_pietre
