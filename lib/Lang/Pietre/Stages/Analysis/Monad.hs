@@ -12,10 +12,10 @@ import Data.Set                               qualified as S
 import Data.Tuple
 
 import Lang.Pietre.Representations.AST
+import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 import Lang.Pietre.Representations.Symbol
-import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Analysis.Diagnostic
 
 

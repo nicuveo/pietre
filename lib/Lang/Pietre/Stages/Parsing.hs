@@ -1,3 +1,12 @@
+{- |
+
+This module provides the API for the parsing phase: the raw source
+file is converted into an AST, according to the rules of the grammar
+(see `/docs/reference.md`).
+
+-}
+
+
 module Lang.Pietre.Stages.Parsing where
 
 import "this" Prelude

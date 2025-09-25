@@ -8,10 +8,10 @@ import                Data.HashMap.Strict                    qualified as M
 import                Data.Set                               qualified as S
 
 import                Lang.Pietre.Representations.AST
+import                Lang.Pietre.Representations.Identifier
 import                Lang.Pietre.Representations.Location
 import                Lang.Pietre.Representations.Name
 import                Lang.Pietre.Representations.Symbol     qualified as Symbol
-import                Lang.Pietre.Representations.Tokens
 import {-# SOURCE #-} Lang.Pietre.Stages.Analysis.Core
 import                Lang.Pietre.Stages.Analysis.Diagnostic
 import                Lang.Pietre.Stages.Analysis.Monad

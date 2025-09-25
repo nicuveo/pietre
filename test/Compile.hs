@@ -7,11 +7,12 @@ module Compile
 
 import "this" Prelude
 
-import Data.HashMap.Strict              qualified as M
-import Data.Text                        qualified as T
+import Data.HashMap.Strict                    qualified as M
+import Data.Text                              qualified as T
 import System.FilePath
 
 import Lang.Pietre
+import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Name
 
 
@@ -48,4 +49,4 @@ runTestCompiler filename action = runExceptT (runReaderT action filename)
 moduleName :: TestCompiler m => m ModuleName
 moduleName = do
   filename <- ask
-  pure $ pure $ T.pack $ takeBaseName filename
+  pure $ pure $ Identifier $ T.pack $ takeBaseName filename

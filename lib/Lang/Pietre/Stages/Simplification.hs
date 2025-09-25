@@ -114,24 +114,18 @@ instance Simplifiable TypedExpression where
 
     MultiplicationExpr lhs (IntExpression 1) -> Just lhs
     MultiplicationExpr (IntExpression 1) rhs -> Just rhs
-    MultiplicationExpr lhs (IntExpression 0) | isPure lhs -> Just $ IntExpression 0
-    MultiplicationExpr (IntExpression 0) rhs | isPure rhs -> Just $ IntExpression 0
 
     DivisionExpr lhs (IntExpression 1) -> Just lhs
-    -- TODO: handle division by 0
 
     ExponentiationExpr lhs (IntExpression 1) -> Just lhs
-    ExponentiationExpr lhs (IntExpression 0) | isPure lhs -> Just $ IntExpression 1
 
-    BoolAndExpr (BoolExpression True ) rhs              -> Just rhs
-    BoolAndExpr (BoolExpression False) _                -> Just (ref & exprValue .~ BoolLiteralExpr False)
-    BoolAndExpr lhs (BoolExpression True )              -> Just lhs
-    BoolAndExpr lhs (BoolExpression False) | isPure lhs -> Just $ BoolExpression False
+    BoolAndExpr (BoolExpression True ) rhs -> Just rhs
+    BoolAndExpr (BoolExpression False) _   -> Just (ref & exprValue .~ BoolLiteralExpr False)
+    BoolAndExpr lhs (BoolExpression True ) -> Just lhs
 
-    BoolOrExpr (BoolExpression True ) _                -> Just (ref & exprValue .~ BoolLiteralExpr True)
-    BoolOrExpr (BoolExpression False) rhs              -> Just rhs
-    BoolOrExpr lhs (BoolExpression True ) | isPure lhs -> Just $ BoolExpression True
-    BoolOrExpr lhs (BoolExpression False)              -> Just lhs
+    BoolOrExpr (BoolExpression True ) _    -> Just (ref & exprValue .~ BoolLiteralExpr True)
+    BoolOrExpr (BoolExpression False) rhs  -> Just rhs
+    BoolOrExpr lhs (BoolExpression False)  -> Just lhs
 
     BoolNegationExpr (TypedExpression _ _ BoolType (BoolNegationExpr expr)) -> Just expr
     IntNegationExpr  (TypedExpression _ _ IntType  (IntNegationExpr  expr)) -> Just expr

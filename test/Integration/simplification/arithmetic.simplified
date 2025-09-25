@@ -5,3 +5,7 @@ fn foo() -> int {
 fn bar(x: int) -> int {
   return -x;
 }
+
+fn baz(x: int) -> int {
+  return x;
+}

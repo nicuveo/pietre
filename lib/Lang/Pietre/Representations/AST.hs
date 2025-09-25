@@ -8,13 +8,13 @@ import                "this" Prelude
 
 import                Control.Lens
 import                Data.Kind
-import                Data.List.NonEmpty                   qualified as NE
+import                Data.List.NonEmpty                     qualified as NE
 import                Prettyprinter
 import                Prettyprinter.Render.Text
 
+import                Lang.Pietre.Representations.Identifier
 import                Lang.Pietre.Representations.Location
 import {-# SOURCE #-} Lang.Pietre.Representations.Name
-import                Lang.Pietre.Representations.Tokens
 
 
 --------------------------------------------------------------------------------

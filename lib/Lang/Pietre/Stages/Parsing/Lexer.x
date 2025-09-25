@@ -9,6 +9,7 @@ import Control.Monad.Loops (whileM, unfoldM)
 import Data.Char (digitToInt)
 import Data.Text qualified as T
 import Data.Text.Read qualified as T
+import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location hiding (location)
 import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Parsing.Monad
@@ -130,12 +131,12 @@ mkIdentifier prevState location _ = do
   put prevState
   firstCharacter <- alexReadFirstIdentifierChar
   remainingCharacters <- unfoldM alexReadIdentifierChar
-  pure (location, TIdentifier $ T.pack (firstCharacter : remainingCharacters))
+  pure (location, TIdentifier $ Identifier $ T.pack (firstCharacter : remainingCharacters))
 
 mkComment :: AlexAction
 mkComment _ _ _ = do
   whileM (not <$> endOfComment) $
-    void $ getMatchingChar (const True)
+    void $ alexAny
   alexGetNextToken
   where
     endOfComment = do

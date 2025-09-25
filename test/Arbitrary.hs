@@ -4,19 +4,23 @@ module Arbitrary where
 
 import "this" Prelude
 
-import Control.Applicative                  (liftA3)
-import Data.Char                            (isAsciiLower, isLetter)
-import Data.List.NonEmpty                   qualified as NE
-import Data.Text                            qualified as T
+import Control.Applicative                    (liftA3)
+import Data.Char                              (isAsciiLower, isLetter)
+import Data.List.NonEmpty                     qualified as NE
+import Data.Text                              qualified as T
 import Lang.Pietre
+import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
-import Lang.Pietre.Representations.Tokens
 import Test.Tasty.QuickCheck
 
 
 instance Arbitrary a => Arbitrary (NonEmpty a) where
   arbitrary = NE.fromList <$> listOf1 arbitrary
   shrink = mapMaybe NE.nonEmpty . shrink . NE.toList
+
+instance Arbitrary Text where
+  arbitrary = T.pack <$> arbitrary
+  shrink = map T.pack . shrink . T.unpack
 
 
 instance Arbitrary a => Arbitrary (WithLocation a) where
@@ -39,10 +43,10 @@ instance Arbitrary Import where
     ]
 
 instance Arbitrary Identifier where
-  arbitrary = fmap (T.pack . ('_':)) $ listOf $ arbitrary `suchThat` isLetter
-  shrink i
+  arbitrary = fmap (Identifier . T.pack . ('_':)) $ listOf $ arbitrary `suchThat` isLetter
+  shrink (Identifier i)
     | T.length i <= 1 = []
-    | otherwise       = [T.init i]
+    | otherwise       = [Identifier $ T.init i]
 
 instance Arbitrary ImportType where
   arbitrary = oneof

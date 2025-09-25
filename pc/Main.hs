@@ -1,16 +1,17 @@
 module Main where
 
-import "this" Prelude                       hiding (readFile)
+import "this" Prelude                         hiding (readFile)
 
-import Data.HashMap.Strict                  qualified as M
-import Data.List.NonEmpty                   qualified as NE
-import Data.Text                            qualified as T
-import Data.Text.IO                         (readFile)
+import Data.HashMap.Strict                    qualified as M
+import Data.List.NonEmpty                     qualified as NE
+import Data.Text                              qualified as T
+import Data.Text.IO                           (readFile)
 import System.Environment
 import System.Exit
 import System.FilePath
 
 import Lang.Pietre
+import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 
@@ -36,7 +37,7 @@ renderName Name {..} = case _nameParameters of
   [] -> baseName
   ps -> baseName <> "<" <> T.intercalate "," (map renderName ps) <> ">"
   where
-    baseName = T.intercalate "::" (NE.toList _nameFullPath)
+    baseName = T.intercalate "::" (map rawIdentifier $ NE.toList _nameFullPath)
 
 main :: IO ()
 main = do
@@ -45,7 +46,7 @@ main = do
     flip execStateT (M.empty, M.empty, M.empty, M.empty) $
       for filenames \filename -> do
         (exports, definitions, symbols, functions) <- get
-        let moduleName = pure $ T.pack $ takeBaseName filename
+        let moduleName = pure $ Identifier $ T.pack $ takeBaseName filename
         source    <- liftIO $ readFile filename
         parsedAST <- parseModule filename source `onLeft` (error . show)
         let (diagnostics, resolvedAST) = analyzeModule

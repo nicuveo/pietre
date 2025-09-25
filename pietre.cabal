@@ -33,6 +33,7 @@ library
       Lang.Pietre.Internal.Encoding
       Lang.Pietre.Representations.AST
       Lang.Pietre.Representations.Bytecode
+      Lang.Pietre.Representations.Identifier
       Lang.Pietre.Representations.Image
       Lang.Pietre.Representations.IR
       Lang.Pietre.Representations.Location

@@ -4,12 +4,12 @@ module Lang.Pietre.Batteries.BuiltIn where
 
 import "this" Prelude
 
-import Data.HashSet                       qualified as S
-import Data.List.NonEmpty                 qualified as NE
+import Data.HashSet                           qualified as S
+import Data.List.NonEmpty                     qualified as NE
 
 import Lang.Pietre.Representations.AST
+import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Representations.Tokens
 
 
 builtins :: [(Path, Role)]

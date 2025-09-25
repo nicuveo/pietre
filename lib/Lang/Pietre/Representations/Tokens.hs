@@ -2,7 +2,7 @@ module Lang.Pietre.Representations.Tokens where
 
 import "this" Prelude
 
-type Identifier = Text
+import Lang.Pietre.Representations.Identifier
 
 data Token
   = TKeywordAs

@@ -5,9 +5,9 @@ import "this" Prelude
 import Control.Monad.Writer.Class
 
 import Lang.Pietre.Representations.AST
+import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Representations.Tokens
 
 data Diagnostic = Diagnostic
   { _diganosticDeclaration :: Maybe Name

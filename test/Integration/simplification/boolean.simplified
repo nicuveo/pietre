@@ -11,5 +11,25 @@ fn b3(x: bool) -> bool {
 }
 
 fn b4(x: bool) -> bool {
-  return false;
+  return x && false;
+}
+
+fn b5(x: bool) -> bool {
+  return x;
+}
+
+fn b6(x: bool) -> bool {
+  return x;
+}
+
+fn b7(x: bool) -> bool {
+  return !x;
+}
+
+fn b8(x: bool) -> bool {
+  return !x;
+}
+
+fn b9(x: bool) -> bool {
+  return x;
 }

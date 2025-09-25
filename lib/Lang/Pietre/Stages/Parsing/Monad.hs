@@ -81,6 +81,18 @@ makeLenses ''ParserState
 
 type AlexInput = ParserState
 
+-- | Implementation detail of Alex.
+--
+-- Alex is a code generator, and the generated haskell code makes several
+-- assumptions, such as assuming that a function named `alexGetByte` exists
+-- within the scope. The type of the state being passed is of our choosing, but
+-- the overall shape isn't: given the previous state of the parser, this
+-- function returns the next successfully parsed *byte* and the new parser
+-- state, if we haven't reached the EOF yet.
+--
+-- Alex unfortunately works with bytes, and not unicode codepoints, so unicode
+-- codepoints have to be decomposed into a series of individual bytes (see
+-- 'decomposeUTF8').
 alexGetByte :: ParserState -> Maybe (Word8, ParserState)
 alexGetByte prev@ParserState {..} = case _parserBytes of
   (b:bs) -> Just (b, prev & parserBytes .~ bs)
@@ -95,34 +107,96 @@ alexGetByte prev@ParserState {..} = case _parserBytes of
           & parserBytes    .~ bytes
     Just (b, newState)
 
+-- | Implementation detail of Alex.
+--
+-- Alex assumes the existence of this function. Whenever a left context is
+-- provided in a rule, Alex uses this function to get the previous lexed
+-- character from our custom state.
 alexInputPrevChar :: ParserState -> Char
 alexInputPrevChar = view parserPrevChar
 
+-- | Internal lexer function.
+--
+-- Aborts the current scan and report a 'ParseError'.
 alexError :: Parser a
 alexError = do
   Location filename _ line column <- use parserLocation
   throwError $ filename ++ ":" ++ show line ++ ":" ++ show column ++ ": lexical error"
 
+-- | Scan any character.
+--
+-- This function attempts to lex the next character in the stream. If we're at
+-- the end of the stream, an error is raised, otherwise the next character is
+-- returned and the internal state is updated.
+alexAny :: Parser Char
+alexAny = do
+  (match, remaining) <- uses parserInput T.uncons
+    `onNothingM` alexError
+  updateStateWith match remaining
+  pure match
+
+-- | Attempt to scan one character.
+--
+-- This function looks at the next input character, and successfully lexes it if
+-- it matches the one given as input. Otherwise, nothing happens, and the
+-- internal state is left unchanged. If there is no character left in the input
+-- stream, an error is raised.
+alexTry :: Char -> Parser Bool
+alexTry expected = do
+  (match, remaining) <- uses parserInput T.uncons
+    `onNothingM` alexError
+  let correct = match == expected
+  when correct $ updateStateWith match remaining
+  pure correct
+
+-- | Attempt to scan a character that matches the given predicate.
+--
+-- Similar to 'alexTry', but takes a predicate rather than one given
+-- character.
+alexTryIf :: (Char -> Bool) -> Parser (Maybe Char)
+alexTryIf predicate = do
+  (match, remaining) <- uses parserInput T.uncons
+    `onNothingM` alexError
+  if predicate match
+  then do
+    updateStateWith match remaining
+    pure $ Just match
+  else
+    pure Nothing
+
+-- | Scan one given character.
+--
+-- Similar to 'alexTry', but raises an error if we fail to find the given
+-- character.
 alexExpect :: Char -> Parser ()
 alexExpect expected =
   unlessM (alexTry expected) alexError
 
-alexTry :: Char -> Parser Bool
-alexTry expected = do
-  currentState <- get
-  case alexGetByte currentState of
-    Nothing -> pure False
-    Just (byte, newState)
-      | chr (fromIntegral byte) /= expected -> pure False
-      | otherwise -> do
-          put newState
-          pure True
+-- | Scan a character that matches the given predicate.
+--
+-- Similar to 'alexIfTry', but raises an error if we fail to find a matching
+-- character.
+alexExpectIf :: (Char -> Bool) -> Parser Char
+alexExpectIf predicate =
+  alexTryIf predicate `onNothingM` alexError
 
+updateStateWith :: Char -> Text -> Parser ()
+updateStateWith match remaining =
+  modify \current@ParserState {..} ->
+    current
+      & parserLocation .~ updateLocation _parserLocation match
+      & parserInput    .~ remaining
+      & parserPrevChar .~ match
+
+-- | Lex a character within a string literal.
+--
+-- This function is responsible for lexing one character within a string
+-- literal, and handles escaping.
 alexReadStringChar :: Parser Char
 alexReadStringChar = do
-  c1 <- getNextChar
+  c1 <- alexAny
   if c1 /= '\\' then pure c1 else
-    getNextChar >>= \case
+    alexAny >>= \case
       '\n' -> undefined -- handleWhitespace
       'x'  -> undefined -- handleASCIIChar
       'u'  -> undefined -- handleUnicodeCodePoint
@@ -133,36 +207,14 @@ alexReadStringChar = do
       '\'' -> pure '\''
       '"'  -> pure '"'
       _    -> alexError
-  where
-    getNextChar =
-      getMatchingChar (const True)
-        `onNothingM` alexError
 
 alexReadFirstIdentifierChar :: Parser Char
 alexReadFirstIdentifierChar =
-  getMatchingChar predicate
-    `onNothingM` alexError
-  where
-    predicate c = isAlpha c || c == '_'
+  alexExpectIf \c -> isAlpha c || c == '_'
 
 alexReadIdentifierChar :: Parser (Maybe Char)
-alexReadIdentifierChar = getMatchingChar predicate
-  where
-    predicate c = isAlphaNum c || c == '_'
-
-getMatchingChar :: (Char -> Bool) -> Parser (Maybe Char)
-getMatchingChar predicate = do
-  current@ParserState {..} <- get
-  case T.uncons _parserInput of
-    Nothing -> alexError
-    Just (c, remaining)
-      | predicate c -> do
-          put $ current
-            & parserLocation .~ updateLocation _parserLocation c
-            & parserInput    .~ remaining
-            & parserPrevChar .~ c
-          pure (Just c)
-      | otherwise -> pure Nothing
+alexReadIdentifierChar =
+  alexTryIf \c -> isAlphaNum c || c == '_'
 
 
 -- happy functions

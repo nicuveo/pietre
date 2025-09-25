@@ -3,7 +3,7 @@ module Lang.Pietre.Representations.Name where
 import "this" Prelude
 
 import Lang.Pietre.Representations.AST
-import Lang.Pietre.Representations.Tokens
+import Lang.Pietre.Representations.Identifier
 
 
 type ModuleName = NonEmpty Identifier

@@ -23,9 +23,9 @@ import                Data.List.NonEmpty                        qualified as NE
 
 import                Lang.Pietre.Batteries.BuiltIn
 import                Lang.Pietre.Representations.AST
+import                Lang.Pietre.Representations.Identifier
 import                Lang.Pietre.Representations.Location
 import                Lang.Pietre.Representations.Name
-import                Lang.Pietre.Representations.Tokens
 import {-# SOURCE #-} Lang.Pietre.Stages.Analysis.Core
 import                Lang.Pietre.Stages.Analysis.Diagnostic
 import                Lang.Pietre.Stages.Analysis.Instantiation

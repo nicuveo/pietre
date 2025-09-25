@@ -14,8 +14,8 @@ import Data.Set                                  qualified as Set
 
 import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Representations.AST
+import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Analysis.Core
 import Lang.Pietre.Stages.Analysis.Diagnostic
 import Lang.Pietre.Stages.Analysis.Instantiation

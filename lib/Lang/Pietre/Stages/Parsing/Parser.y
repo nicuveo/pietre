@@ -8,6 +8,7 @@ import Data.List.NonEmpty ((<|), singleton)
 import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
 import Lang.Pietre.Representations.AST
+import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Parsing.Lexer
