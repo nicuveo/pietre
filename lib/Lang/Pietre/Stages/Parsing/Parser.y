@@ -7,6 +7,7 @@ import Control.Lens (over)
 import Data.List.NonEmpty ((<|), singleton)
 import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
+import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
@@ -369,22 +370,22 @@ lexer = (>>=) alexGetNextToken
 getIdentifierLiteral :: (Location, Token) -> Identifier
 getIdentifierLiteral (_, tok) = case tok of
   TIdentifier i -> i
-  _             -> error "ICE: not an identifier"
+  _             -> reportICE "lexing" "identifier literal is not an identifier" ["token: " ++ show tok]
 
 getIntLiteral :: (Location, Token) -> Int
 getIntLiteral (_, tok) = case tok of
   TLiteralInt i -> i
-  _             -> error "ICE: not an int"
+  _             -> reportICE "lexing" "int literal is not an int" ["token: " ++ show tok]
 
 getCharLiteral :: (Location, Token) -> Char
 getCharLiteral (_, tok) = case tok of
   TLiteralChar i -> i
-  _              -> error "ICE: not a char"
+  _              -> reportICE "lexing" "char literal is not a char" ["token: " ++ show tok]
 
 getStringLiteral :: (Location, Token) -> Text
 getStringLiteral (_, tok) = case tok of
   TLiteralString i -> i
-  _                -> error "ICE: not a string"
+  _                -> reportICE "lexing" "string literal is not a string" ["token: " ++ show tok]
 
 prependPathInfo :: Identifier -> PathInfo Parsed -> PathInfo Parsed
 prependPathInfo prepend = over pathName (prepend <|)

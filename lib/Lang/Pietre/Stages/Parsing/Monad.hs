@@ -29,7 +29,9 @@ import Control.Monad.Extra
 import Data.Char
 import Data.Text                            qualified as T
 import Data.Word                            (Word8)
+
 import Lang.Pietre.Internal.Encoding
+import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
 
@@ -197,9 +199,9 @@ alexReadStringChar = do
   c1 <- alexAny
   if c1 /= '\\' then pure c1 else
     alexAny >>= \case
-      '\n' -> undefined -- handleWhitespace
-      'x'  -> undefined -- handleASCIIChar
-      'u'  -> undefined -- handleUnicodeCodePoint
+      '\n' -> unimplemented -- handleWhitespace
+      'x'  -> unimplemented -- handleASCIIChar
+      'u'  -> unimplemented -- handleUnicodeCodePoint
       'n'  -> pure '\n'
       'r'  -> pure '\r'
       't'  -> pure '\t'

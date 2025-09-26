@@ -22,6 +22,7 @@ import                Data.List                                 qualified as L
 import                Data.List.NonEmpty                        qualified as NE
 
 import                Lang.Pietre.Batteries.BuiltIn
+import                Lang.Pietre.Internal.ICE
 import                Lang.Pietre.Representations.AST
 import                Lang.Pietre.Representations.Identifier
 import                Lang.Pietre.Representations.Location
@@ -119,18 +120,18 @@ resolveStructType path = do
 checkStructType
   :: PathInfo Resolved
   -> AnalysisM
-     (Maybe ( StructInfo Resolved
-            , HashMap Identifier (PathInfo Resolved)
-            )
+     ( Maybe ( StructInfo Resolved
+             , HashMap Identifier (PathInfo Resolved)
+             )
      )
 checkStructType = resolveTypeWith go
   where
     go :: ResolveCallback
-          (Maybe ( StructInfo Resolved
-                 , HashMap Identifier (PathInfo Resolved)
-                 )
+          ( Maybe ( StructInfo Resolved
+                  , HashMap Identifier (PathInfo Resolved)
+                  )
           )
-    go PathInfo {..} = \case
+    go path@PathInfo {..} = \case
       Nothing ->
         case _pathName of
           TypeParameter _ _ ->
@@ -149,7 +150,11 @@ checkStructType = resolveTypeWith go
                 then [(paramName, PlaceholderType) | paramName <- expectedParams]
                 else zip expectedParams _pathParams
           pure $ Just (resolvedInfo, mapping)
-        _ -> error "ICE"
+        incorrectDefinition ->
+          reportICE "struct type resolution" "unexpected definition for struct"
+            [ "struct type: " ++ show path
+            , "definition:  " ++ show incorrectDefinition
+            ]
 
 
 --------------------------------------------------------------------------------
@@ -163,7 +168,10 @@ resolveConstValue = do
   where
     go :: ResolveCallback TypedExpression
     go resolvedPath@PathInfo {..} = \case
-      Nothing -> error "ICE"
+      Nothing ->
+        reportICE "const value resolution" "no definition found"
+          [ "path: " ++ show resolvedPath
+          ]
       Just (name, def) -> case _located def of
         TypeAliasDef _ -> fatal $ ErrorNotAConst _pathName
         FunctionDef  _ -> fatal $ ErrorNotAConst _pathName
@@ -199,9 +207,15 @@ resolveExprValue =
             Impure
             (PathInfo (FunctionPointer functionType) [])
             (PathExpr truePath)
-        _ -> error "ICE"
+        _ ->
+          reportICE "expr value resolution" "no definition found for builtin function"
+            [ "path: " ++ show resolvedPath
+            ]
       TopLevelDeclaration _ -> case info of
-        Nothing -> error "ICE"
+        Nothing ->
+          reportICE "expr value resolution" "no definition found for top level declaration"
+            [ "path: " ++ show resolvedPath
+            ]
         Just (name, def) -> case _located def of
           TypeAliasDef    _ -> fatal $ ErrorNotAValue _pathName
           StructDef       _ -> fatal $ ErrorNotAValue _pathName
@@ -219,7 +233,11 @@ resolveExprValue =
               Impure
               (PathInfo (FunctionPointer functionType) [])
               (PathExpr truePath)
-      _ -> error "ICE"
+      role ->
+        reportICE "expr value resolution" "incorrect role for expr value"
+            [ "path: " ++ show resolvedPath
+            , "role: " ++ show role
+            ]
 
 resolveFunctionCallValue
   :: PathInfo Parsed
@@ -253,9 +271,15 @@ resolveFunctionCallValue = do
             name
             loc
             (_funType fInfo)
-        _ -> error "ICE"
+        _ ->
+          reportICE "function value resolution" "no definition found for builtin function"
+            [ "path: " ++ show resolvedPath
+            ]
       TopLevelDeclaration _ -> case info of
-        Nothing -> error "ICE"
+        Nothing ->
+          reportICE "function value resolution" "no definition found for top level declaration"
+            [ "path: " ++ show resolvedPath
+            ]
         Just (name, def) -> case _located def of
           TypeAliasDef    _ -> fatal $ ErrorNotAFunction _pathName
           StructDef       _ -> fatal $ ErrorNotAFunction _pathName
@@ -268,7 +292,12 @@ resolveFunctionCallValue = do
               name
               (_location def)
               (_funType fInfo)
-      _ -> error "ICE"
+      role ->
+        reportICE "function value resolution" "incorrect role for function value"
+            [ "path: " ++ show resolvedPath
+            , "role: " ++ show role
+            ]
+
     checkFunctionType resultPath PathInfo {..} = case _pathName of
       FunctionPointer functionType ->
         pure (resultPath, functionType, M.empty, Nothing)
@@ -296,7 +325,13 @@ instance Analyzable Parsed where
     let definition = WithLocation loc $ toDefinition info
     resolvedDefinition <- analyzeDefinition definition
       `onNothingM` abort
-    pure $ fromMaybe (error "ICE") $ fromDefinition resolvedDefinition
+    fromDefinition resolvedDefinition
+      `onNothing` reportICE
+        "definition analysis"
+        "resolved definition type doesn't match parsed definition type"
+        [ "parsed   definition: " ++ show definition
+        , "resolved definition: " ++ show resolvedDefinition
+        ]
   forceFunType name loc info = do
     topLevelScope <- view infoTopLevelScope
     withContext topLevelScope name loc (analyzeFunctionType info)
@@ -346,7 +381,7 @@ instance IsDefinition FunctionInfo where
 
 type ResolveCallback r
   =  forall (p :: ASTPhase)
-  .  Analyzable p
+  .  (Analyzable p, ShowConstraints p)
   => PathInfo Resolved
   -> Maybe (Name, WithLocation (Definition p))
   -> AnalysisM r
@@ -424,7 +459,7 @@ processCallback callback resolvedPathInfo = \case
   Just name -> do
     let
       call :: forall (p :: ASTPhase)
-           .  Analyzable p
+           .  (Analyzable p, ShowConstraints p)
            => WithLocation (Definition p)
            -> AnalysisM r
       call = callback resolvedPathInfo . Just . (name,)
@@ -438,7 +473,12 @@ processCallback callback resolvedPathInfo = \case
                       , call <$> cachedDefinition
                       , call <$> localDefinition
                       ]
-    fromMaybe (error "ICE") action
+    flip fromMaybe action $
+      reportICE
+        "name resolution"
+        "no definition found for given Name"
+        [ "name: " ++ show name
+        ]
 
 partiallyResolveFunctionType
   :: forall (p :: ASTPhase)
@@ -473,27 +513,43 @@ partiallyResolveFunctionType mode resolvedPath@PathInfo {..} name loc info@Funct
       ( resolvedPath & pathName %~ \case
           TopLevelDeclaration _ -> TopLevelDeclaration trueName
           BuiltinFunction _ -> BuiltinFunction trueName
-          _ -> error "ICE"
+          role ->
+            reportICE
+              "generic function resolution"
+              "unexpected role for generic function"
+              [ "name: " ++ show trueName
+              , "role: " ++ show role
+              ]
       , trueName
       )
   pure (truePath, resolvedFunctionType, mapping, Just trueName)
 
 verifyEnumValue
   :: forall p
-   . PathInfo Resolved
+   . ShowConstraints p
+  => PathInfo Resolved
   -> Name
   -> EnumInfo p
   -> AnalysisM TypedExpression
-verifyEnumValue resolvedPath@PathInfo {..} name EnumInfo {..} = do
+verifyEnumValue resolvedPath@PathInfo {..} name info@EnumInfo {..} = do
   let actual = length _pathParams
   when (actual /= 0) $
     report $ ErrorIncorrectTypeParameterCount name 0 actual
   let identifier = NE.last $ _nameFullPath name
   when (identifier == _enumName) $
     report $ ErrorNotAConst _pathName
+  let resolvedTypePath = resolvedPath & pathName %~
+        enumRoleFromConstructorRole _enumName
   case L.elemIndex identifier _enumValues of
-    Nothing -> error "ICE"
-    Just i  -> pure $ RValueExpression Pure resolvedPath $ IntLiteralExpr i
+    Just i ->
+      pure $ RValueExpression Pure resolvedTypePath $ IntLiteralExpr i
+    Nothing ->
+      reportICE
+        "enum value resolution"
+        "unknown enum constructor"
+        [ "name: " ++ show name
+        , "enum: " ++ show info
+        ]
 
 verifyConstValue
   :: forall p

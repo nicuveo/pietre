@@ -5,7 +5,6 @@ module Data.HashMap.Strict.Extra
 
 import "this" Prelude      hiding (catMaybes)
 
-import Data.HashMap.Strict
 import Data.HashMap.Strict as P
 
 catMaybes :: HashMap k (Maybe v) -> HashMap k v

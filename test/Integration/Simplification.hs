@@ -65,4 +65,4 @@ test_batch = do
     for_ allNames \name -> do
       let refExprs  = expressions $ _located $ refDefinitions  M.! name
           testExprs = expressions $ _located $ testDefinitions M.! name
-      sequence $ zipWith (@?=) testExprs refExprs
+      zipWithM (@?=) testExprs refExprs

@@ -13,6 +13,7 @@ import Data.HashSet                              qualified as S
 import Data.Set                                  qualified as Set
 
 import Lang.Pietre.Batteries.BuiltIn
+import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Name
@@ -65,14 +66,20 @@ analyzeModule
             whileJust (uses moduleInstances Set.minView) \((name, params), remainingInstances) -> do
               moduleInstances .= remainingInstances
               (_, functionDefinition) <- uses moduleFunctions (M.lookup name)
-                `onNothingM` error "ICE"
+                `onNothingM`
+                  reportICE
+                    "function instantiation"
+                    "function definition not found"
+                    ["name: " ++ show name]
               instantiateGenericFunction topLevelScope name functionDefinition params
-            AnalysisState {..} <- get
+            definitions <- use moduleDefinitions
+            functions   <- use moduleFunctions
+            symbols     <- use moduleSymbols
             pure $ ResolvedModule
               { _resmodExported    = exported
-              , _resmodDefinitions = M.catMaybes _moduleDefinitions
-              , _resmodSymbols     = _moduleSymbols
-              , _resmodFunctions   = _moduleFunctions
+              , _resmodDefinitions = M.catMaybes definitions
+              , _resmodSymbols     = symbols
+              , _resmodFunctions   = functions
               }
     tell diagnostics
     hoistMaybe resolvedModule

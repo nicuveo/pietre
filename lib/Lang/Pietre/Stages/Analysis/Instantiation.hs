@@ -7,6 +7,7 @@ import                Control.Lens                           hiding (mapping,
 import                Data.HashMap.Strict                    qualified as M
 import                Data.Set                               qualified as S
 
+import                Lang.Pietre.Internal.ICE
 import                Lang.Pietre.Representations.AST
 import                Lang.Pietre.Representations.Identifier
 import                Lang.Pietre.Representations.Location
@@ -51,14 +52,24 @@ generateFullFunctionName name paramNames mappings =
   go name do
     paramName <- paramNames
     M.lookup paramName mappings
-      `onNothing` error "ICE"
+      `onNothing`
+        reportICE
+          "generic function instantiation"
+          "no information for type parameter"
+          [ "parameter name:   " ++ show paramName
+          , "known parameters: " ++ show mappings
+          ]
   where
     go originalName typeParams = Name (_nameFullPath originalName) do
-      PathInfo {..} <- typeParams
+      path@PathInfo {..} <- typeParams
       pure $ case _pathName of
         BuiltinType         n -> go n _pathParams
         TopLevelDeclaration n -> go n _pathParams
-        _                     -> error "ICE"
+        _                     -> reportICE
+          "generic function instantiation"
+          "type parameter isn't concrete"
+          [ "path: " ++ show path
+          ]
 
 instantiateGenericFunction
   :: Scope
@@ -88,5 +99,14 @@ substituteTypes
   -> PathInfo Resolved
   -> AnalysisM (PathInfo Resolved)
 substituteTypes mappings info@PathInfo {..} = case _pathName of
-  TypeParameter _ name -> M.lookup name mappings `onNothing` error "ICE"
-  _                    -> pathParams (traverse $ substituteTypes mappings) info
+  TypeParameter _ name ->
+    M.lookup name mappings
+      `onNothing`
+        reportICE
+          "generic function instantiation"
+          "no information for type parameter"
+          [ "parameter name:   " ++ show name
+          , "known parameters: " ++ show mappings
+          ]
+  _ ->
+    pathParams (traverse $ substituteTypes mappings) info

@@ -218,7 +218,7 @@ The language allows for three kinds of type declarations: type aliases, enumerat
 An enum defines the set of valid constructors for a given type, enclosed between brackets. The name of the enum is registered in the namespace as a type, and the enum's constructors as constant values. Enum constructors cannot take an argument. Enums do not accept type parameters.
 
 ```rust
-enum Colour { Red | Green | Blue };
+enum Colour { Red, Green, Blue }
 ```
 
 This example declares an enum `Colour`, with three constructors `Red`, `Green`, and `Blue`. Under the hood, an enum is represented as an integer, but offers greater type safety.

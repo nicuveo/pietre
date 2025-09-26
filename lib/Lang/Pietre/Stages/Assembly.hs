@@ -9,6 +9,7 @@ import Control.Monad.Extra                   (whenJustM)
 import Data.Monoid
 import Graphics.Image                        qualified as I
 
+import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.Bytecode
 import Lang.Pietre.Stages.Assembly.Color
 import Lang.Pietre.Stages.Assembly.Templates
@@ -61,7 +62,7 @@ appendInstruction size instruction =
     PushInt _  -> sizedInstruction
     Return     -> expand 1 exitTemplate
     Terminate  -> expand 0 terminateTemplate
-    PushAddr _ -> error "ICE: TODO"
+    PushAddr _ -> unimplemented
     Entrance _ -> do
       whenJustM (uses asLastEntrance getLast) \prevEntrance -> do
         currentRow <- uses asCurrentImage I.rows
@@ -101,7 +102,7 @@ appendInstruction size instruction =
 resolvePush :: Instruction Resolved -> [Instruction Resolved]
 resolvePush = \case
   PushInt n
-    | n <= 0    -> error "ICE: TODO"
+    | n <= 0    -> unimplemented
     | otherwise -> go n
   instruction -> pure instruction
   where

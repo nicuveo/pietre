@@ -12,6 +12,7 @@ import Data.List.Extra                           (zipWithLongest)
 import Data.List.NonEmpty                        qualified as NE
 
 import Lang.Pietre.Batteries.BuiltIn
+import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
@@ -146,7 +147,7 @@ buildTypeParameterMap type1 type2 =
             args2 = map (functionArgType . snd) $ _funArgs t2
             return1 = fromMaybe UnitType $ _funReturn t1
             return2 = fromMaybe UnitType $ _funReturn t2
-        argsResult   <- sequence $ zipWith go args1 args2
+        argsResult   <- zipWithM go args1 args2
         returnResult <- go return1 return2
         Just $ concat argsResult ++ returnResult
       _ ->
@@ -257,7 +258,7 @@ analyzeTypeParameters parameters = do
   typeNames <-
     fmap M.fromList $
       for (group $ sort parameters) \case
-        []               -> error "ICE"
+        []               -> reportICE "type parameter analysis" "found empty parameter group" []
         (identifier:_:_) -> fatal $ ErrorDuplicateTypeParameter identifier
         [identifier]     -> do
           when (isReserved identifier) $
@@ -365,7 +366,11 @@ analyzeConst ConstInfo {..} = do
       case (e1, e2) of
         (StructExpr structType lhsFields, StructExpr _ rhsFields) -> do
           (structInfo, _) <- checkStructType structType `onNothingM`
-            error "ICE"
+            reportICE
+              "const expression analysis"
+              "struct definition not found"
+              [ "path: " ++ show structType
+              ]
           comparisons <- for (_structValues structInfo) \(fieldName, _) -> do
             (_, lhsField) <-
               find ((fieldName ==) . fst) lhsFields `onNothing`
@@ -375,10 +380,17 @@ analyzeConst ConstInfo {..} = do
                 fatal (ErrorFieldAccessFieldNotFound structType fieldName)
             compareExpressions op (_exprValue lhsField) (_exprValue rhsField)
           pure $ asum comparisons
-        (IntLiteralExpr  i1, IntLiteralExpr  i2) -> pure $ op i1 i2
-        (CharLiteralExpr c1, CharLiteralExpr c2) -> pure $ op c1 c2
-        (BoolLiteralExpr b1, BoolLiteralExpr b2) -> pure $ op b1 b2
-        _ -> error "ICE"
+        (IntLiteralExpr    i1, IntLiteralExpr    i2) -> pure $ op i1 i2
+        (CharLiteralExpr   c1, CharLiteralExpr   c2) -> pure $ op c1 c2
+        (BoolLiteralExpr   b1, BoolLiteralExpr   b2) -> pure $ op b1 b2
+        (StringLiteralExpr  _, StringLiteralExpr  _) -> unimplemented
+        _ ->
+          reportICE
+            "const expression analysis"
+            "unknown or incompatible compile time values"
+            [ "lhs: " ++ show e1
+            , "rhs: " ++ show e2
+            ]
 
     go
       :: WithLocation (Expression Parsed)
@@ -395,13 +407,21 @@ analyzeConst ConstInfo {..} = do
               purity = _exprPurity resolvedExpr
               reportCastError :: forall a. AnalysisM a
               reportCastError = fatal $ ErrorWrongCast resolvedSourceType resolvedTargetType
+              reportCastICE :: forall a. Expression Resolved -> a
+              reportCastICE invalidExpr =
+                reportICE
+                  "const expression analysis"
+                  "enum value representation isn't an int"
+                  [ "expr: " ++ show invalidExpr
+                  ]
+
           targetEnum <- lookupEnumType resolvedTargetType
           sourceEnum <- lookupEnumType resolvedSourceType
           case (sourceEnum, targetEnum) of
             (Just _, Just destEnum) -> do
               intValue <- case _exprValue resolvedExpr of
                 IntLiteralExpr  i -> pure i
-                _                 -> error "ICE"
+                invalidExpr       -> reportCastICE invalidExpr
               when (intValue < 0 || intValue >= length (_enumValues destEnum)) $
                 report $ ErrorEnumOutOfBounds destEnum intValue
               pure $ RValueExpression purity resolvedTargetType $ IntLiteralExpr intValue
@@ -417,7 +437,7 @@ analyzeConst ConstInfo {..} = do
             (Just _, Nothing) -> do
               intValue <- case _exprValue resolvedExpr of
                 IntLiteralExpr  i -> pure i
-                _                 -> error "ICE"
+                invalidExpr       -> reportCastICE invalidExpr
               case resolvedTargetType of
                 IntType  -> pure $ IntExpression intValue
                 CharType -> pure $ CharExpression $ chr intValue
@@ -442,21 +462,26 @@ analyzeConst ConstInfo {..} = do
                 find ((field ==) . fst) fields `onNothing`
                   fatal (ErrorFieldAccessFieldNotFound structType field)
             _ -> fatal $ ErrorFieldAccessNotAStruct structType
-        CallExpr _ _  -> fatal undefined
-        ArrayExpr _ -> undefined
-        IndexExpr _ _ -> undefined
+        CallExpr _ _  -> fatal unimplemented
+        ArrayExpr _ -> unimplemented
+        IndexExpr _ _ -> unimplemented
         StructExpr path fields -> do
           (resolvedType, structDetails) <- resolveStructType path
           (structInfo, paramMapping) <- structDetails
-            `onNothing` error "ICE"
+            `onNothing`
+              reportICE
+                "const expression analysis"
+                "struct definition not found"
+                [ "path: " ++ show resolvedType
+                ]
           resolvedFields <- (traverse . traverse) go fields
           fullyResolvedType <- analyzeStructFields resolvedType structInfo paramMapping resolvedFields
           pure $ RValueExpression Pure fullyResolvedType $ StructExpr fullyResolvedType resolvedFields
         IntLiteralExpr    i -> pure $ IntExpression  i
         BoolLiteralExpr   b -> pure $ BoolExpression b
         CharLiteralExpr   c -> pure $ CharExpression c
-        StringLiteralExpr s -> pure $ RValueExpression Pure undefined $ StringLiteralExpr s
-        ReferenceExpr _ -> fatal undefined
+        StringLiteralExpr s -> pure $ RValueExpression Pure unimplemented $ StringLiteralExpr s
+        ReferenceExpr _ -> fatal unimplemented
         BoolNegationExpr e -> go e >>= \case
           BoolExpression x -> pure $ BoolExpression (not x)
           TypedExpression _ _ t _ -> fatal $ ErrorWrongType [BoolType] t
@@ -464,20 +489,22 @@ analyzeConst ConstInfo {..} = do
           IntExpression x -> pure $ IntExpression (-x)
           TypedExpression _ _ t _ -> fatal $ ErrorWrongType [IntType] t
         AdditionExpr e1 e2 -> do
-          lhs <- go e1
+          lhs <- analyzeFunctionExpression e1
+          rhs <- analyzeFunctionExpression e2
           case lhs of
-            TypedExpression _ _ IntType (IntLiteralExpr _) -> pure ()
-            TypedExpression _ _ e1t _ -> report $ ErrorWrongType [IntType] e1t
-          rhs <- go e2
-          case rhs of
-            TypedExpression _ _ IntType (IntLiteralExpr _) -> pure ()
-            TypedExpression _ _ e2t _ -> report $ ErrorWrongType [IntType] e2t
-          unless (_exprType lhs `typeMatches` _exprType rhs) $
-            report $ ErrorWrongType [_exprType lhs] (_exprType rhs)
-          validate
-          case (_exprValue lhs, _exprValue rhs) of
-            (IntLiteralExpr x, IntLiteralExpr y) -> pure $ IntExpression (x + y)
-            _                                    -> error "ICE"
+            IntExpression l ->
+              case rhs of
+                IntExpression r ->
+                  pure $ IntExpression (l + r)
+                _ ->
+                  fatal $ ErrorWrongType [_exprType lhs] (_exprType rhs)
+            -- StringExpression l -> unimplemented
+            --   case rhs of
+            --     StringExpression r ->
+            --       pure $ StringExpression (l ++ r)
+            --     _ ->
+            --       fatal $ ErrorWrongType [_exprType lhs] (_exprType rhs)
+            _ -> fatal $ ErrorWrongType [IntType {-, StringType -}] $ _exprType lhs
         SubtractionExpr    e1 e2 -> binaryIntExpression (pure ... subtract) e1 e2
         MultiplicationExpr e1 e2 -> binaryIntExpression (pure ... (*)) e1 e2
         ExponentiationExpr e1 e2 -> binaryIntExpression safeExp e1 e2
@@ -491,15 +518,15 @@ analyzeConst ConstInfo {..} = do
         LesserEqExpr       e1 e2 -> comparisonExpression (compareExpect (== LT)) True  e1 e2
         BoolAndExpr        e1 e2 -> binaryBoolExpression (&&) e1 e2
         BoolOrExpr         e1 e2 -> binaryBoolExpression (||) e1 e2
-        RangeInclusiveExpr           _ _ -> undefined
-        RangeExclusiveExpr           _ _ -> undefined
-        AssignmentExpr               _ _ -> fatal undefined
-        AdditionAssignmentExpr       _ _ -> fatal undefined
-        SubtractionAssignmentExpr    _ _ -> fatal undefined
-        MultiplicationAssignmentExpr _ _ -> fatal undefined
-        DivisionAssignmentExpr       _ _ -> fatal undefined
-        ModuloAssignmentExpr         _ _ -> fatal undefined
-        ExponentiationAssignmentExpr _ _ -> fatal undefined
+        RangeInclusiveExpr           _ _ -> unimplemented
+        RangeExclusiveExpr           _ _ -> unimplemented
+        AssignmentExpr               _ _ -> fatal unimplemented
+        AdditionAssignmentExpr       _ _ -> fatal unimplemented
+        SubtractionAssignmentExpr    _ _ -> fatal unimplemented
+        MultiplicationAssignmentExpr _ _ -> fatal unimplemented
+        DivisionAssignmentExpr       _ _ -> fatal unimplemented
+        ModuloAssignmentExpr         _ _ -> fatal unimplemented
+        ExponentiationAssignmentExpr _ _ -> fatal unimplemented
 
 analyzeStructFields
   :: PathInfo Resolved
@@ -525,7 +552,13 @@ analyzeStructFields typeName StructInfo {..} paramMapping values = do
         fieldMapping <- buildTypeParameterMap fieldType (_exprType expr)
         for fieldMapping \(paramName, rhs) -> do
           typePattern <- M.lookup paramName paramMapping
-            `onNothing` error "ICE"
+            `onNothing`
+              reportICE
+                "struct fields analysis"
+                "no information for type parameter"
+                [ "parameter name:   " ++ show paramName
+                , "known parameters: " ++ show paramMapping
+                ]
           unless (typePattern `typeMatches` rhs) $
             report $ ErrorWrongType [typePattern] rhs
           pure (paramName, pure rhs)
@@ -562,7 +595,7 @@ analyzeFunctionType info = do
   result <- uses moduleFunTypes (M.lookup name)
     `onNothingM` doAnalysis name
   currentFunType .= _funReturn result
-  for (_funArgs result) \(argName, resolvedType) -> do
+  for_ (_funArgs result) \(argName, resolvedType) -> do
     let resolvedRole = FunctionArgument argName resolvedType
     currentScope %= M.insert (pure argName) (pure resolvedRole)
   pure result
@@ -721,7 +754,13 @@ analyzeFunctionCallArgs resolvedPath FunctionType {..} paramMapping values = do
       fieldMapping <- buildTypeParameterMap fieldType (_exprType expr)
       for fieldMapping \(paramName, rhs) -> do
         typePattern <- M.lookup paramName paramMapping
-          `onNothing` error "ICE"
+          `onNothing`
+            reportICE
+              "function call arguments analysis"
+              "no information for type parameter"
+              [ "parameter name:   " ++ show paramName
+              , "known parameters: " ++ show paramMapping
+              ]
         unless (typePattern `typeMatches` rhs) $
           report $ ErrorWrongType [typePattern] rhs
         pure (paramName, pure rhs)
@@ -861,17 +900,20 @@ analyzeFunctionExpression expr = do
         trueName <- MaybeT $ tryInstantiateGenericFunction (_funParams resolvedFunType) name fullMapping
         pure $ fullyResolvedPath & pathName %~ \case
           TopLevelDeclaration _ -> TopLevelDeclaration trueName
-          BuiltinFunction _ -> BuiltinFunction trueName
-          _ -> error "ICE"
+          BuiltinFunction     _ -> BuiltinFunction     trueName
+          _ -> reportICE
+            "function call analysis"
+            "generic function is neither a top level declaration nor a builtin function"
+            ["path: " ++ show fullyResolvedPath]
       returnType <- substituteTypes fullMapping $ fromMaybe UnitType (_funReturn resolvedFunType)
       -- TODO: check whether a function is pure or not
       pure $ RValueExpression Impure returnType $ CallExpr truePath resolvedArgs
     IntLiteralExpr    i -> pure $ IntExpression  i
     BoolLiteralExpr   b -> pure $ BoolExpression b
     CharLiteralExpr   c -> pure $ CharExpression c
-    StringLiteralExpr s -> pure $ RValueExpression Pure undefined $ StringLiteralExpr s
-    ArrayExpr _   -> undefined
-    IndexExpr _ _ -> undefined
+    StringLiteralExpr s -> pure $ RValueExpression Pure unimplemented $ StringLiteralExpr s
+    ArrayExpr _   -> unimplemented
+    IndexExpr _ _ -> unimplemented
     StructExpr path fields -> do
       (resolvedType, structDetails) <- resolveStructType path
       rawResolvedFields <- (traverse . traverse) analyzeFunctionExpression fields
@@ -933,8 +975,8 @@ analyzeFunctionExpression expr = do
     LesserExpr         e1 e2 -> comparisonExpression (compareExpect (== LT))       LesserExpr     False e1 e2
     GreaterEqExpr      e1 e2 -> comparisonExpression (compareExpect (== GT))       GreaterEqExpr  True  e1 e2
     LesserEqExpr       e1 e2 -> comparisonExpression (compareExpect (== LT))       LesserEqExpr   True  e1 e2
-    RangeInclusiveExpr _  _  -> undefined
-    RangeExclusiveExpr _  _  -> undefined
+    RangeInclusiveExpr _  _  -> unimplemented
+    RangeExclusiveExpr _  _  -> unimplemented
     AssignmentExpr     e1 e2 -> do
       lhs@(TypedExpression isLValue _ t1 r1) <- analyzeFunctionExpression e1
       rhs@(TypedExpression _ _ t2 _r2) <- analyzeFunctionExpression e2

@@ -13,6 +13,7 @@ import Data.Text.Lazy.Encoding qualified as T
 import Lang.Pietre
 import System.FilePath
 import Test.Tasty.Golden
+import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
 import Arbitrary               ()
@@ -26,11 +27,12 @@ test_batch = do
     goldenFile = testInputFile -<.> "golden"
   pure $ goldenVsString testName goldenFile do
     source <- T.readFile testInputFile
+    ast <- parseModule testInputFile source
+      `onLeft` (assertFailure . show)
     pure
       $ T.encodeUtf8
       $ T.fromStrict
-      $ either (error . show) prettyPrint
-      $ parseModule testInputFile source
+      $ prettyPrint ast
 
 test_prop :: Module -> Property
 test_prop "round-trip" m =

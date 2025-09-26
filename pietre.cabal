@@ -31,6 +31,7 @@ library
       Lang.Pietre
       Lang.Pietre.Batteries.BuiltIn
       Lang.Pietre.Internal.Encoding
+      Lang.Pietre.Internal.ICE
       Lang.Pietre.Representations.AST
       Lang.Pietre.Representations.Bytecode
       Lang.Pietre.Representations.Identifier

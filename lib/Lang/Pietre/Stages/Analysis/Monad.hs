@@ -1,6 +1,44 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Lang.Pietre.Stages.Analysis.Monad where
+module Lang.Pietre.Stages.Analysis.Monad
+  ( -- * dictionaries
+    Scope
+  , DefinitionCache
+  , SymbolCache
+  , FunctionCache
+    -- * analysis monad
+  , AnalysisM
+  , runAnalysis
+    -- * top level info
+  , AnalysisInfo (..)
+  , infoForeignDefinitions
+  , infoForeignFunctions
+  , infoForeignSymbols
+  , infoLocalDefinitions
+  , infoModuleName
+  , infoStack
+  , infoTopLevelScope
+    -- * context manipulation
+  , withContext
+  , withNestedContext
+  , currentContext
+  , currentScope
+  , currentName
+  , currentLocation
+  , currentFunType
+  , currentParams
+  , currentlyWithinLoop
+    -- * inner state
+  , moduleDefinitions
+  , moduleFunTypes
+  , moduleFunctions
+  , moduleInstances
+  , moduleSymbols
+    -- * error handling
+  , validate
+  , ensure
+  , try
+  ) where
 
 import "this" Prelude
 
@@ -11,6 +49,7 @@ import Data.HashMap.Strict                    qualified as M
 import Data.Set                               qualified as S
 import Data.Tuple
 
+import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
@@ -70,8 +109,8 @@ currentContext :: Lens' AnalysisState AnalysisContext
 currentContext = moduleContext . unsafeHead
   where
     unsafeHead f = \case
-      []     -> error "ICE"
       (c:cs) -> (:cs) <$> f c
+      []     -> reportICE "analysis" "context stack empty" []
 
 currentScope :: Lens' AnalysisState Scope
 currentScope = currentContext . contextScope
