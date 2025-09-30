@@ -13,6 +13,7 @@ import System.FilePath
 
 import Lang.Pietre
 import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Name
 
 
@@ -26,13 +27,13 @@ parse source = do
   filename <- ask
   parseModule filename source `onLeft` (throwError . show)
 
-analyze :: TestCompiler m => Module -> m ResolvedModule
+analyze :: TestCompiler m => Module -> m Interface
 analyze parsedModule = do
   name <- moduleName
   let (diagnostics, result) = analyzeModule M.empty M.empty M.empty M.empty name parsedModule
   result `onNothing` throwError (show diagnostics)
 
-simplify :: TestCompiler m => ResolvedModule -> m ResolvedModule
+simplify :: TestCompiler m => Interface -> m Interface
 simplify = pure . simplifyModule
 
 

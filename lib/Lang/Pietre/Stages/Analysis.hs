@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Lang.Pietre.Stages.Analysis where
 
 import "this" Prelude
@@ -16,21 +14,12 @@ import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Name
 import Lang.Pietre.Stages.Analysis.Core
 import Lang.Pietre.Stages.Analysis.Diagnostic
 import Lang.Pietre.Stages.Analysis.Instantiation
 import Lang.Pietre.Stages.Analysis.Monad
-
-
-data ResolvedModule = ResolvedModule
-  { _resmodExported    :: HashSet Identifier
-  , _resmodDefinitions :: DefinitionCache
-  , _resmodSymbols     :: SymbolCache
-  , _resmodFunctions   :: FunctionCache
-  }
-
-makeLenses ''ResolvedModule
 
 
 analyzeModule
@@ -40,7 +29,7 @@ analyzeModule
   -> HashMap ModuleName (HashSet Identifier)
   -> ModuleName
   -> Module
-  -> ([Diagnostic], Maybe ResolvedModule)
+  -> ([Diagnostic], Maybe Interface)
 analyzeModule
   foreignDefinitions
   foreignSymbols
@@ -75,11 +64,11 @@ analyzeModule
             definitions <- use moduleDefinitions
             functions   <- use moduleFunctions
             symbols     <- use moduleSymbols
-            pure $ ResolvedModule
-              { _resmodExported    = exported
-              , _resmodDefinitions = M.catMaybes definitions
-              , _resmodSymbols     = symbols
-              , _resmodFunctions   = functions
+            pure $ Interface
+              { _interfaceExported    = exported
+              , _interfaceDefinitions = M.catMaybes definitions
+              , _interfaceSymbols     = symbols
+              , _interfaceFunctions   = functions
               }
     tell diagnostics
     hoistMaybe resolvedModule

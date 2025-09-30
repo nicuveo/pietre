@@ -52,9 +52,9 @@ import Data.Tuple
 import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Representations.Symbol
 import Lang.Pietre.Stages.Analysis.Diagnostic
 
 
@@ -62,12 +62,6 @@ import Lang.Pietre.Stages.Analysis.Diagnostic
 -- Monad
 
 type AnalysisM = MaybeT (RWS AnalysisInfo [Diagnostic] AnalysisState)
-
-type Scope = HashMap Path (NonEmpty Role)
-
-type DefinitionCache = HashMap Name (WithLocation (Definition Resolved))
-type SymbolCache     = HashMap Name Symbol
-type FunctionCache   = HashMap Name (Scope, WithLocation (FunctionInfo Parsed))
 
 data AnalysisInfo = AnalysisInfo
   { _infoModuleName         :: ModuleName

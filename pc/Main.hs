@@ -12,6 +12,7 @@ import System.FilePath
 
 import Lang.Pietre
 import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 
@@ -60,20 +61,20 @@ main = do
           liftIO $ print (moduleName, diagnostics)
         case simplifyModule <$> resolvedAST of
           Nothing -> error "aborting"
-          Just (ResolvedModule {..}) -> do
-            put ( M.insert moduleName _resmodExported exports
-                , definitions <> _resmodDefinitions
-                , symbols     <> _resmodSymbols
-                , functions   <> _resmodFunctions
+          Just (Interface {..}) -> do
+            put ( M.insert moduleName _interfaceExported exports
+                , definitions <> _interfaceDefinitions
+                , symbols     <> _interfaceSymbols
+                , functions   <> _interfaceFunctions
                 )
             liftIO $ putStrLn $ "### " ++ show moduleName
             liftIO $ putStrLn $ "### Definitions"
-            for_ (M.toList _resmodDefinitions) \(name, WithLocation _ decl) -> do
+            for_ (M.toList _interfaceDefinitions) \(name, WithLocation _ decl) -> do
               liftIO $ putStrLn $ T.unpack (renderName name) ++ ": " ++ show decl
             liftIO $ putStrLn $ "### Symbols"
-            for_ (M.toList _resmodSymbols) \(name, symbol) -> do
+            for_ (M.toList _interfaceSymbols) \(name, symbol) -> do
               liftIO $ putStrLn $ T.unpack (renderName name) ++ ": " ++ show symbol
             liftIO $ putStrLn $ "### Generic functions"
-            for_ (M.toList _resmodFunctions) \(name, (_, definition)) -> do
+            for_ (M.toList _interfaceFunctions) \(name, (_, definition)) -> do
               liftIO $ putStrLn $ T.unpack (renderName name) ++ ": " ++ show definition
   pass

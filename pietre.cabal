@@ -36,6 +36,7 @@ library
       Lang.Pietre.Representations.Bytecode
       Lang.Pietre.Representations.Identifier
       Lang.Pietre.Representations.Image
+      Lang.Pietre.Representations.Interface
       Lang.Pietre.Representations.IR
       Lang.Pietre.Representations.Location
       Lang.Pietre.Representations.Name

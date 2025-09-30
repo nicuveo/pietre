@@ -7,13 +7,14 @@ module Integration.Simplification
 
 import "this" Prelude
 
-import Data.HashMap.Strict                  qualified as M
-import Data.HashSet                         qualified as S
-import Data.Text.IO                         qualified as T
+import Data.HashMap.Strict                   qualified as M
+import Data.HashSet                          qualified as S
+import Data.Text.IO                          qualified as T
 import System.FilePath
 import Test.Tasty.HUnit
 
 import Lang.Pietre
+import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Location
 
 import Compile
@@ -59,8 +60,8 @@ test_batch = do
       `onLeftM` assertFailure
     testValue  <- runTestCompiler fakeFilename (parse source     >>= analyze >>= simplify)
       `onLeftM` assertFailure
-    let testDefinitions = _resmodDefinitions testValue
-        refDefinitions  = _resmodDefinitions reference
+    let testDefinitions = _interfaceDefinitions testValue
+        refDefinitions  = _interfaceDefinitions reference
         allNames        = S.union (M.keysSet testDefinitions) (M.keysSet refDefinitions)
     for_ allNames \name -> do
       let refExprs  = expressions $ _located $ refDefinitions  M.! name

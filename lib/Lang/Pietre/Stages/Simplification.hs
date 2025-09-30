@@ -6,17 +6,17 @@ import Control.Lens
 
 import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Representations.AST
-import Lang.Pietre.Stages.Analysis
+import Lang.Pietre.Representations.Interface
 
 
 --------------------------------------------------------------------------------
 -- Public API
 
 simplifyModule
-  :: ResolvedModule
-  -> ResolvedModule
+  :: Interface
+  -> Interface
 simplifyModule =
-  resmodDefinitions . traverse . traverse %~ simplify
+  interfaceDefinitions . traverse . traverse %~ simplify
 
 
 --------------------------------------------------------------------------------
