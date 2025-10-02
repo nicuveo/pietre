@@ -17,7 +17,6 @@ import Lang.Pietre.Representations.AST
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Representations.Symbol        qualified as Symbol
 import Lang.Pietre.Stages.Analysis.Context
 import Lang.Pietre.Stages.Analysis.Diagnostic
 import Lang.Pietre.Stages.Analysis.Instantiation
@@ -236,15 +235,12 @@ analyzeDefinition definition = do
               TypeAliasDef info -> TypeAliasDef <$> analyzeTypeAlias info
               StructDef    info -> StructDef    <$> analyzeStruct    info
               EnumDef      info -> EnumDef      <$> analyzeEnum      info
-              ConstDef     info -> do
-                resolvedInfo <- analyzeConst info
-                moduleSymbols %= M.insert rootName (Symbol.Constant resolvedInfo)
-                pure $ ConstDef resolvedInfo
+              ConstDef     info -> ConstDef     <$> analyzeConst     info
               FunctionDef  info -> do
                 resolvedInfo <- analyzeFunction info
                 if isGeneric resolvedInfo
                 then moduleFunctions %= M.insert rootName (topLevelScope, info <$ definition)
-                else moduleSymbols   %= M.insert rootName (Symbol.Function resolvedInfo)
+                else moduleSymbols   %= M.insert rootName resolvedInfo
                 pure $ FunctionDef resolvedInfo
       moduleDefinitions <>= M.fromList do
         name <- NE.toList exportedNames
@@ -665,6 +661,7 @@ analyzeStatement statement = do
       pure $ ReturnStmt resolvedReturnExpr
     ExpressionStmt parsedExpr -> do
       resolvedExpr <- analyzeFunctionExpression parsedExpr
+      -- TODO: can this be simplified using gathered purity information?
       unless (_exprType resolvedExpr `typeMatches` UnitType) $
         case _exprValue resolvedExpr of
           CallExpr                     _ _ -> pure ()

@@ -12,7 +12,6 @@ import                Lang.Pietre.Representations.AST
 import                Lang.Pietre.Representations.Identifier
 import                Lang.Pietre.Representations.Location
 import                Lang.Pietre.Representations.Name
-import                Lang.Pietre.Representations.Symbol     qualified as Symbol
 import {-# SOURCE #-} Lang.Pietre.Stages.Analysis.Core
 import                Lang.Pietre.Stages.Analysis.Diagnostic
 import                Lang.Pietre.Stages.Analysis.Monad
@@ -91,7 +90,7 @@ instantiateGenericFunction topLevelScope name locatedDefinition params = do
       withContext topLevelScope fullName (_location locatedDefinition) do
         currentParams .= params
         resolvedFunction <- analyzeFunction $ _located locatedDefinition
-        pure $ Symbol.Function resolvedFunction
+        pure resolvedFunction
 
 
 substituteTypes

@@ -1,32 +1,47 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Lang.Pietre.Representations.IR where
 
 import "this" Prelude
 
+import Control.Lens.TH
 import Lang.Pietre.Representations.Name
 
 
 type IR = HashMap Name Function
 
 data Function = Function
-  { _funcStart  :: Block
-  , _funcBlocks :: HashMap Label Block
-  , _funcArgs   :: [Register]
-  , _funcReturn :: [Register]
-  } deriving Show
+  { _funStart  :: Label
+  , _funBlocks :: NonEmpty (Label, Block)
+  }
+  deriving Show
 
 data Block = Block
-  { _blockArguments    :: [Register]
+  { _blockParents      :: [Label]
+  , _blockArguments    :: [Register]
   , _blockInstructions :: [Instruction]
   , _blockTerminator   :: Terminator
   } deriving Show
 
 newtype Label = Label Int
-  deriving Show
+  deriving (Show, Eq, Hashable)
 
 data Register = Register
   { _registerIndex :: Int
   , _registerType  :: Type
-  } deriving Show
+  } -- deriving Show
+
+-- TMP TMP TMP
+
+instance Show Register where
+  show Register {..} =
+    let typePrefix = case _registerType of
+          IntType  -> "i"
+          BoolType -> "b"
+          CharType -> "c"
+          _        -> undefined
+    in typePrefix ++ show _registerIndex
+
 
 data Type
   = IntType
@@ -35,7 +50,7 @@ data Type
   | EnumType Int
   | StructType [Type]
   | FunctionType [Type] [Type]
-  deriving Show
+  deriving (Show, Eq)
 
 data Terminator
   = Jump   Target
@@ -44,8 +59,14 @@ data Terminator
   | Panic
   deriving Show
 
-data Target = Target Label [Register]
+data Target = Target
+  { _tgtLabel :: Label
+  , _tgtArgs  :: [Register]
+  }
   deriving Show
+
+mkTarget :: Label -> Target
+mkTarget label = Target label []
 
 data Instruction
   = Add      Register Register Register
@@ -62,15 +83,22 @@ data Instruction
   | CmpGE    Register Register Register
   | NegateI  Register Register
   | NegateB  Register Register
-  | And      Register Register
-  | Or       Register Register
-  | Cast     Register Register Type
+  | Cast     Register Register
   | AssignI  Register Int
   | AssignB  Register Bool
   | AssignC  Register Char
   | Combine  Register [Register]
   | GetField Register Register Int
   | SetField Register Register Int Register
-  | InvokeN  [Register] Name     [Register]
-  | InvokeR  [Register] Register [Register]
+  | InvokeN  (Maybe Register) Name     [Register]
+  | InvokeR  (Maybe Register) Register [Register]
   deriving Show
+
+makeLenses ''Function
+makeLenses ''Block
+makeLenses ''Register
+makeLenses ''Target
+makePrisms ''Type
+makePrisms ''Terminator
+makePrisms ''Target
+makePrisms ''Instruction

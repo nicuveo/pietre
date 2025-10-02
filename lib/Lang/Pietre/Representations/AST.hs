@@ -193,7 +193,7 @@ deriving instance ShowConstraints p => Show (ConstInfo p)
 data FunctionInfo (p :: ASTPhase) = FunctionInfo
   { _funName :: Identifier
   , _funType :: FunctionType p
-  , _funBody :: [Annotated Statement p]
+  , _funBody :: Block p
   }
 
 deriving instance ShowConstraints p => Show (FunctionInfo p)
@@ -240,9 +240,12 @@ data Statement (p :: ASTPhase)
 deriving instance ShowConstraints p => Show (Statement p)
 
 
+type Block p = [Annotated Statement p]
+
+
 data IfInfo (p :: ASTPhase) = IfInfo
   { _ifExpr :: Annotated Expression p
-  , _ifBody :: [Annotated Statement p]
+  , _ifBody :: Block p
   , _ifElse :: Maybe (ElseInfo p)
   }
 
@@ -251,7 +254,7 @@ deriving instance ShowConstraints p => Show (IfInfo p)
 
 data ElseInfo (p :: ASTPhase)
   = ElseIf    (IfInfo p)
-  | ElseBlock [Annotated Statement p]
+  | ElseBlock (Block p)
 
 deriving instance ShowConstraints p => Show (ElseInfo p)
 
@@ -259,7 +262,7 @@ deriving instance ShowConstraints p => Show (ElseInfo p)
 data ForInfo (p :: ASTPhase) = ForInfo
   { _forVariableName :: Identifier
   , _forRangeExpr    :: Annotated Expression p
-  , _forBody         :: [Annotated Statement p]
+  , _forBody         :: Block p
   }
 
 deriving instance ShowConstraints p => Show (ForInfo p)
@@ -267,7 +270,7 @@ deriving instance ShowConstraints p => Show (ForInfo p)
 
 data WhileInfo (p :: ASTPhase) = WhileInfo
   { _whileExpr :: Annotated Expression p
-  , _whileBody :: [Annotated Statement p]
+  , _whileBody :: Block p
   }
 
 deriving instance ShowConstraints p => Show (WhileInfo p)
@@ -522,7 +525,7 @@ prettyParams renderFun opening params
   | null params = mempty
   | otherwise   = encloseSep opening ">" "," $ map renderFun params
 
-prettyBlock :: [Annotated Statement Parsed] -> Doc ann
+prettyBlock :: Block Parsed -> Doc ann
 prettyBlock = braces . enclose hardline hardline . indent 2 . vsep . map (pretty . (^. within @Statement @Parsed))
 
 prettyPrint :: Pretty p => p -> Text

@@ -40,7 +40,6 @@ library
       Lang.Pietre.Representations.IR
       Lang.Pietre.Representations.Location
       Lang.Pietre.Representations.Name
-      Lang.Pietre.Representations.Symbol
       Lang.Pietre.Representations.Tokens
       Lang.Pietre.Stages.Analysis
       Lang.Pietre.Stages.Analysis.Context
@@ -55,6 +54,8 @@ library
       Lang.Pietre.Stages.Generation
       Lang.Pietre.Stages.Linking
       Lang.Pietre.Stages.Lowering
+      Lang.Pietre.Stages.Lowering.Collection
+      Lang.Pietre.Stages.Lowering.Monad
       Lang.Pietre.Stages.Optimization
       Lang.Pietre.Stages.Parsing
       Lang.Pietre.Stages.Parsing.Lexer

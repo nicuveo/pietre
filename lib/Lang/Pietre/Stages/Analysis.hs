@@ -64,8 +64,12 @@ analyzeModule
             definitions <- use moduleDefinitions
             functions   <- use moduleFunctions
             symbols     <- use moduleSymbols
+            -- TODO: bundle require dependencies, by:
+            --   1. keeping track of all names we have looked up
+            --   2. doing the union with a filtered view of this function's arguments
             pure $ Interface
-              { _interfaceExported    = exported
+              { _interfaceName        = moduleName
+              , _interfaceExported    = exported
               , _interfaceDefinitions = M.catMaybes definitions
               , _interfaceSymbols     = symbols
               , _interfaceFunctions   = functions
