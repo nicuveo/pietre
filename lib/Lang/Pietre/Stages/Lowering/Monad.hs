@@ -6,7 +6,7 @@ module Lang.Pietre.Stages.Lowering.Monad
   , runLowering
     -- * state
   , lsRegisters
-  , lsPotential
+  , lsPlaceholders
   , lsBlocks
   , startLabel
   , mkLabel
@@ -29,6 +29,7 @@ module Lang.Pietre.Stages.Lowering.Monad
   , endBlock
   , isWithinBlock
   , currentBlock
+  , blockInfo
   ) where
 
 import "this" Prelude
@@ -42,7 +43,6 @@ import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.IR
-import Lang.Pietre.Representations.Name
 
 
 type LoweringM = ReaderT Interface (State LoweringState)
@@ -51,7 +51,7 @@ data LoweringState = LoweringState
   { _lsNextLabel    :: Int
   , _lsNextRegister :: Int
   , _lsRegisters    :: HashMap (Label, Identifier) Register
-  , _lsPotential    :: HashMap Label (HashSet Role)
+  , _lsPlaceholders :: HashMap Label (HashMap Identifier Register)
   , _lsSealed       :: HashSet Label
   , _lsBlocks       :: HashMap Label Block
   , _lsScope        :: [BlockScope]
@@ -79,7 +79,7 @@ runLowering interface action =
       { _lsNextLabel    = 1
       , _lsNextRegister = 0
       , _lsRegisters    = M.empty
-      , _lsPotential    = M.empty
+      , _lsPlaceholders = M.empty
       , _lsSealed       = S.empty
       , _lsBlocks       = M.empty
       , _lsScope        = []
@@ -221,15 +221,15 @@ appendInstruction inst = do
     AssignI  target _     -> Just target
     AssignB  target _     -> Just target
     AssignC  target _     -> Just target
+    AssignA  target _     -> Just target
     Combine  target _     -> Just target
     GetField target _ _   -> Just target
     SetField target _ _ _ -> Just target
     InvokeN  target _ _   -> target
     InvokeR  target _ _   -> target
 
-appendArgument :: Register -> LoweringM ()
-appendArgument reg = do
-  label <- currentBlock
+appendArgument :: Label -> Register -> LoweringM ()
+appendArgument label reg =
   blockInfo label . blockArguments %= (<> [reg])
 
 

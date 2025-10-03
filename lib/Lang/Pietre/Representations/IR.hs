@@ -36,10 +36,12 @@ data Register = Register
 instance Show Register where
   show Register {..} =
     let typePrefix = case _registerType of
-          IntType  -> "i"
-          BoolType -> "b"
-          CharType -> "c"
-          _        -> undefined
+          IntType       -> "i"
+          BoolType      -> "b"
+          CharType      -> "c"
+          EnumType _    -> "e"
+          StructType fs -> "s" ++ show (toList fs)
+          FunctionType args rt -> "f" ++ show (toList args) ++ show (maybeToList rt)
     in typePrefix ++ show _registerIndex
 
 
@@ -48,8 +50,8 @@ data Type
   | BoolType
   | CharType
   | EnumType Int
-  | StructType [Type]
-  | FunctionType [Type] [Type]
+  | StructType (NonEmpty Type)
+  | FunctionType [Type] (Maybe Type)
   deriving (Show, Eq)
 
 data Terminator
@@ -87,7 +89,8 @@ data Instruction
   | AssignI  Register Int
   | AssignB  Register Bool
   | AssignC  Register Char
-  | Combine  Register [Register]
+  | AssignA  Register Name
+  | Combine  Register (NonEmpty Register)
   | GetField Register Register Int
   | SetField Register Register Int Register
   | InvokeN  (Maybe Register) Name     [Register]

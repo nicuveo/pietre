@@ -82,6 +82,8 @@ instantiateGenericFunction topLevelScope name locatedDefinition params = do
     `onNothingM` doAnalysis
     `onNothingM` abort
   moduleSymbols %= M.insert fullName symbol
+  moduleDefinitions %= M.insert fullName
+    (Just $ FunctionDef symbol <$ locatedDefinition)
   pure fullName
   where
     paramNames = _funParams $ _funType $ _located locatedDefinition
@@ -96,16 +98,18 @@ instantiateGenericFunction topLevelScope name locatedDefinition params = do
 substituteTypes
   :: HashMap Identifier (PathInfo Resolved)
   -> PathInfo Resolved
-  -> AnalysisM (PathInfo Resolved)
-substituteTypes mappings info@PathInfo {..} = case _pathName of
-  TypeParameter _ name ->
-    M.lookup name mappings
-      `onNothing`
-        reportICE
-          "generic function instantiation"
-          "no information for type parameter"
-          [ "parameter name:   " ++ show name
-          , "known parameters: " ++ show mappings
-          ]
-  _ ->
-    pathParams (traverse $ substituteTypes mappings) info
+  -> PathInfo Resolved
+substituteTypes mappings info@PathInfo {..} =
+  case _pathName of
+    TypeParameter _ name ->
+      M.lookupDefault (missingParameterError name) name mappings
+    _ ->
+      info & pathParams %~ map (substituteTypes mappings)
+  where
+    missingParameterError name =
+      reportICE
+        "generic function instantiation"
+        "no information for type parameter"
+        [ "parameter name:   " ++ show name
+        , "known parameters: " ++ show mappings
+        ]

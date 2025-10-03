@@ -66,7 +66,10 @@ main = do
             , symbols     <> _interfaceSymbols
             , functions   <> _interfaceFunctions
             )
-
+        {-
+        for_ (M.toList _interfaceSymbols) \(name, symbol) -> do
+          liftIO $ putStrLn $ T.unpack (renderName name) ++ ": " ++ show symbol
+        -}
         {-
         liftIO $ putStrLn $ "### " ++ show moduleName
         liftIO $ putStrLn $ "### Definitions"

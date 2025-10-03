@@ -85,7 +85,7 @@ resolveType mode =
           when (expected /= actual) $
             report $ ErrorIncorrectTypeParameterCount name expected actual
           let typeArguments = M.fromList $ zip (_aliasParams resolvedInfo) _pathParams
-          substituteTypes typeArguments $ _aliasValue resolvedInfo
+          pure $ substituteTypes typeArguments $ _aliasValue resolvedInfo
         EnumDef enumInfo -> do
           let actual = length _pathParams
           unless (null _pathParams) $

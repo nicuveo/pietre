@@ -882,7 +882,7 @@ analyzeFunctionExpression expr = do
           Just (structInfo, paramMapping) -> do
             (_, fieldType) <- find ((field ==) . fst) (_structValues structInfo) `onNothing`
               fatal (ErrorFieldAccessFieldNotFound structType field)
-            resolvedFieldType <- substituteTypes paramMapping fieldType
+            let resolvedFieldType = substituteTypes paramMapping fieldType
             pure $ TypedExpression lValue lPurity resolvedFieldType $ FieldAccessExpr lhs field
     CallExpr funPath arguments  -> do
       (resolvedPath, resolvedFunType, mapping, functionName) <- resolveFunctionCallValue funPath
@@ -902,7 +902,7 @@ analyzeFunctionExpression expr = do
             "function call analysis"
             "generic function is neither a top level declaration nor a builtin function"
             ["path: " ++ show fullyResolvedPath]
-      returnType <- substituteTypes fullMapping $ fromMaybe UnitType (_funReturn resolvedFunType)
+      let returnType = substituteTypes fullMapping $ fromMaybe UnitType (_funReturn resolvedFunType)
       -- TODO: check whether a function is pure or not
       pure $ RValueExpression Impure returnType $ CallExpr truePath resolvedArgs
     IntLiteralExpr    i -> pure $ IntExpression  i
