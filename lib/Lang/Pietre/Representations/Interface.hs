@@ -25,4 +25,5 @@ data Interface = Interface
   , _interfaceFunctions   :: FunctionCache
   } deriving Show
 
+
 makeLenses ''Interface

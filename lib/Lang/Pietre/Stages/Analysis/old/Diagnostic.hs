@@ -10,7 +10,7 @@ import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 
 data Diagnostic = Diagnostic
-  { _diganosticDeclaration :: Maybe Name
+  { _diganosticDeclaration :: Maybe BaseName
   , _diagnosticLocation    :: Location
   , _diagnosticMessage     :: Message
   } deriving Show
@@ -28,8 +28,8 @@ data Message
   | ErrorAmbiguousPath Path (NonEmpty Role)
   | ErrorCyclicDefinition Name
   | ErrorIncorrectTypeParameterCount Name Int Int
-  | ErrorDuplicateTypeParameter Identifier
-  | ErrorEnumDuplicateEntries Identifier
+  | ErrorDuplicatedTypeParameter Identifier
+  | ErrorEnumDuplicatedEntry Identifier
   | ErrorWrongType [PathInfo Resolved] (PathInfo Resolved)
   | ErrorWrongCast (PathInfo Resolved) (PathInfo Resolved)
   | ErrorEnumOutOfBounds (EnumInfo Resolved) Int
@@ -40,8 +40,8 @@ data Message
   | ErrorStructIncompatibleTypes (PathInfo Resolved) Identifier (NonEmpty (PathInfo Resolved))
   | ErrorFunctionAmbiguousType (PathInfo Resolved) Identifier
   | ErrorFunctionIncompatibleTypes (PathInfo Resolved) Identifier (NonEmpty (PathInfo Resolved))
-  | ErrorFieldAccessNotAStruct (PathInfo Resolved)
-  | ErrorFieldAccessFieldNotFound (PathInfo Resolved) Identifier
+  | ErrorFieldAccessNotAStruct Type
+  | ErrorFieldAccessFieldNotFound Type Identifier
   | ErrorReservedIdentifier Identifier
   | ErrorPlaceholder Text
   | ErrorFunctionDuplicatedArg Identifier
@@ -57,7 +57,7 @@ data Message
   | ErrorIfExprNotBoolean (PathInfo Resolved)
   | ErrorWhileExprNotBoolean (PathInfo Resolved)
   | ErrorTypeParametersToTypeParameter Identifier
-  | WarningNameShadow (NonEmpty Role) Role
+  | WarningNameShadow (NonEmpty Role) Identifier Role
   | WarningUnexpectedTopLevelExpression (Expression Resolved)
   deriving Show
 

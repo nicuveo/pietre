@@ -30,9 +30,14 @@ library
       Prelude
       Lang.Pietre
       Lang.Pietre.Batteries.BuiltIn
+      Lang.Pietre.Export.AST
       Lang.Pietre.Internal.Encoding
       Lang.Pietre.Internal.ICE
       Lang.Pietre.Representations.AST
+      Lang.Pietre.Representations.AST.Checked
+      Lang.Pietre.Representations.AST.Common
+      Lang.Pietre.Representations.AST.Parsed
+      Lang.Pietre.Representations.AST.Resolved
       Lang.Pietre.Representations.Bytecode
       Lang.Pietre.Representations.Identifier
       Lang.Pietre.Representations.Image
@@ -42,11 +47,10 @@ library
       Lang.Pietre.Representations.Name
       Lang.Pietre.Representations.Tokens
       Lang.Pietre.Stages.Analysis
-      Lang.Pietre.Stages.Analysis.Context
-      Lang.Pietre.Stages.Analysis.Core
-      Lang.Pietre.Stages.Analysis.Diagnostic
-      Lang.Pietre.Stages.Analysis.Instantiation
-      Lang.Pietre.Stages.Analysis.Monad
+      Lang.Pietre.Stages.Analysis.Resolution
+      Lang.Pietre.Stages.Analysis.Resolution.Monad
+      Lang.Pietre.Stages.Analysis.Validation
+      Lang.Pietre.Stages.Analysis.Validation.Monad
       Lang.Pietre.Stages.Assembly
       Lang.Pietre.Stages.Assembly.Color
       Lang.Pietre.Stages.Assembly.Templates
