@@ -53,6 +53,20 @@ retrieveEnum
 retrieveEnum =
   retrieveDefinition >=> traverse assertEnum
 
+retrieveFunctionType
+  :: Monad m
+  => BaseName
+  -> ValidateT m (FunctionTypeInfo ParameterizedFunctor)
+retrieveFunctionType =
+  retrieveDefinition >=> traverse assertFunctionType
+
+retrieveFunctionDefinition
+  :: Monad m
+  => BaseName
+  -> ValidateT m Resolved.FunctionInfo
+retrieveFunctionDefinition =
+  retrieveDefinition >=> traverse assertFunctionDefinition
+
 retrieveTypeParameter
   :: Monad m
   => BaseName
@@ -88,6 +102,17 @@ retrieveDefinition baseName =
     , lookupLocalDefinition baseName
     , attemptToValidateT baseName
     ]
+
+retrieveVariableType
+  :: Monad m
+  => Identifier
+  -> ValidateT m ConcreteType
+retrieveVariableType varName =
+  uses vsVariables (M.lookup varName) `onNothing`
+    reportICE
+      "variable type lookup"
+      "variable type not found in scope"
+      ["variable name: " ++ show varName]
 
 lookupRemoteDefinition
   :: Monad m

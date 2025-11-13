@@ -23,7 +23,6 @@ data ValidateInfo = ValidateInfo
 data ValidateState = ValidateState
   { _vsDefinitions      :: DefinitionCache
   , _vsFunctions        :: FunctionCache
-  , _vsSymbols          :: SymbolCache
   , _vsInstanceRequests :: Seq FunctionInstantiationRequest
   , _vsContext          :: [ValidateContext]
   , _vsValidated        :: HashSet BaseName
@@ -32,16 +31,18 @@ data ValidateState = ValidateState
   deriving Show
 
 data FunctionInstantiationRequest = FunctionInstantiationRequest
-  { _firDefinition :: Resolved.FunctionInfo
-  , _firFunType    :: Validated.FunctionType ConcreteFunctor
+  { _firBaseName   :: BaseName
+  , _firDefinition :: Resolved.FunctionInfo
+  , _firFunType    :: FunctionTypeInfo ConcreteFunctor
   , _firParams     :: [ConcreteType]
   }
 
 data ValidateContext = ValidateContext
-  { _contextName     :: BaseName
-  , _contextLocation :: Location
-  , _contextFunType  :: Maybe ConcreteType
-  , _contextParams   :: HashMap (BaseName, Identifier) ConcreteType
+  { _contextName      :: BaseName
+  , _contextLocation  :: Location
+  , _contextFunType   :: ConcreteType
+  , _contextParams    :: HashMap (BaseName, Identifier) ConcreteType
+  , _contextVariables :: HashMap Identifier ConcreteType
   }
   deriving Show
 
@@ -68,17 +69,21 @@ currentFunType = currentContext . contextFunType
 currentParams :: Lens' ValidateState (HashMap (BaseName, Identifier) ConcreteType)
 currentParams = currentContext . contextParams
 
+currentVariables :: Lens' ValidateState (HashMap Identifier ConcreteType)
+currentVariables = currentContext . contextVariables
+
 withContext
-  :: Name
+  :: BaseName
   -> Location
   -> ValidateT a
   -> ValidateT a
 withContext name defLocation action = do
   let context = AnalysisContext
-        { _contextName       = name
-        , _contextLocation   = defLocation
-        , _contextFunType    = Nothing
-        , _contextParams     = M.empty
+        { _contextName      = name
+        , _contextLocation  = defLocation
+        , _contextFunType   = UnitType
+        , _contextParams    = M.empty
+        , _contextVariables = M.empty
         }
   moduleContext %= (context :)
   result <- try action

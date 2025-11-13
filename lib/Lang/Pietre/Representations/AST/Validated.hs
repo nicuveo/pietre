@@ -45,7 +45,7 @@ data TypeNode f
   | VoidType
   | EnumType BaseName [Identifier]
   | StructType (StructTypeInfo f)
-  | FunctionType (FunctionType f)
+  | FunctionType (FunctionTypeInfo f)
   deriving Show
 
 data StructTypeInfo f = StructTypeInfo
@@ -58,9 +58,9 @@ data StructTypeInfo f = StructTypeInfo
 data Definition
   = TypeAliasDef TypeAliasInfo
   | EnumDef      Common.EnumInfo
-  | StructDef    StructInfo
+  | StructDef    (StructInfo ParameterizedFunctor)
   | ConstDef     (Typed ConstExpression)
-  | FunctionDef  (FunctionType ParameterizedFunctor)
+  | FunctionDef  (FunctionTypeInfo ParameterizedFunctor)
   deriving Show
 
 data TypeAliasInfo p = TypeAliasInfo
@@ -68,19 +68,19 @@ data TypeAliasInfo p = TypeAliasInfo
   , _aliasValue  :: ParameterizedType
   }
 
-data StructInfo = StructInfo
+data StructInfo f = StructInfo
   { _structParams :: [Identifier]
-  , _structValues :: NonEmpty (Identifier, ParameterizedType)
+  , _structValues :: NonEmpty (Identifier, TypeTree f)
   }
   deriving Show
 
 
 data FunctionInfo = FunctionInfo
-  { _funType :: FunctionType ConcreteFunctor
+  { _funType :: FunctionTypeInfo ConcreteFunctor
   , _funBody :: Common.Block Validated
   }
 
-data FunctionType f = FunctionType
+data FunctionTypeInfo f = FunctionTypeInfo
   { _funParams :: [Identifier]
   , _funArgs   :: [FunctionArgType f]
   , _funReturn :: TypeTree f
@@ -101,8 +101,7 @@ data ForInfo = ForInfo
 
 data LetInfo = LetInfo
   { _letName  :: Identifier
-  , _letType  :: ConcreteType
-  , _letValue :: Expression
+  , _letValue :: Typed Expression
   }
   deriving Show
 
@@ -114,7 +113,7 @@ data Typed a = Typed
 
 data ConstExpression
   = ArrayConstExpr         [Typed ConstExpression]
-  | StructConstExpr        StructInfo (NonEmpty (Identifier, Typed ConstExpression))
+  | StructConstExpr        (StructInfo ConcreteFunctor) (NonEmpty (Identifier, Typed ConstExpression))
   | BoolLiteralConstExpr   Bool
   | IntLiteralConstExpr    Int
   | CharLiteralConstExpr   Char
@@ -125,11 +124,11 @@ data Expression
   = LocalVariableExpr            Identifier
   | ReferenceArgumentExpr        Identifier
   | IndexExpr                    (Typed Expression) (Typed Expression)
-  | FunctionNameExpr             Name FunctionType
-  | CallExpr                     Name FunctionType [Typed Expression]
+  | FunctionNameExpr             Name FunctionTypeInfo
+  | CallExpr                     Name FunctionTypeInfo [Typed Expression]
   | ArrayExpr                    [Typed Expression]
-  | StructExpr                   StructInfo (NonEmpty (Identifier, Typed Expression))
-  | FieldAccessExpr              StructInfo (Typed Expression) Identifier
+  | StructExpr                   (StructInfo ConcreteFunctor) (NonEmpty (Identifier, Typed Expression))
+  | FieldAccessExpr              (StructInfo ConcreteFunctor) (Typed Expression) Identifier
   | BoolLiteralExpr              Bool
   | IntLiteralExpr               Int
   | CharLiteralExpr              Char
@@ -169,7 +168,7 @@ data RangeExpression
 data LValueExpression
   = LocalVariableLExpr     Identifier
   | ReferenceArgumentLExpr Identifier
-  | FieldAccessLExpr       Name StructInfo (Typed LValueExpression) Identifier
+  | FieldAccessLExpr       (StructInfo ConcreteFunctor) (Typed LValueExpression) Identifier
   | IndexLExpr             (Typed LValueExpression) (Typed LValueExpression)
   deriving Show
 
@@ -177,8 +176,8 @@ data LValueExpression
 --------------------------------------------------------------------------------
 -- Helper functions
 
-getTypeName :: Type -> Maybe Name
-getTypeName = \case
+typeName :: Type -> Maybe Name
+typeName = \case
   IntType  ->
     Just IntName
   BoolType ->
@@ -195,6 +194,14 @@ getTypeName = \case
     Name _structBaseName <$> mapMaybe getTypeName _structTypeParams
   FunctionType _ ->
     Nothing
+
+assertName :: Type -> Name
+assertName t =
+  typeName t `onNothing`
+    reportICE
+      "name assertion"
+      "name not found for given type"
+      ["type: " ++ show t]
 
 
 --------------------------------------------------------------------------------

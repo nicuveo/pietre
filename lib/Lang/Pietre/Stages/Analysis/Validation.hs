@@ -92,12 +92,14 @@ validateFunctionType info = do
   attemptedReturn <- getCompose (traverse  (Compose . try . valiidateParameterizedType) _funReturn)
   validatedFunctionTypeInfo <- liftA2 FunctionTypeInfo (ensure attemptedArgs) (ensure attemptedReturn)
   unless (isGeneric info) do
+    baseName <- currentName
     let request = FunctionInstantiationRequest
-          { _firDefinition = info
+          { _firBaseName = baseName
+          , _firDefinition = info
           , _firFunType = validatedFunctionTypeInfo
           , _firParams = []
           }
-    vsQueuedInstances %= (:|> request)
+    vsInstanceRequests %= (:|> request)
   pure $ FunctionDef validatedFunctionTypeInfo
   where
     validateFunctionArg = \case

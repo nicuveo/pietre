@@ -37,7 +37,7 @@ data Role
   | TypeAlias BaseName
   | TypeParameter BaseName Identifier
   | Placeholder
-  | FunctionPointer (Common.FunctionType Resolved)
+  -- | FunctionPointer (Common.FunctionType Resolved)
   | FunctionArgument Identifier (Common.FunctionArgType Resolved)
   | LetVariable Identifier (Maybe (Common.PathInfo Resolved))
   deriving (Show, Eq, Ord, Generic)

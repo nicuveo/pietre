@@ -81,6 +81,28 @@ assertStruct = \case
     "definition not a struct"
     ["definition: " ++ definition]
 
+assertFunctionType
+  :: Monad m
+  => Definition Validated
+  -> ValidateT m (FunctionTypeInfo ParameterizedFunctor)
+assertFunctionType = \case
+  FunctionDef functionType -> pure functionType
+  definition -> reportICE
+    "function type retrieval"
+    "definition not a function"
+    ["definition: " ++ definition]
+
+assertFunctionDefinition
+  :: Monad m
+  => Definition Validated
+  -> ValidateT m Resolved.FunctionInfo
+assertFunctionDefinition = \case
+  FunctionDef functionInfo -> pure functionInfo
+  definition -> reportICE
+    "function definition retrieval"
+    "definition not a function"
+    ["definition: " ++ definition]
+
 expectType
   :: Monad m
   => Type
