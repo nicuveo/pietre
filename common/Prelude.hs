@@ -13,7 +13,9 @@ module Prelude
     module P
     -- * nested operations
   , fmap2
+  , fmap3
   , traverse2
+  , traverse3
     -- * custom operators
   , (...)
     -- * maybe helpers
@@ -88,12 +90,26 @@ fmap2
   -> f (g b)
 fmap2 = fmap . fmap
 
+fmap3
+  :: (Functor f, Functor g, Functor h)
+  => (a -> b)
+  -> f (g (h a))
+  -> f (g (h b))
+fmap2 = fmap . fmap . fmap
+
 traverse2
   :: (Traversable t1, Traversable t2, Applicative f)
   => (a -> f b)
   -> t1 (t2 a)
   -> f (t1 (t2 b))
 traverse2 = traverse . traverse
+
+traverse3
+  :: (Traversable t1, Traversable t2, Traversable t3, Applicative f)
+  => (a -> f b)
+  -> t1 (t2 (t3 a))
+  -> f (t1 (t2 (t3 b)))
+traverse2 = traverse . traverse . traverse
 
 
 -- operators
@@ -114,6 +130,16 @@ onNothingM a d = a >>= flip onNothing d
 infixr 7 `onNothing`
 infixr 7 `onNothingM`
 
+asumM
+  :: (Monad m, Foldable f)
+  => f (m (Maybe a))
+  -> m (Maybe a)
+asumM = foldlM go empty
+  where
+    go accum action = case accum of
+      Nothing -> action
+      result  -> pure result
+
 
 -- either helpers
 
@@ -132,20 +158,27 @@ pattern Lone x = x :<| Empty
 
 -- hashmap helpers
 
-unionWithM ::
-  (Monad m, Hashable k) =>
-  (v -> v -> m v) ->
-  HashMap k v ->
-  HashMap k v ->
-  m (HashMap k v)
+unionsWith
+  :: (Eq k, Hashable k, Foldable t)
+  => (v -> v -> v)
+  -> t (HashMap k v)
+  -> HashMap k v
+unionsWith combineValues = foldl' (M.unionWith combineValues) M.empty
+
+unionWithM
+  :: (Monad m, Hashable k)
+  => (v -> v -> m v)
+  -> HashMap k v
+  -> HashMap k v
+  -> m (HashMap k v)
 unionWithM = unionWithKeyM . const
 
-unionWithKeyM ::
-  (Monad m, Hashable k) =>
-  (k -> v -> v -> m v) ->
-  HashMap k v ->
-  HashMap k v ->
-  m (HashMap k v)
+unionWithKeyM
+  :: (Monad m, Hashable k)
+  => (k -> v -> v -> m v)
+  -> HashMap k v
+  -> HashMap k v
+  -> m (HashMap k v)
 unionWithKeyM f m1 m2 = foldM step m1 (M.toList m2)
   where
     step m (k, new) = case M.lookup k m of

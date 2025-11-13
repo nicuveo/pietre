@@ -3,14 +3,14 @@ module Lang.Pietre.Stages.Analysis.Resolving.Monad where
 import "this" Prelude
 
 import Control.Lens
-import Control.Monad.Extra                    (whenM)
+import Control.Monad.Extra                      (whenM)
 import Control.Monad.RWS.Strict
-import Data.HashMap.Strict                    qualified as M
-import Data.Set                               qualified as S
+import Data.HashMap.Strict                      qualified as M
+import Data.Set                                 qualified as S
 import Data.Tuple
 
 import Lang.Pietre.Internal.ICE
-import Lang.Pietre.Representations.AST
+import Lang.Pietre.Representations.AST.Resolved
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Location
@@ -21,12 +21,13 @@ import Lang.Pietre.Stages.Analysis.Diagnostic
 --------------------------------------------------------------------------------
 -- Monad
 
-type Resolve m = ReaderT ResolveInfo (StateT ResolveContext m)
+type ResolveT m = ReaderT ResolveInfo (StateT ResolveContext m)
 
+type Scope = HashMap Path (NonEmpty Role)
 
 data ResolveInfo = ResolveInfo
-  { _riName     :: BaseName
-  , _riLocation :: Location
+  { _riModuleName      :: ModuleName
+  , _riDeclarationName :: BaseName
   }
 
 data ResolveContext = ResolveContext
@@ -34,15 +35,16 @@ data ResolveContext = ResolveContext
   , _rcLocation :: Location
   }
 
-
-runResolve
-  :: BaseName
+runResolveT
+  :: ModuleName
+  -> BaseName
   -> Scope
   -> Location
-  -> Resolve m a
-runResolve name scope loc action = action
-  & flip runReaderT (ResolveInfo name loc)
-  & flip execStateT (ResolveContext scope loc)
+  -> ResolveT m a
+runResolveT moduleName declarationName topLevelScope declarationLocation action =
+  action
+    & flip runReaderT (ResolveInfo moduleName declarationName)
+    & flip execStateT (ResolveContext topLevelScope declarationLocation)
 
 
 makeLenses ''ResolveInfo
@@ -52,5 +54,5 @@ makeLenses ''ResolveContext
 lookupName
   :: Monad m
   => Path
-  -> Resolve m (Maybe (NonEmpty [Role]))
+  -> ResolveT m (Maybe (NonEmpty [Role]))
 lookupName = uses rcScope . M.lookup

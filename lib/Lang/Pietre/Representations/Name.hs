@@ -7,7 +7,6 @@ import "this" Prelude
 import Control.Lens
 import Data.List.NonEmpty                     qualified as NE
 
-import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.Identifier
 
 
@@ -27,6 +26,9 @@ data Name = Name
   deriving (Show, Eq, Ord, Generic)
 
 instance Hashable Name
+
+pattern ConcreteName :: BaseName -> Name
+pattern ConcreteName baseName = NameTree baseName []
 
 makeLenses ''Name
 makeLenses ''BaseName

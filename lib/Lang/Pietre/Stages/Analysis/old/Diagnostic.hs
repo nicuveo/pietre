@@ -30,7 +30,8 @@ data Message
   | ErrorIncorrectTypeParameterCount Name Int Int
   | ErrorDuplicatedTypeParameter Identifier
   | ErrorEnumDuplicatedEntry Identifier
-  | ErrorWrongType [PathInfo Resolved] (PathInfo Resolved)
+  | ErrorWrongType [Type] Type
+  | ErrorIncompatibleType HollowType Type
   | ErrorWrongCast (PathInfo Resolved) (PathInfo Resolved)
   | ErrorEnumOutOfBounds (EnumInfo Resolved) Int
   | ErrorStructMissingField (PathInfo Resolved) Identifier

@@ -1,108 +1,120 @@
-{-# LANGUAGE PatternSynonyms      #-}
-{-# LANGUAGE TemplateHaskell      #-}
-{-# LANGUAGE UndecidableInstances #-}
-
 module Lang.Pietre.Representations.AST where
 
-import                "this" Prelude
+import "this" Prelude
 
-import                Control.Lens
-import                Data.Kind
-import                Data.List.NonEmpty                     qualified as NE
-import                Prettyprinter
-import                Prettyprinter.Render.Text
+import Control.Lens
+import Data.Kind
+import Data.List.NonEmpty                     qualified as NE
+import Prettyprinter
+import Prettyprinter.Render.Text
 
-import                Lang.Pietre.Representations.Identifier
-import                Lang.Pietre.Representations.Location
-import {-# SOURCE #-} Lang.Pietre.Representations.Name
+import Lang.Pietre.Internal.HKT
+import Lang.Pietre.Representations.AST.Common (ASTPhase (Validated))
+import Lang.Pietre.Representations.AST.Common qualified as Common
+import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Location
 
 
-data Type
+--------------------------------------------------------------------------------
+-- AST Phase
+
+instance ASTRepresentation Validated where
+  type PathBodyType   Validated = Void
+  type ExpressionType Validated = Typed Expression
+  type ForInfoType    Validated = ForInfo
+  type LetInfoType    Validated = LetInfo
+
+
+--------------------------------------------------------------------------------
+-- Parsed AST definitions
+
+type ConcreteFunctor      = Identity
+type PartialFunctor       = Maybe
+type ParameterizedFunctor = Either Identifier
+type ConcreteType         = TypeTree ConcreteFunctor
+type PartialType          = TypeNode PartialFunctor
+type ParameterizedType    = TypeTree ParameterizedFunctor
+
+type TypeTree (f :: Type -> Type) (n :: Type) = HKT f (TypeNode f n)
+
+data TypeNode f
   = IntType
   | BoolType
   | CharType
   | UnitType
   | VoidType
-  | EnumType Name [Identifier]
-  | StructType Name (NonEmpty (Identifier, Name))
-  | FunctionType FunctionType
+  | EnumType BaseName [Identifier]
+  | StructType (StructTypeInfo f)
+  | FunctionType (FunctionType f)
   deriving Show
+
+data StructTypeInfo f = StructTypeInfo
+  { _structBaseName   :: BaseName
+  , _structTypeParams :: [TypeTree f]
+  }
+  deriving Show
+
+
+data Definition
+  = TypeAliasDef TypeAliasInfo
+  | EnumDef      Common.EnumInfo
+  | StructDef    StructInfo
+  | ConstDef     (Typed ConstExpression)
+  | FunctionDef  (FunctionType ParameterizedFunctor)
+  deriving Show
+
+data TypeAliasInfo p = TypeAliasInfo
+  { _aliasParams :: [Identifier]
+  , _aliasValue  :: ParameterizedType
+  }
 
 data StructInfo = StructInfo
   { _structParams :: [Identifier]
-  , _structFields :: _
+  , _structValues :: NonEmpty (Identifier, ParameterizedType)
   }
+  deriving Show
 
-data FunctionType = FunctionInfo
-  { _funArgs   :: [FunctionArgType]
-  , _funReturn :: Maybe Type
-  }
-
-data FunctionArgType
-  = ByValue     Name
-  | ByReference Name
-  deriving (Show, Generic)
 
 data FunctionInfo = FunctionInfo
-  { _funType :: FunctionType
-  , _funBody :: Block
+  { _funType :: FunctionType ConcreteFunctor
+  , _funBody :: Common.Block Validated
   }
 
-data Statement
-  = IfStmt         IfInfo
-  | ForStmt        ForInfo
-  | WhileStmt      WhileInfo
-  | LetStmt        LetInfo
-  | ReturnStmt     Maybe TypedExpression
-  | ContinueStmt
-  | BreakStmt
-  | ExpressionStmt TypedExpression
-  deriving Show
+data FunctionType f = FunctionType
+  { _funParams :: [Identifier]
+  , _funArgs   :: [FunctionArgType f]
+  , _funReturn :: TypeTree f
+  } deriving Show
 
-type Block = [WithLocation Statement]
-
-data IfInfo = IfInfo
-  { _ifExpr :: Expression
-  , _ifBody :: Block
-  , _ifElse :: Maybe ElseInfo
-  }
-  deriving Show
-
-data ElseInfo
-  = ElseIf    IfInfo
-  | ElseBlock Block
+data FunctionArgType f
+  = ByValue     (TypeTree f)
+  | ByReference (TypeTree f)
   deriving Show
 
 data ForInfo = ForInfo
   { _forVariableName :: Identifier
-  , _forVariableType :: Type
+  , _forVariableType :: ConcreteType
   , _forRangeExpr    :: RangeExpression
-  , _forBody         :: Block
-  }
-  deriving Show
-
-data WhileInfo = WhileInfo
-  { _whileExpr :: Expression
-  , _whileBody :: Block
+  , _forBody         :: Common.Block Validated
   }
   deriving Show
 
 data LetInfo = LetInfo
   { _letName  :: Identifier
-  , _letType  :: Type
+  , _letType  :: ConcreteType
   , _letValue :: Expression
   }
   deriving Show
 
 data Typed a = Typed
-  { _typeInfo   :: Type
+  { _typeInfo   :: ConcreteType
   , _typedValue :: a
   }
   deriving (Show, Functor, Applicative, Monad)
 
 data ConstExpression
   = ArrayConstExpr         [Typed ConstExpression]
-  | StructConstExpr        Name StructInfo (NonEmpty (Identifier, Typed ConstExpression))
+  | StructConstExpr        StructInfo (NonEmpty (Identifier, Typed ConstExpression))
   | BoolLiteralConstExpr   Bool
   | IntLiteralConstExpr    Int
   | CharLiteralConstExpr   Char
@@ -116,8 +128,8 @@ data Expression
   | FunctionNameExpr             Name FunctionType
   | CallExpr                     Name FunctionType [Typed Expression]
   | ArrayExpr                    [Typed Expression]
-  | StructExpr                   Name StructInfo (NonEmpty (Identifier, Typed Expression))
-  | FieldAccessExpr              Name StructInfo (Typed Expression) Identifier
+  | StructExpr                   StructInfo (NonEmpty (Identifier, Typed Expression))
+  | FieldAccessExpr              StructInfo (Typed Expression) Identifier
   | BoolLiteralExpr              Bool
   | IntLiteralExpr               Int
   | CharLiteralExpr              Char
@@ -138,7 +150,7 @@ data Expression
   | LesserEqExpr                 (Typed Expression) (Typed Expression)
   | BoolAndExpr                  (Typed Expression) (Typed Expression)
   | BoolOrExpr                   (Typed Expression) (Typed Expression)
-  | CastExpr                     (Typed Expression) Type
+  | CastExpr                     (Typed Expression) ConcreteType
   | RangeExpr                    (Typed RangeExpression)
   | AssignmentExpr               (Typed LValueExpression) (Typed Expression)
   | AdditionAssignmentExpr       (Typed LValueExpression) (Typed Expression)
@@ -163,107 +175,78 @@ data LValueExpression
 
 
 --------------------------------------------------------------------------------
--- Lenses
+-- Helper functions
 
-makeLenses ''Module
-makeLenses ''Import
-makeLenses ''PathInfo
-makeLenses ''TypeAliasInfo
-makeLenses ''EnumInfo
-makeLenses ''StructInfo
-makeLenses ''ConstInfo
-makeLenses ''FunctionInfo
-makeLenses ''IfInfo
-makeLenses ''ForInfo
-makeLenses ''WhileInfo
-makeLenses ''LetInfo
-makeLenses ''TypedExpression
-
-makePrisms ''ImportType
-makePrisms ''Definition
-makePrisms ''FunctionArgType
-makePrisms ''Statement
-makePrisms ''ElseInfo
-makePrisms ''Expression
-
-instance Annotation Expression p => Plated (Expression p) where
-  plate f = \case
-    FieldAccessExpr              e i   -> liftA2 FieldAccessExpr              (within f e) (pure i)
-    CallExpr                     p es  -> liftA2 CallExpr                     (pure p) (traverse (within f) es)
-    ArrayExpr                    es    -> fmap   ArrayExpr                    (traverse (within f) es)
-    IndexExpr                    e1 e2 -> liftA2 IndexExpr                    (within f e1) (within f e2)
-    StructExpr                   p fs  -> liftA2 StructExpr                   (pure p) (traverse (traverse (within f)) fs)
-    IntNegationExpr              e     -> fmap   IntNegationExpr              (within f e)
-    BoolNegationExpr             e     -> fmap   BoolNegationExpr             (within f e)
-    CastExpr                     e t   -> liftA2 CastExpr                     (within f e) (pure t)
-    AdditionExpr                 e1 e2 -> liftA2 AdditionExpr                 (within f e1) (within f e2)
-    SubtractionExpr              e1 e2 -> liftA2 SubtractionExpr              (within f e1) (within f e2)
-    MultiplicationExpr           e1 e2 -> liftA2 MultiplicationExpr           (within f e1) (within f e2)
-    DivisionExpr                 e1 e2 -> liftA2 DivisionExpr                 (within f e1) (within f e2)
-    ModuloExpr                   e1 e2 -> liftA2 ModuloExpr                   (within f e1) (within f e2)
-    ExponentiationExpr           e1 e2 -> liftA2 ExponentiationExpr           (within f e1) (within f e2)
-    EqualityExpr                 e1 e2 -> liftA2 EqualityExpr                 (within f e1) (within f e2)
-    DifferenceExpr               e1 e2 -> liftA2 DifferenceExpr               (within f e1) (within f e2)
-    GreaterExpr                  e1 e2 -> liftA2 GreaterExpr                  (within f e1) (within f e2)
-    LesserExpr                   e1 e2 -> liftA2 LesserExpr                   (within f e1) (within f e2)
-    GreaterEqExpr                e1 e2 -> liftA2 GreaterEqExpr                (within f e1) (within f e2)
-    LesserEqExpr                 e1 e2 -> liftA2 LesserEqExpr                 (within f e1) (within f e2)
-    BoolAndExpr                  e1 e2 -> liftA2 BoolAndExpr                  (within f e1) (within f e2)
-    BoolOrExpr                   e1 e2 -> liftA2 BoolOrExpr                   (within f e1) (within f e2)
-    RangeInclusiveExpr           e1 e2 -> liftA2 RangeInclusiveExpr           (within f e1) (within f e2)
-    RangeExclusiveExpr           e1 e2 -> liftA2 RangeExclusiveExpr           (within f e1) (within f e2)
-    AssignmentExpr               e1 e2 -> liftA2 AssignmentExpr               (within f e1) (within f e2)
-    AdditionAssignmentExpr       e1 e2 -> liftA2 AdditionAssignmentExpr       (within f e1) (within f e2)
-    SubtractionAssignmentExpr    e1 e2 -> liftA2 SubtractionAssignmentExpr    (within f e1) (within f e2)
-    MultiplicationAssignmentExpr e1 e2 -> liftA2 MultiplicationAssignmentExpr (within f e1) (within f e2)
-    DivisionAssignmentExpr       e1 e2 -> liftA2 DivisionAssignmentExpr       (within f e1) (within f e2)
-    ModuloAssignmentExpr         e1 e2 -> liftA2 ModuloAssignmentExpr         (within f e1) (within f e2)
-    ExponentiationAssignmentExpr e1 e2 -> liftA2 ExponentiationAssignmentExpr (within f e1) (within f e2)
-    e                                  -> pure e
-
-instance Plated TypedExpression where
-  plate f TypedExpression {..} = TypedExpression _exprIsLValue _exprPurity _exprType <$> case _exprValue of
-    FieldAccessExpr              e i   -> liftA2 FieldAccessExpr              (f e) (pure i)
-    CallExpr                     p es  -> liftA2 CallExpr                     (pure p) (traverse f es)
-    ArrayExpr                    es    -> fmap   ArrayExpr                    (traverse f es)
-    IndexExpr                    e1 e2 -> liftA2 IndexExpr                    (f e1) (f e2)
-    StructExpr                   p fs  -> liftA2 StructExpr                   (pure p) (traverse (traverse f) fs)
-    IntNegationExpr              e     -> fmap   IntNegationExpr              (f e)
-    BoolNegationExpr             e     -> fmap   BoolNegationExpr             (f e)
-    CastExpr                     e t   -> liftA2 CastExpr                     (f e) (pure t)
-    AdditionExpr                 e1 e2 -> liftA2 AdditionExpr                 (f e1) (f e2)
-    SubtractionExpr              e1 e2 -> liftA2 SubtractionExpr              (f e1) (f e2)
-    MultiplicationExpr           e1 e2 -> liftA2 MultiplicationExpr           (f e1) (f e2)
-    DivisionExpr                 e1 e2 -> liftA2 DivisionExpr                 (f e1) (f e2)
-    ModuloExpr                   e1 e2 -> liftA2 ModuloExpr                   (f e1) (f e2)
-    ExponentiationExpr           e1 e2 -> liftA2 ExponentiationExpr           (f e1) (f e2)
-    EqualityExpr                 e1 e2 -> liftA2 EqualityExpr                 (f e1) (f e2)
-    DifferenceExpr               e1 e2 -> liftA2 DifferenceExpr               (f e1) (f e2)
-    GreaterExpr                  e1 e2 -> liftA2 GreaterExpr                  (f e1) (f e2)
-    LesserExpr                   e1 e2 -> liftA2 LesserExpr                   (f e1) (f e2)
-    GreaterEqExpr                e1 e2 -> liftA2 GreaterEqExpr                (f e1) (f e2)
-    LesserEqExpr                 e1 e2 -> liftA2 LesserEqExpr                 (f e1) (f e2)
-    BoolAndExpr                  e1 e2 -> liftA2 BoolAndExpr                  (f e1) (f e2)
-    BoolOrExpr                   e1 e2 -> liftA2 BoolOrExpr                   (f e1) (f e2)
-    RangeInclusiveExpr           e1 e2 -> liftA2 RangeInclusiveExpr           (f e1) (f e2)
-    RangeExclusiveExpr           e1 e2 -> liftA2 RangeExclusiveExpr           (f e1) (f e2)
-    AssignmentExpr               e1 e2 -> liftA2 AssignmentExpr               (f e1) (f e2)
-    AdditionAssignmentExpr       e1 e2 -> liftA2 AdditionAssignmentExpr       (f e1) (f e2)
-    SubtractionAssignmentExpr    e1 e2 -> liftA2 SubtractionAssignmentExpr    (f e1) (f e2)
-    MultiplicationAssignmentExpr e1 e2 -> liftA2 MultiplicationAssignmentExpr (f e1) (f e2)
-    DivisionAssignmentExpr       e1 e2 -> liftA2 DivisionAssignmentExpr       (f e1) (f e2)
-    ModuloAssignmentExpr         e1 e2 -> liftA2 ModuloAssignmentExpr         (f e1) (f e2)
-    ExponentiationAssignmentExpr e1 e2 -> liftA2 ExponentiationAssignmentExpr (f e1) (f e2)
-    e                                  -> pure e
-
+getTypeName :: Type -> Maybe Name
+getTypeName = \case
+  IntType  ->
+    Just IntName
+  BoolType ->
+    Just BoolName
+  CharType ->
+    Just CharName
+  UnitType ->
+    Just UnitName
+  VoidType ->
+    Just UnitName
+  EnumType name _ ->
+    Just name
+  StructType StructType {..} ->
+    Name _structBaseName <$> mapMaybe getTypeName _structTypeParams
+  FunctionType _ ->
+    Nothing
 
 
 --------------------------------------------------------------------------------
--- Order-dependent declarations
+-- Lenses
 
--- Due to lenses, some declarations must be put at the end of the file, *after*
--- the corresponding lens declaration.
+makeLenses ''StructTypeInfo
+makeLenses ''TypeAliasInfo
+makeLenses ''StructInfo
+makeLenses ''FunctionInfo
+makeLenses ''ForInfo
+makeLenses ''LetInfo
 
-instance Annotation Expression Resolved where
-  type Annotated Expression Resolved = TypedExpression
-  within = exprValue
+makePrisms ''Definition
+makePrisms ''FunctionArgType
+makePrisms ''Expression
+makePrisms ''ConstExpression
+makePrisms ''LValueExpression
+
+instance Plated ConstExpression where
+  plate f = \case
+    ArrayConstExpr  xs    -> ArrayConstExpr     <$> traverse2 f xs
+    StructConstExpr si fs -> StructConstExpr si <$> traverse3 f fields
+    leaf                  -> pure leaf
+
+instance Plated Expression where
+  plate f = \case
+    CallExpr           n t args   -> CallExpr n t <$> traverse2 f args
+    ArrayExpr          xs         -> ArrayExpr <$> traverse2 f xs
+    StructExpr         si fields  -> StructExpr si <$> traverse3 f fields
+    FieldAccessExpr    si expr fn -> liftA2 (FieldAccessExpr si) (traverse f expr) (pure fn)
+    IntNegationExpr    expr       -> IntNegationExpr  <$> traverse f expr
+    BoolNegationExpr   expr       -> BoolNegationExpr <$> traverse f expr
+    CastExpr           lhs t      -> liftA2 CastExpr           (traverse f lhs) (pure t)
+    IndexExpr          lhs rhs    -> liftA2 IndexExpr          (traverse f lhs) (traverse f rhs)
+    AdditionExpr       lhs rhs    -> liftA2 AdditionExpr       (traverse f lhs) (traverse f rhs)
+    SubtractionExpr    lhs rhs    -> liftA2 SubtractionExpr    (traverse f lhs) (traverse f rhs)
+    MultiplicationExpr lhs rhs    -> liftA2 MultiplicationExpr (traverse f lhs) (traverse f rhs)
+    DivisionExpr       lhs rhs    -> liftA2 DivisionExpr       (traverse f lhs) (traverse f rhs)
+    ModuloExpr         lhs rhs    -> liftA2 ModuloExpr         (traverse f lhs) (traverse f rhs)
+    ExponentiationExpr lhs rhs    -> liftA2 ExponentiationExpr (traverse f lhs) (traverse f rhs)
+    EqualityExpr       lhs rhs    -> liftA2 EqualityExpr       (traverse f lhs) (traverse f rhs)
+    DifferenceExpr     lhs rhs    -> liftA2 DifferenceExpr     (traverse f lhs) (traverse f rhs)
+    GreaterExpr        lhs rhs    -> liftA2 GreaterExpr        (traverse f lhs) (traverse f rhs)
+    LesserExpr         lhs rhs    -> liftA2 LesserExpr         (traverse f lhs) (traverse f rhs)
+    GreaterEqExpr      lhs rhs    -> liftA2 GreaterEqExpr      (traverse f lhs) (traverse f rhs)
+    LesserEqExpr       lhs rhs    -> liftA2 LesserEqExpr       (traverse f lhs) (traverse f rhs)
+    BoolAndExpr        lhs rhs    -> liftA2 BoolAndExpr        (traverse f lhs) (traverse f rhs)
+    BoolOrExpr         lhs rhs    -> liftA2 BoolOrExpr         (traverse f lhs) (traverse f rhs)
+    leaf                          -> pure leaf
+
+instance Plated LValueExpression where
+  plate f = \case
+    FieldAccessLExpr si expr fn -> liftA2 (FieldAccessLExpr si) (traverse f expr) (pure fn)
+    IndexLExpr       lhs rhs    -> liftA2 IndexLExpr (traverse f lhs) (traverse f rhs)
+    leaf                        -> pure leaf

@@ -1,13 +1,11 @@
 module Lang.Pietre.Representations.AST
   ( Module
-  , Parsed
-  , Resolved
+  , ASTPhase (..)
   ) where
 
 import "this" Prelude
 
-import Lang.Pietre.Representations.AST.Parsed
-import Lang.Pietre.Representations.AST.Resolved
+import Lang.Pietre.Representations.AST.Common
 
 {-
 

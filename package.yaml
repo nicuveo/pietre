@@ -63,6 +63,7 @@ dependencies:
   - lens
   - monad-loops
   - mtl
+  - ordered-containers
   - prettyprinter
   - template-haskell
   - text

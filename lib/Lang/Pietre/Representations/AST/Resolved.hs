@@ -1,27 +1,31 @@
-{-# LANGUAGE PatternSynonyms      #-}
-{-# LANGUAGE TemplateHaskell      #-}
-{-# LANGUAGE UndecidableInstances #-}
-
 module Lang.Pietre.Representations.AST where
 
-import                "this" Prelude
+import "this" Prelude
 
-import                Control.Lens
-import                Data.Kind
-import                Data.List.NonEmpty                     qualified as NE
-import                Prettyprinter
-import                Prettyprinter.Render.Text
+import Control.Lens
+import Data.Kind
+import Data.List.NonEmpty                     qualified as NE
+import Prettyprinter
+import Prettyprinter.Render.Text
 
-import                Lang.Pietre.Representations.Identifier
-import                Lang.Pietre.Representations.Location
-import {-# SOURCE #-} Lang.Pietre.Representations.Name
+import Lang.Pietre.Representations.AST.Common (ASTPhase (Resolved))
+import Lang.Pietre.Representations.AST.Common qualified as Common
+import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Location
 
 
-data Resolved
+--------------------------------------------------------------------------------
+-- AST Representation
 
 instance ASTRepresentation Resolved where
-  type NameType Resolved = Role
+  type PathBodyType   Resolved = Role
+  type ExpressionType Resolved = WithLocation (Common.Expression Resolved)
+  type ForInfoType    Resolved = Common.ForInfo Resolved
+  type LetInfoType    Resolved = Common.LetInfo Resolved
 
+
+--------------------------------------------------------------------------------
+-- Resolved AST definitions
 
 data Role
   = BuiltinType BaseName
@@ -33,21 +37,16 @@ data Role
   | TypeAlias BaseName
   | TypeParameter BaseName Identifier
   | Placeholder
-  | FunctionPointer (FunctionType Resolved)
-  | FunctionArgument Identifier (FunctionArgType Resolved)
-  | LetVariable Identifier (Maybe (PathInfo Resolved))
+  | FunctionPointer (Common.FunctionType Resolved)
+  | FunctionArgument Identifier (Common.FunctionArgType Resolved)
+  | LetVariable Identifier (Maybe (Common.PathInfo Resolved))
   deriving (Show, Eq, Ord, Generic)
 
 instance Hashable Role
 
 
-enumRoleFromConstructorRole :: Identifier -> Role -> Role
-enumRoleFromConstructorRole identifier = \case
-  Enum Name {..} ->
-    Constant $ Name (NE.fromList $ NE.init _nameFullPath ++ [identifier]) _nameParameters
-  role -> reportICE
-    "enum typename resolution"
-    "enum constructor role isn't a top level declaration"
-    [ "enum type name:   " ++ show identifier
-    , "constructor role: " ++ show role
-    ]
+--------------------------------------------------------------------------------
+-- Re-exports
+
+type Definition = Common.Definition Resolved
+type FunctionInfo = Common.FunctionInfo Resolved

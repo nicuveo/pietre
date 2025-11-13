@@ -1,7 +1,3 @@
-{-# LANGUAGE PatternSynonyms      #-}
-{-# LANGUAGE TemplateHaskell      #-}
-{-# LANGUAGE UndecidableInstances #-}
-
 module Lang.Pietre.Representations.AST where
 
 import "this" Prelude
@@ -12,20 +8,29 @@ import Data.List.NonEmpty                     qualified as NE
 import Prettyprinter
 import Prettyprinter.Render.Text
 
+import Lang.Pietre.Representations.AST.Common (ASTPhase (Parsed))
+import Lang.Pietre.Representations.AST.Common qualified as Common
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 
 
-
-data Parsed
+--------------------------------------------------------------------------------
+-- AST Representation
 
 instance ASTRepresentation Parsed where
-  type NameType Parsed = Path
+  type PathBodyType   Parsed = Path
+  type ExpressionType Parsed = WithLocation (Common.Expression Parsed)
+  type ForInfoType    Parsed = Common.ForInfo Parsed
+  type LetInfoType    Parsed = Common.LetInfo Parsed
+
+
+--------------------------------------------------------------------------------
+-- Parsed AST definitions
 
 data Module = Module
   { _modImports     :: [Import]
-  , _modDefinitions :: [WithLocation (Definition Parsed)]
+  , _modDefinitions :: [WithLocation Definition]
   }
 
 deriving instance Show Module
@@ -49,3 +54,9 @@ data ImportType
   | Specific   (NonEmpty Identifier)
   | Exhaustive
   deriving Show
+
+
+--------------------------------------------------------------------------------
+-- Re-exports
+
+type Definition = Common.Definition Parsed

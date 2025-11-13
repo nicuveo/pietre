@@ -1,4 +1,3 @@
-{-# LANGUAGE PatternSynonyms      #-}
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -20,23 +19,32 @@ import {-# SOURCE #-} Lang.Pietre.Representations.Name
 --------------------------------------------------------------------------------
 -- AST Phase
 
-class ASTRepresentation p where
-  type NameType p :: Type
+data ASTPhase = Parsed | Resolved | Validated
+  deriving (Show, Eq, Ord, Enum, Bounded)
+
+class ASTRepresentation (p :: ASTPhase) where
+  type PathBodyType   p :: Type
+  type ExpressionType p :: Type
+  type ForInfoType    p :: Type
+  type LetInfoType    p :: Type
 
 type ShowConstraints p =
-  ( Show (NameType p)
+  ( Show (PathBodyType   p)
+  , Show (ExpressionType p)
+  , Show (ForInfoType    p)
+  , Show (LetInfoType    p)
   )
 
 
 --------------------------------------------------------------------------------
--- Generic AST
+-- Common AST definitions
 
 data Definition p
   = TypeAliasDef (TypeAliasInfo p)
   | EnumDef      EnumInfo
-  | StructDef    (StructInfo    p)
-  | ConstDef     (ConstInfo     p)
-  | FunctionDef  (FunctionInfo  p)
+  | StructDef    (StructInfo p)
+  | ConstDef     (ConstInfo p)
+  | FunctionDef  (FunctionInfo p)
 
 deriving instance ShowConstraints p => Show (Definition p)
 
@@ -70,7 +78,7 @@ deriving instance ShowConstraints p => Show (StructInfo p)
 data ConstInfo p = ConstInfo
   { _constName :: Identifier
   , _constType :: PathInfo p
-  , _constExpr :: WithLocation (Expression p)
+  , _constExpr :: ExpressionType p
   }
 
 deriving instance ShowConstraints p => Show (ConstInfo p)
@@ -116,14 +124,14 @@ deriving instance ShowConstraints p => Show (FunctionArgType p)
 
 
 data Statement p
-  = IfStmt         (IfInfo    p)
-  | ForStmt        (ForInfo   p)
-  | WhileStmt      (WhileInfo p)
-  | LetStmt        (LetInfo   p)
-  | ReturnStmt     (Maybe (WithLocation (Expression p)))
+  = IfStmt         (IfInfo      p)
+  | ForStmt        (ForInfoType p)
+  | WhileStmt      (WhileInfo   p)
+  | LetStmt        (LetInfoType p)
+  | ReturnStmt     (Maybe (ExpressionType p))
   | ContinueStmt
   | BreakStmt
-  | ExpressionStmt (WithLocation (Expression p))
+  | ExpressionStmt (ExpressionType p)
 
 deriving instance ShowConstraints p => Show (Statement p)
 
@@ -131,7 +139,7 @@ type Block p = [WithLocation (Statement p)]
 
 
 data IfInfo p = IfInfo
-  { _ifExpr :: WithLocation (Expression p)
+  { _ifExpr :: ExpressionType p
   , _ifBody :: Block p
   , _ifElse :: Maybe (ElseInfo p)
   }
@@ -148,7 +156,7 @@ deriving instance ShowConstraints p => Show (ElseInfo p)
 
 data ForInfo p = ForInfo
   { _forVariableName :: Identifier
-  , _forRangeExpr    :: WithLocation (Expression p)
+  , _forRangeExpr    :: ExpressionType p
   , _forBody         :: Block p
   }
 
@@ -156,7 +164,7 @@ deriving instance ShowConstraints p => Show (ForInfo p)
 
 
 data WhileInfo p = WhileInfo
-  { _whileExpr :: WithLocation (Expression p)
+  { _whileExpr :: ExpressionType p
   , _whileBody :: Block p
   }
 
@@ -166,7 +174,7 @@ deriving instance ShowConstraints p => Show (WhileInfo p)
 data LetInfo p = LetInfo
   { _letName :: Identifier
   , _letType :: Maybe (PathInfo p)
-  , _letExpr :: WithLocation (Expression p)
+  , _letExpr :: ExpressionType p
   }
 
 deriving instance ShowConstraints p => Show (LetInfo p)
@@ -174,49 +182,49 @@ deriving instance ShowConstraints p => Show (LetInfo p)
 
 data Expression p
   = PathExpr                     (PathInfo p)
-  | FieldAccessExpr              (WithLocation (Expression p)) Identifier
-  | CallExpr                     (PathInfo p) [WithLocation (Expression p)]
-  | ArrayExpr                    [WithLocation (Expression p)]
-  | IndexExpr                    (WithLocation (Expression p)) (WithLocation (Expression p))
-  | StructExpr                   (PathInfo p) (NonEmpty (Identifier, WithLocation (Expression p)))
+  | FieldAccessExpr              (ExpressionType p) Identifier
+  | CallExpr                     (PathInfo p) [ExpressionType p]
+  | ArrayExpr                    [ExpressionType p]
+  | IndexExpr                    (ExpressionType p) (ExpressionType p)
+  | StructExpr                   (PathInfo p) (NonEmpty (Identifier, ExpressionType p))
   | BoolLiteralExpr              Bool
   | IntLiteralExpr               Int
   | CharLiteralExpr              Char
   | StringLiteralExpr            Text
   | ReferenceExpr                (PathInfo p)
-  | IntNegationExpr              (WithLocation (Expression p))
-  | BoolNegationExpr             (WithLocation (Expression p))
-  | AdditionExpr                 (WithLocation (Expression p)) (WithLocation (Expression p))
-  | SubtractionExpr              (WithLocation (Expression p)) (WithLocation (Expression p))
-  | MultiplicationExpr           (WithLocation (Expression p)) (WithLocation (Expression p))
-  | DivisionExpr                 (WithLocation (Expression p)) (WithLocation (Expression p))
-  | ModuloExpr                   (WithLocation (Expression p)) (WithLocation (Expression p))
-  | ExponentiationExpr           (WithLocation (Expression p)) (WithLocation (Expression p))
-  | EqualityExpr                 (WithLocation (Expression p)) (WithLocation (Expression p))
-  | DifferenceExpr               (WithLocation (Expression p)) (WithLocation (Expression p))
-  | GreaterExpr                  (WithLocation (Expression p)) (WithLocation (Expression p))
-  | LesserExpr                   (WithLocation (Expression p)) (WithLocation (Expression p))
-  | GreaterEqExpr                (WithLocation (Expression p)) (WithLocation (Expression p))
-  | LesserEqExpr                 (WithLocation (Expression p)) (WithLocation (Expression p))
-  | BoolAndExpr                  (WithLocation (Expression p)) (WithLocation (Expression p))
-  | BoolOrExpr                   (WithLocation (Expression p)) (WithLocation (Expression p))
-  | CastExpr                     (WithLocation (Expression p)) (PathInfo p)
-  | RangeInclusiveExpr           (WithLocation (Expression p)) (WithLocation (Expression p))
-  | RangeExclusiveExpr           (WithLocation (Expression p)) (WithLocation (Expression p))
-  | AssignmentExpr               (WithLocation (Expression p)) (WithLocation (Expression p))
-  | AdditionAssignmentExpr       (WithLocation (Expression p)) (WithLocation (Expression p))
-  | SubtractionAssignmentExpr    (WithLocation (Expression p)) (WithLocation (Expression p))
-  | MultiplicationAssignmentExpr (WithLocation (Expression p)) (WithLocation (Expression p))
-  | DivisionAssignmentExpr       (WithLocation (Expression p)) (WithLocation (Expression p))
-  | ModuloAssignmentExpr         (WithLocation (Expression p)) (WithLocation (Expression p))
-  | ExponentiationAssignmentExpr (WithLocation (Expression p)) (WithLocation (Expression p))
+  | IntNegationExpr              (ExpressionType p)
+  | BoolNegationExpr             (ExpressionType p)
+  | AdditionExpr                 (ExpressionType p) (ExpressionType p)
+  | SubtractionExpr              (ExpressionType p) (ExpressionType p)
+  | MultiplicationExpr           (ExpressionType p) (ExpressionType p)
+  | DivisionExpr                 (ExpressionType p) (ExpressionType p)
+  | ModuloExpr                   (ExpressionType p) (ExpressionType p)
+  | ExponentiationExpr           (ExpressionType p) (ExpressionType p)
+  | EqualityExpr                 (ExpressionType p) (ExpressionType p)
+  | DifferenceExpr               (ExpressionType p) (ExpressionType p)
+  | GreaterExpr                  (ExpressionType p) (ExpressionType p)
+  | LesserExpr                   (ExpressionType p) (ExpressionType p)
+  | GreaterEqExpr                (ExpressionType p) (ExpressionType p)
+  | LesserEqExpr                 (ExpressionType p) (ExpressionType p)
+  | BoolAndExpr                  (ExpressionType p) (ExpressionType p)
+  | BoolOrExpr                   (ExpressionType p) (ExpressionType p)
+  | CastExpr                     (ExpressionType p) (PathInfo p)
+  | RangeInclusiveExpr           (ExpressionType p) (ExpressionType p)
+  | RangeExclusiveExpr           (ExpressionType p) (ExpressionType p)
+  | AssignmentExpr               (ExpressionType p) (ExpressionType p)
+  | AdditionAssignmentExpr       (ExpressionType p) (ExpressionType p)
+  | SubtractionAssignmentExpr    (ExpressionType p) (ExpressionType p)
+  | MultiplicationAssignmentExpr (ExpressionType p) (ExpressionType p)
+  | DivisionAssignmentExpr       (ExpressionType p) (ExpressionType p)
+  | ModuloAssignmentExpr         (ExpressionType p) (ExpressionType p)
+  | ExponentiationAssignmentExpr (ExpressionType p) (ExpressionType p)
 
 deriving instance ShowConstraints p => Show (Expression p)
 deriving instance Eq (WithLocation Expression Resolved) => Eq (Expression Resolved)
 
 
 data PathInfo p = PathInfo
-  { _pathName   :: NameType p
+  { _pathName   :: PathBodyType p
   , _pathParams :: [PathInfo p]
   } deriving (Generic)
 
@@ -249,3 +257,38 @@ makePrisms ''FunctionArgType
 makePrisms ''Statement
 makePrisms ''ElseInfo
 makePrisms ''Expression
+
+instance Plated (Expression p) where
+  plate f = \case
+    FieldAccessExpr              e i   -> liftA2 FieldAccessExpr              (within f e) (pure i)
+    CallExpr                     p es  -> liftA2 CallExpr                     (pure p) (traverse (within f) es)
+    ArrayExpr                    es    -> fmap   ArrayExpr                    (traverse (within f) es)
+    IndexExpr                    e1 e2 -> liftA2 IndexExpr                    (within f e1) (within f e2)
+    StructExpr                   p fs  -> liftA2 StructExpr                   (pure p) (traverse (traverse (within f)) fs)
+    IntNegationExpr              e     -> fmap   IntNegationExpr              (within f e)
+    BoolNegationExpr             e     -> fmap   BoolNegationExpr             (within f e)
+    CastExpr                     e t   -> liftA2 CastExpr                     (within f e) (pure t)
+    AdditionExpr                 e1 e2 -> liftA2 AdditionExpr                 (within f e1) (within f e2)
+    SubtractionExpr              e1 e2 -> liftA2 SubtractionExpr              (within f e1) (within f e2)
+    MultiplicationExpr           e1 e2 -> liftA2 MultiplicationExpr           (within f e1) (within f e2)
+    DivisionExpr                 e1 e2 -> liftA2 DivisionExpr                 (within f e1) (within f e2)
+    ModuloExpr                   e1 e2 -> liftA2 ModuloExpr                   (within f e1) (within f e2)
+    ExponentiationExpr           e1 e2 -> liftA2 ExponentiationExpr           (within f e1) (within f e2)
+    EqualityExpr                 e1 e2 -> liftA2 EqualityExpr                 (within f e1) (within f e2)
+    DifferenceExpr               e1 e2 -> liftA2 DifferenceExpr               (within f e1) (within f e2)
+    GreaterExpr                  e1 e2 -> liftA2 GreaterExpr                  (within f e1) (within f e2)
+    LesserExpr                   e1 e2 -> liftA2 LesserExpr                   (within f e1) (within f e2)
+    GreaterEqExpr                e1 e2 -> liftA2 GreaterEqExpr                (within f e1) (within f e2)
+    LesserEqExpr                 e1 e2 -> liftA2 LesserEqExpr                 (within f e1) (within f e2)
+    BoolAndExpr                  e1 e2 -> liftA2 BoolAndExpr                  (within f e1) (within f e2)
+    BoolOrExpr                   e1 e2 -> liftA2 BoolOrExpr                   (within f e1) (within f e2)
+    RangeInclusiveExpr           e1 e2 -> liftA2 RangeInclusiveExpr           (within f e1) (within f e2)
+    RangeExclusiveExpr           e1 e2 -> liftA2 RangeExclusiveExpr           (within f e1) (within f e2)
+    AssignmentExpr               e1 e2 -> liftA2 AssignmentExpr               (within f e1) (within f e2)
+    AdditionAssignmentExpr       e1 e2 -> liftA2 AdditionAssignmentExpr       (within f e1) (within f e2)
+    SubtractionAssignmentExpr    e1 e2 -> liftA2 SubtractionAssignmentExpr    (within f e1) (within f e2)
+    MultiplicationAssignmentExpr e1 e2 -> liftA2 MultiplicationAssignmentExpr (within f e1) (within f e2)
+    DivisionAssignmentExpr       e1 e2 -> liftA2 DivisionAssignmentExpr       (within f e1) (within f e2)
+    ModuloAssignmentExpr         e1 e2 -> liftA2 ModuloAssignmentExpr         (within f e1) (within f e2)
+    ExponentiationAssignmentExpr e1 e2 -> liftA2 ExponentiationAssignmentExpr (within f e1) (within f e2)
+    e                                  -> pure e
