@@ -26,7 +26,7 @@ import Lang.Pietre.Stages.Analysis.Validation.Expr
 
 
 validate
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
   -> WithLocation Resolved.Definition
   -> ValidateT m (Maybe Validated.Definition)
@@ -55,7 +55,7 @@ validate baseName definition = do
       pure result
 
 validateTypeAlias
-  :: Monad m
+  :: MonadDiagnosis m
   => TypeAliasInfo Resolved
   -> ValidateT m Validated.Definition
 validateTypeAlias TypeAliasInfo {..} = do
@@ -63,7 +63,7 @@ validateTypeAlias TypeAliasInfo {..} = do
   pure $ TypeAliasDef $ Output.TypeAliasInfo _aliasParams validatedValue
 
 validateConst
-  :: Monad m
+  :: MonadDiagnosis m
   => ConstInfo Resolved
   -> ValidateT m Validated.Definition
 validateConst ConstInfo {..} = do
@@ -75,7 +75,7 @@ validateConst ConstInfo {..} = do
   pure $ ConstDef $ validatedExpr
 
 validateStruct
-  :: Monad m
+  :: MonadDiagnosis m
   => Input.StructInfo Resolved
   -> ValidateT m Validated.Definition
 validateStruct StructInfo {..} =
@@ -83,14 +83,17 @@ validateStruct StructInfo {..} =
   pure $ StructDef $ StructInfo _structParams fields
 
 validateFunctionType
-  :: Monad m
+  :: MonadDiagnosis m
   => FunctionInfo Resolved
   -> ValidateT m Validated.Definition
 validateFunctionType info = do
   let FunctionType {..} = _funType info
-  attemptedArgs   <- getCompose (traverse2 (Compose . try . validateFunctionArg)        _funArgs)
-  attemptedReturn <- getCompose (traverse  (Compose . try . valiidateParameterizedType) _funReturn)
-  validatedFunctionTypeInfo <- liftA2 FunctionTypeInfo (ensure attemptedArgs) (ensure attemptedReturn)
+  attemptedArgs   <- getCompose (traverse2 (tryNested . validateFunctionArg)       _funArgs)
+  attemptedReturn <- getCompose (traverse  (tryNested . validateParameterizedType) _funReturn)
+  validatedFunctionTypeInfo <- liftA2
+    (FunctionTypeInfo _funParams)
+    (ensure attemptedArgs)
+    (ensure attemptedReturn)
   unless (isGeneric info) do
     baseName <- currentName
     let request = FunctionInstantiationRequest

@@ -64,8 +64,21 @@ retrieveFunctionDefinition
   :: Monad m
   => BaseName
   -> ValidateT m Resolved.FunctionInfo
-retrieveFunctionDefinition =
-  retrieveDefinition >=> traverse assertFunctionDefinition
+retrieveFunctionDefinition baseName =
+  ensure $ asumM
+    [ lookupRemoteFunctionDefinition
+    , lookupLocalFunctionDefinition
+    , throwICE
+    ]
+  where
+    lookupRemoteFunctionDefinition =
+      views viFunctions (M.lookup baseName)
+    lookupLocalFunctionDefinition baseName =
+      uses vsFunctions (M.lookup baseName)
+    throwICE = reportICE
+      "function definition lookup"
+      "function definition not found"
+      ["function name: " ++ show baseName]
 
 retrieveTypeParameter
   :: Monad m
@@ -108,7 +121,7 @@ retrieveVariableType
   => Identifier
   -> ValidateT m ConcreteType
 retrieveVariableType varName =
-  uses vsVariables (M.lookup varName) `onNothing`
+  uses currentVariables (M.lookup varName) `onNothing`
     reportICE
       "variable type lookup"
       "variable type not found in scope"

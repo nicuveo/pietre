@@ -1,4 +1,4 @@
-module Lang.Pietre.Representations.AST where
+module Lang.Pietre.Representations.AST.Validated where
 
 import "this" Prelude
 
@@ -82,7 +82,7 @@ data FunctionInfo = FunctionInfo
 
 data FunctionTypeInfo f = FunctionTypeInfo
   { _funParams :: [Identifier]
-  , _funArgs   :: [FunctionArgType f]
+  , _funArgs   :: [(Identifier, FunctionArgType f)]
   , _funReturn :: TypeTree f
   } deriving Show
 
@@ -90,6 +90,11 @@ data FunctionArgType f
   = ByValue     (TypeTree f)
   | ByReference (TypeTree f)
   deriving Show
+
+functionArgInnerType :: FunctionArgType f -> TypeTree f
+functionArgInnerType = \case
+  ByValue     t -> t
+  ByReference t -> t
 
 data ForInfo = ForInfo
   { _forVariableName :: Identifier
@@ -125,7 +130,8 @@ data Expression
   | ReferenceArgumentExpr        Identifier
   | IndexExpr                    (Typed Expression) (Typed Expression)
   | FunctionNameExpr             Name FunctionTypeInfo
-  | CallExpr                     Name FunctionTypeInfo [Typed Expression]
+  | FunctionCallExpr             Name FunctionTypeInfo [Typed Expression]
+  | VariableCallExpr             Identifier FunctionTypeInfo [Typed Expression]
   | ArrayExpr                    [Typed Expression]
   | StructExpr                   (StructInfo ConcreteFunctor) (NonEmpty (Identifier, Typed Expression))
   | FieldAccessExpr              (StructInfo ConcreteFunctor) (Typed Expression) Identifier
@@ -176,7 +182,7 @@ data LValueExpression
 --------------------------------------------------------------------------------
 -- Helper functions
 
-typeName :: Type -> Maybe Name
+typeName :: ConcreteType -> Maybe Name
 typeName = \case
   IntType  ->
     Just IntName
@@ -195,7 +201,7 @@ typeName = \case
   FunctionType _ ->
     Nothing
 
-assertName :: Type -> Name
+assertName :: ConcreteType -> Name
 assertName t =
   typeName t `onNothing`
     reportICE

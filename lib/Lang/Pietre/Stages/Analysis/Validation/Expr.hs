@@ -25,7 +25,7 @@ import Lang.Pietre.Stages.Analysis.Validation.Monad
 
 
 validateConstExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => WithLocation Resolved.Expression
   -> ValidateT m (Typed ConstExpression)
 validateConstExpression WithLocation {..} = do
@@ -139,9 +139,9 @@ validateConstExpression WithLocation {..} = do
     validateLesserEqConstExpression       = validateBinaryCompareConstExpression (compareExpect (== LT))       True
 
 validateFunctionExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => WithLocation Resolved.Expression
-  -> ValidateT m (Typed Expression)
+  -> ValidateT m (Typed Validated.Expression)
 validateFunctionExpression WithLocation {..} = do
   currentLocation .= _location
   case _located of
@@ -243,13 +243,13 @@ validateFunctionExpression WithLocation {..} = do
 
 
 validateRangeExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => WithLocation Resolved.Expression
   -> ValidateT m (Typed RangeExpression)
 validateRangeExpression _ = unimplemented
 
 validateConstPathExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => PathInfo Resolved
   -> ValidateT m (Typed ConstExpression)
 validateConstPathExpression PathInfo {..} = do
@@ -262,7 +262,7 @@ validateConstPathExpression PathInfo {..} = do
       retrieveConstant name
 
 validateFunctionPathExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => PathInfo Resolved
   -> ValidateT m (Typed Expression)
 validateFunctionPathExpression PathInfo {..} = do
@@ -296,23 +296,23 @@ validateFunctionPathExpression PathInfo {..} = do
       validateParamsCount _funParams validatedParams
       let
         paramMapping = M.fromList $ zip _funParams validatedParams
-        validatedArguments = map (reifyType paramMapping) _funArgs
+        validatedArguments = reifyType paramMapping . snd <$> _funArgs
         validatedReturnType = reifyType paramMapping _funReturn
         validatedFunctionInfo = FunctionTypeInfo _funParams validatedArguments validatedReturnType
         name = Name baseName $ map assertName validatedParams
-    unless (null _funParams) do
-      functionDefinition <- retrieveFunctionDefinition baseName
-      let request = FunctionInstantiationRequest
-            { _firBaseName = baseName
-            , _firDefinition = functionDefition
-            , _firFunType = validatedFunctionInfo
-            , _firParams = validatedParams
-            }
-      vsInstanceRequests %= (:|> request)
-    pure $ Typed (FunctionType validatedFunctionInfo) $ FunctionNameExpr name validatedFunctionInfo
+      unless (null _funParams) do
+        functionDefinition <- retrieveFunctionDefinition baseName
+        let request = FunctionInstantiationRequest
+              { _firBaseName = baseName
+              , _firDefinition = functionDefinition
+              , _firFunType = validatedFunctionInfo
+              , _firParams = validatedParams
+              }
+        vsInstanceRequests %= (:|> request)
+      pure $ Typed (FunctionType validatedFunctionInfo) $ FunctionNameExpr name validatedFunctionInfo
 
 validateConstCastExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => Typed ConstExpression
   -> Type
   -> ValidateT m (Typed ConstExpression)
@@ -337,7 +337,7 @@ validateConstCastExpression validatedExpr targetType =
       else pure $ IntLiteralConstExpr intValue
 
 validateFunctionCastExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => Typed Expression
   -> Type
   -> ValidateT m (Typed Expression)
@@ -363,7 +363,7 @@ validateFunctionCastExpression validatedExpr targetType =
         else pure $ IntLiteralConstExpr intValue
 
 validateCastExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => Typed expr
   -> Type
   -> ValidateT m (Typed expr)
@@ -401,7 +401,7 @@ validateCastExpression validatedExpr targetType intResult charResult boolResult 
   pure $ Typed targetType innerValue
 
 validateConstFieldAccessExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => Resolved.Expression
   -> Identifier
   -> ValidateT m (Typed ConstExpression)
@@ -416,7 +416,7 @@ validateConstFieldAccessExpression expr fieldName = do
     _ -> report $ ErrorFieldAccessNotAStruct (_typeInfo validatedExpr)
 
 validateFunctionFieldAccessExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => Resolved.Expression
   -> Identifier
   -> ValidateT m (Typed ConstExpression)
@@ -435,46 +435,146 @@ validateFunctionFieldAccessExpression expr fieldName = do
     wrongType ->
       report $ ErrorNotAStruct wrongType
 
-validateFunctionCallExpression = unimplemented
+validateFunctionCallExpression
+  :: MonadDiagnosis m
+  => PathInfo Resolved
+  -> [WithLocation (Resolved.Expression)]
+  -> ValidateT m (Typed Expression)
+validateFunctionCallExpression PathInfo {..} functionArgs = do
+  (functionReference, funcTypeInfo@FunctionTypeInfo {..}) <- validateCallableObject
 
+  -- validate number of params
+  validateParamsCountWith (<=) _funParams _pathParams
+  partialParams <- ensureNested $ traverse (tryNested . validatePartialType) _pathParams
+  let namedPartialParams = zip _funParams partialParams
+
+  -- validate number of arguments
+  let expected = length _funArgs
+      actual   = length functionArgs
+  when (expected /= actual) $
+    fatal $ ErrorFunctionCallWrongNumberOfArguments _pathBase expected actual
+
+  -- validate arguments
+  validatedFunctionArgs <- ensureNested $ zipWithM
+    (tryNested ... validateFunctionCallArgument)
+    _funArgs
+    functionArgs
+
+  -- collect parameter maps
+  parameterMaps <- ensureNested $ zipWithM
+    (tryNested ... buildTypeParameterMap)
+    (functionArgInnerType . snd <$> _funArgs)
+    (_typeInfo <$> validatedFunctionArgs)
+  let parametersMap = M.unionsWith (<>) $ fmap3 pure parameterMaps
+
+  -- check unicity of type parameters and build parameter map
+  validatedTypeList <- ensureNested $
+    traverse (tryNested . validateParam parametersMap) _funParams
+  let functionTypeParams = snd <$> validatedTypeList
+      validatedReturnType = reifyType (M.fromList validatedTypeList) _funReturn
+
+  case functionReference of
+    Left varIdentifier ->
+      pure $ Typed validatedReturnType $ VariableCallExpr varIdentifier validatedFunctionArgs
+    Right functionBaseName -> do
+      unless (null _funParams) do
+        functionDefinition <- retrieveFunctionDefinition functionBaseName
+        let request = FunctionInstantiationRequest
+              { _firBaseName = functionBaseName
+              , _firDefinition = functionDefinition
+              , _firFunType = funcTypeInfo
+              , _firParams = functionTypeParams
+              }
+        vsInstanceRequests %= (:|> request)
+      let functionName = Name functionBaseName $ map assertName functionTypeParams
+      pure $ Typed validatedReturnType $ FunctionCallExpr functionName validatedFunctionArgs
+
+  where
+    validateFunctionCallArgument (argName, argType) argExpression =
+      case argType of
+        ByValue _ -> validateFunctionExpression argExpression
+        ByReference _ -> case argExpression of
+          ReferenceExpr subExpr -> validateFunctionExpression subExpr
+          _ -> fatal $ ErrorFunctionCallArgExpectingReference argName
+
+    validateCallableObject = case _pathBase of
+      BuiltinFunction functionName ->
+        unimplemented
+      Function functionName -> do
+        (Right functionName,) <$> retrieveFunctionType functionName
+      LetVariable identifier _ ->
+        retrieveVariableType identifier >>= \case
+          FunctionType info -> pure (Left identifier, info)
+          otherType -> fatal $ ErrorNotAFunction otherType
+      -- FunctionArgument Identifier (Common.FunctionArgType Resolved)
+      _ -> fatal $ ErrorNotAFunction function
+
+    validateParam typeMap (paramName, partialType) = do
+      (paramName, ) <$>
+        case fold $ M.lookup paramName typeMap of
+          [] ->
+            concretizeType partialType `onNothingM`
+                fatal (ErrorStructAmbiguousType baseName paramName)
+          possibleTypes -> do
+            unless (typesAllMatch possibleTypes) $
+              report $ ErrorStructIncompatibleTypes baseName paramName possibleTypes
+            let concreteType = findFirstNonVoid possibleTypes
+            validateTypePattern partialType concreteType
+            pure concreteType
 
 validateStructConstExpression
-  :: Monad m
+  :: MonadDiagnosis m
+  => PathInfo Resolved
+  -> NonEmpty (Identifier, WithLocation Resolved.Expression)
+  -> ValidateT m (Typed ConstExpression)
+validateStructConstExpression =
+  validateStructExpression validateConstExpression StructConstExpr
+
+validateStructFunctionExpression
+  :: MonadDiagnosis m
   => PathInfo Resolved
   -> NonEmpty (Identifier, WithLocation (Expression Resolved))
-  -> ValidateT m (Typed ConstExpression)
-validateStructConstExpression structPath fields = do
+  -> ValidateT m (Typed Expression)
+validateStructFunctionExpression structPath fields =
+  validateStructExpression validateFunctionExpression StructExpr
+
+validateStructExpression
+  :: MonadDiagnosis m
+  => (WithLocation Resolved.Expression -> ValidateT m (Typed ConstExpression))
+  -> ([Typed e] -> Validated.StructInfo -> Typed e)
+  -> PathInfo Resolved
+  -> NonEmpty (Identifier, WithLocation (Expression Resolved))
+  -> ValidateT m (Typed e)
+validateStructExpression fieldValidationCallback resultConstructor structPath fields = do
   attemptedType <- try $ validateStructType
-  validatedFields <- ensure =<< getCompose (traverse2 (Compose . try . validatedConstExpr) fields)
+  validatedFields <- ensureNested $ traverse2 (tryNested . fieldValidationCallback) fields
   StructTypeInfo {..} <- ensure attemptedType
   structInfo@StructInfo {..} <- retrieveStruct _structBaseName
   let
     structFields = S.fromList $ map fst $ NE.toList _structValues
-    paramTypes = M.fromList _structParams _structTypeParams
+    paramTypes = M.fromList $ zip _structParams _structTypeParams
 
   -- check that all fields are "known"
-  ensure =<<
-    getCompose (
-      for fields \(identifier, _) -> do
-        unless (S.member identifier structFields) $
-          Compose $ try $ report $ ErrorStructUnknownField _structBaseName identifier
-    )
+  ensureNested $
+    for fields \(identifier, _) -> do
+      unless (S.member identifier structFields) $
+        tryNested $ report $ ErrorStructUnknownField _structBaseName identifier
 
   -- check unicity of fields and collect parameter maps
-  let fieldsMap = M.fromListWith (<>) $ NE.toList $ fmap2 pure values
-  parameterMaps <- ensure =<<
-    getCompose (traverse (Compose . try . validateField _structBaseName fieldsMap) _structValues)
+  let fieldsMap = M.fromListWith (<>) $ NE.toList $ fmap2 pure validatedFields
+  parameterMaps <- ensureNested $
+    traverse (tryNested . validateField _structBaseName fieldsMap) _structValues
   let parameterMap = unionsWith (<>) parameterMaps
 
   -- check unicity of type parameters and build parameter map
-  structTypeParams <- ensure =<<
-    getCompose (traverse (Compose . try . validateParam _structBaseName parametersMap) _structTypeParams)
+  structTypeParams <- ensureNested $
+    traverse (tryNested . validateParam _structBaseName parametersMap) paramTypes
 
   let validatedStructType = StructTypeInfo
         { _structBaseName   = _structBaseName
-        , _structTypeParams = snd <$> structTypeParams
+        , _structTypeParams = structTypeParams
         }
-  pure $ Typed (StructType validatedStructType) $ StructConstExpr structInfo validatedFields
+  pure $ Typed (StructType validatedStructType) $ resultContructor structInfo validatedFields
   where
     validateStructType =
       validatePartialType structPath >>= \case
@@ -494,20 +594,21 @@ validateStructConstExpression structPath fields = do
     validateParam baseName typeMap (paramName, partialType) = do
       case fold $ M.lookup paramName typeMap of
         [] ->
-          report $ ErrorStructAmbiguousType baseName paramName
+          concretizeType partialType `onNothingM`
+              fatal (ErrorStructAmbiguousType baseName paramName)
         possibleTypes -> do
           unless (typesAllMatch possibleTypes) $
             report $ ErrorStructIncompatibleTypes baseName paramName possibleTypes
           let concreteType = findFirstNonVoid possibleTypes
           validateTypePattern partialType concreteType
-          pure (paramName, concreteType)
+          pure concreteType
 
     findFirstNonVoid = fromMaybe VoidType . find \case
       VoidType -> False
       _ -> True
 
 validateBoolNegationConstExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => WithLocation Resolved.Expression
   -> ValidateT m (Typed ConstExpression)
 validateBoolNegationConstExpression expr = do
@@ -515,7 +616,7 @@ validateBoolNegationConstExpression expr = do
   pure $ Typed BoolType (not value)
 
 validateIntNegationConstExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => WithLocation Resolved.Expression
   -> ValidateT m (Typed ConstExpression)
 validateIntNegationConstExpression expr = do
@@ -523,7 +624,7 @@ validateIntNegationConstExpression expr = do
   pure $ Typed IntType (-value)
 
 validateBinaryIntConstExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => (Int -> Int -> ValidateT m Int)
   -> Typed ConstExpression
   -> Typed ConstExpression
@@ -532,7 +633,7 @@ validateBinaryIntConstExpression f lhs rhs =
   Typed IntType . join <$> liftA2 f (expectConstInt lhs) (expectConstInt rhs)
 
 validateBinaryBoolConstExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => (Bool -> Bool -> Bool)
   -> Typed ConstExpression
   -> Typed ConstExpression
@@ -541,7 +642,7 @@ validateBinaryBoolConstExpression f lhs rhs =
   Typed BoolType <$> liftA2 f (expectConstBool lhs) (expectConstBool rhs)
 
 validateBinaryCompareConstExpression
-  :: Monad m
+  :: MonadDiagnosis m
   -> (forall a. Ord a => a -> a -> Maybe Bool)
   -> Bool
   -> Typed ConstExpression
@@ -580,7 +681,7 @@ validateBinaryCompareConstExpression f defaultCase lhs rhs
           ]
 
 validateAdditionConstExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => Typed ConstExpression
   -> Typed ConstExpression
   -> ValidateT m (Typed ConstExpression)
@@ -593,7 +694,7 @@ validateAdditionConstExpression lhs rhs = do
       report $ ErrorWrongType [IntType] (_typeInfo lhs)
 
 validateAssignmentExpression
-  :: Monad m
+  :: MonadDiagnosis m
   => (Typed LValueExpression -> Typed Expression -> Typed Expression)
   -> (ConcreteType -> ValidateT m ())
   -> Resolved.Expression
@@ -610,7 +711,7 @@ validateAssignmentExpression cons typeValidationCallback lhs rhs = do
 
 
 safeDivMod
-  :: Monad m
+  :: MonadDiagnosis m
   => Int
   -> Int
   -> ValidateT m (Int, Int)
@@ -619,7 +720,7 @@ safeDiv x y = do
   pure $ x `divMod` y
 
 safeExp
-  :: Monad m
+  :: MonadDiagnosis m
   => Int
   -> Int
   -> ValidateT m Int

@@ -12,6 +12,21 @@ import Lang.Pietre.Representations.AST.Validated as Validated
 
 type ValidateT m = ReaderT ValidateInfo (StateT ValidateContext m)
 
+runValidateT :: ValidateInfo -> ValidateT m a -> m (ValidateState, a)
+runValidateT info action = action
+  & flip runReaderT info
+  & flip runStateT initialState
+  & fmap swap
+  where
+    initialState = ValidateState
+      { _vsDefinitions      = M.empty
+      , _vsFunctions        = M.empty
+      , _vsInstanceRequests = Seq.empty
+      , _vsContext          = []
+      , _vsValidated        = S.empty
+      , _vsDefinitionStack  = OSet.empty
+      }
+
 data ValidateInfo = ValidateInfo
   { _viModuleName       :: ModuleName
   , _viDefinitions      :: DefinitionCache
@@ -89,3 +104,16 @@ withContext name defLocation action = do
   result <- try action
   moduleContext %= drop 1
   ensure result
+
+
+fatal :: MonadDiagnosis m => Message -> ValidationT m a
+fatal diagnosticMessage = do
+  baseName <- use currentName
+  location <- use currentLocation
+  reportError $ Diagnostic baseName location diagnosticMessage
+
+warn :: MonadDiagnosis m => Message -> ValidationT m a
+warn diagnosticMessage = do
+  baseName <- use currentName
+  location <- use currentLocation
+  reportWarning $ Diagnostic baseName location diagnosticMessage

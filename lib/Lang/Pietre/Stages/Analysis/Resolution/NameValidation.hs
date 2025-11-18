@@ -1,4 +1,4 @@
-module Lang.Pietre.Stages.Analysis.Resolution.Namevalidation where
+module Lang.Pietre.Stages.Analysis.Resolution.NameValidation where
 
 import "this" Prelude
 

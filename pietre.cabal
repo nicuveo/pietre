@@ -31,13 +31,15 @@ library
       Lang.Pietre
       Lang.Pietre.Batteries.BuiltIn
       Lang.Pietre.Export.AST
+      Lang.Pietre.Internal.Diagnosis
       Lang.Pietre.Internal.Encoding
+      Lang.Pietre.Internal.HKT
       Lang.Pietre.Internal.ICE
       Lang.Pietre.Representations.AST
-      Lang.Pietre.Representations.AST.Checked
       Lang.Pietre.Representations.AST.Common
       Lang.Pietre.Representations.AST.Parsed
       Lang.Pietre.Representations.AST.Resolved
+      Lang.Pietre.Representations.AST.Validated
       Lang.Pietre.Representations.Bytecode
       Lang.Pietre.Representations.Identifier
       Lang.Pietre.Representations.Image
@@ -49,8 +51,15 @@ library
       Lang.Pietre.Stages.Analysis
       Lang.Pietre.Stages.Analysis.Resolution
       Lang.Pietre.Stages.Analysis.Resolution.Monad
+      Lang.Pietre.Stages.Analysis.Resolution.NameValidation
+      Lang.Pietre.Stages.Analysis.Resolution.Scope
       Lang.Pietre.Stages.Analysis.Validation
+      Lang.Pietre.Stages.Analysis.Validation.Context
+      Lang.Pietre.Stages.Analysis.Validation.Expect
+      Lang.Pietre.Stages.Analysis.Validation.Expr
+      Lang.Pietre.Stages.Analysis.Validation.Instantiation
       Lang.Pietre.Stages.Analysis.Validation.Monad
+      Lang.Pietre.Stages.Analysis.Validation.Types
       Lang.Pietre.Stages.Assembly
       Lang.Pietre.Stages.Assembly.Color
       Lang.Pietre.Stages.Assembly.Templates
@@ -110,6 +119,7 @@ library
     , lens
     , monad-loops
     , mtl
+    , ordered-containers
     , prettyprinter
     , template-haskell
     , text
@@ -166,6 +176,7 @@ executable gramviz
     , megaparsec
     , monad-loops
     , mtl
+    , ordered-containers
     , prettyprinter
     , template-haskell
     , text
@@ -220,6 +231,7 @@ executable pc
     , lens
     , monad-loops
     , mtl
+    , ordered-containers
     , pietre
     , prettyprinter
     , template-haskell
@@ -284,6 +296,7 @@ test-suite tests
     , lens
     , monad-loops
     , mtl
+    , ordered-containers
     , pietre
     , prettyprinter
     , tasty

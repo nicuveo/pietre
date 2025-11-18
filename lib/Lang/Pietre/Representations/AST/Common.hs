@@ -1,19 +1,18 @@
 {-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Lang.Pietre.Representations.AST where
+module Lang.Pietre.Representations.AST.Common where
 
-import                "this" Prelude
+import "this" Prelude
 
-import                Control.Lens
-import                Data.Kind
-import                Data.List.NonEmpty                     qualified as NE
-import                Prettyprinter
-import                Prettyprinter.Render.Text
+import Control.Lens
+import Data.Kind
+import Data.List.NonEmpty                     qualified as NE
+import Prettyprinter
+import Prettyprinter.Render.Text
 
-import                Lang.Pietre.Representations.Identifier
-import                Lang.Pietre.Representations.Location
-import {-# SOURCE #-} Lang.Pietre.Representations.Name
+import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Location
 
 
 --------------------------------------------------------------------------------
@@ -61,9 +60,7 @@ deriving instance ShowConstraints p => Show (TypeAliasInfo p)
 data EnumInfo = EnumInfo
   { _enumName   :: Identifier
   , _enumValues :: [Identifier]
-  }
-
-deriving instance ShowConstraints p => Show (EnumInfo p)
+  } deriving Show
 
 
 data StructInfo p = StructInfo
@@ -224,7 +221,7 @@ deriving instance Eq (WithLocation Expression Resolved) => Eq (Expression Resolv
 
 
 data PathInfo p = PathInfo
-  { _pathName   :: PathBodyType p
+  { _pathBase   :: PathBodyType p
   , _pathParams :: [PathInfo p]
   } deriving (Generic)
 

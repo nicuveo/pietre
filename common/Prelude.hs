@@ -21,12 +21,14 @@ module Prelude
     -- * maybe helpers
   , onNothing
   , onNothingM
+  , asumM
     -- * either helpers
   , onLeft
   , onLeftM
     -- * sequence helpers
   , Seq (.., Lone)
     -- * hashmap helpers
+  , unionsWith
   , unionWithM
   , unionWithKeyM
     -- * monad helpers
@@ -95,7 +97,7 @@ fmap3
   => (a -> b)
   -> f (g (h a))
   -> f (g (h b))
-fmap2 = fmap . fmap . fmap
+fmap3 = fmap . fmap . fmap
 
 traverse2
   :: (Traversable t1, Traversable t2, Applicative f)
@@ -109,7 +111,7 @@ traverse3
   => (a -> f b)
   -> t1 (t2 (t3 a))
   -> f (t1 (t2 (t3 b)))
-traverse2 = traverse . traverse . traverse
+traverse3 = traverse . traverse . traverse
 
 
 -- operators
@@ -134,7 +136,7 @@ asumM
   :: (Monad m, Foldable f)
   => f (m (Maybe a))
   -> m (Maybe a)
-asumM = foldlM go empty
+asumM = foldlM go Nothing
   where
     go accum action = case accum of
       Nothing -> action
@@ -159,7 +161,7 @@ pattern Lone x = x :<| Empty
 -- hashmap helpers
 
 unionsWith
-  :: (Eq k, Hashable k, Foldable t)
+  :: (Eq k, Foldable t)
   => (v -> v -> v)
   -> t (HashMap k v)
   -> HashMap k v

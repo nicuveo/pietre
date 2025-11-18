@@ -1,4 +1,4 @@
-module Lang.Pietre.Stages.Analysis.Resolving (resolve) where
+module Lang.Pietre.Stages.Analysis.Resolution (resolve) where
 
 import "this" Prelude
 

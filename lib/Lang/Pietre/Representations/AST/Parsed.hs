@@ -1,4 +1,4 @@
-module Lang.Pietre.Representations.AST where
+module Lang.Pietre.Representations.AST.Parsed where
 
 import "this" Prelude
 

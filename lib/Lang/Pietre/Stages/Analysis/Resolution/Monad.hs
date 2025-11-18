@@ -1,4 +1,4 @@
-module Lang.Pietre.Stages.Analysis.Resolving.Monad where
+module Lang.Pietre.Stages.Analysis.Resolution.Monad where
 
 import "this" Prelude
 
@@ -56,3 +56,16 @@ lookupName
   => Path
   -> ResolveT m (Maybe (NonEmpty [Role]))
 lookupName = uses rcScope . M.lookup
+
+
+fatal :: MonadDiagnosis m => Message -> ResolveT m a
+fatal diagnosticMessage = do
+  baseName <- view riDeclarationName
+  location <- use rcLocation
+  reportError $ Diagnostic baseName location diagnosticMessage
+
+warn :: MonadDiagnosis m => Message -> ResolveT m a
+warn diagnosticMessage = do
+  baseName <- view riDeclarationName
+  location <- use rcLocation
+  reportWarning $ Diagnostic baseName location diagnosticMessage

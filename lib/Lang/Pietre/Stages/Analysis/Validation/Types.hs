@@ -2,6 +2,28 @@ module Lang.Pietre.Stages.Analysis.Validation.Types where
 
 import "this" Prelude
 
+import Control.Lens                                 hiding (mapping, op)
+import Control.Monad.Loops                          (whileJust)
+import Control.Monad.RWS.Strict
+import Control.Monad.Trans.Maybe                    (hoistMaybe)
+import Data.HashMap.Strict.Extra                    qualified as M
+import Data.HashSet                                 qualified as S
+import Data.List                                    qualified as L
+import Data.Ordered.Set                             qualified as OSet
+import Data.Set                                     qualified as Set
+
+import Lang.Pietre.Batteries.BuiltIn
+import Lang.Pietre.Internal.ICE
+import Lang.Pietre.Representations.AST
+import Lang.Pietre.Representations.AST.Common
+import Lang.Pietre.Representations.AST.Resolved     as Resolved
+import Lang.Pietre.Representations.AST.Validated    as Validated
+import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Interface
+import Lang.Pietre.Representations.Name
+import Lang.Pietre.Stages.Analysis.Validation.Expr
+import Lang.Pietre.Stages.Analysis.Validation.Monad
+
 
 validateConcreteType
   :: Monad m
@@ -136,6 +158,7 @@ validateTypeAliasType f localMappings baseName params = do
   let newMappings = M.fromList $ zip (map (baseName,) _aliasParams) params
   f (M.union newMappings localMappings) _aliasValue
 
+{-
 validateTypeAliasType
   :: (Applicative f, Monad m)
   => M.HashMap (BaseName, Identifier) (TypeTree f)
@@ -145,6 +168,7 @@ validateTypeAliasType
 validateTypeAliasType localMappings typeName paramName =
   M.lookup (typeName, paramName) localMappings `onNothing`
     fmap (abstract pure) (retrieveTypeParameter typeName paramName)
+-}
 
 buildTypeParameterMap
   :: Monad m
@@ -221,6 +245,42 @@ validateParamsCountWith cmp expectedParams actualParams = do
   unless (actual `cmp` expected) $
     report $ ErrorIncorrectTypeParameterCount baseName expected actual
 
+concretizeType
+  :: PartialType
+  -> Maybe ConcreteType
+concretizeType = \case
+  Nothing ->
+    Nothing
+  Just IntType ->
+    Just IntType
+  Just BoolType ->
+    Just BoolType
+  Just CharType ->
+    Just CharType
+  Just UnitType ->
+    Just UnitType
+  Just VoidType ->
+    Just VoidType
+  Just (EnumType name values) ->
+    Just $ EnumType name values
+  Just (StructType structInfo) ->
+    StructType <$> concretizeStructType structInfo
+  Just (FunctionType functionInfo) ->
+    FunctionType <$> concretizeFunctionType functionInfo
+  where
+    concretizeFunctionType FunctionTypeInfo {..} = do
+      concreteArgs   <- traverse concretizeFunctionArg _funArgs
+      concreteReturn <- traverse concretizeType _funReturn
+      pure $ FunctionTypeInfo concreteArgs concreteReturn
+
+    concretizeFunctionArg = \case
+      ByValue     t -> ByValue     <$> concretizeType t
+      ByReference t -> ByReference <$> concretizeType t
+
+    concretizeStructType StructTypeInfo {..} = do
+      concreteTypeParams <- traverse  concretizeType _structTypeParams
+      pure $ StructTypeInfo _structName concreteTypeParams
+
 reifyType
   :: Applicative f
   => HashMap Identifier (TypeTree f)
@@ -258,8 +318,6 @@ reifyType mappings = \case
     reifyStructType StructTypeInfo {..} = StructTypeInfo
       { _structName       = _structName
       , _structTypeParams = fmap (reifyType mappings) _structTypeParams
-      , _structFields     = fmap2 (reifyType mappings) _structFields
-      , _structInfo       = _structInfo
       }
 
     lookupParameter identifier =

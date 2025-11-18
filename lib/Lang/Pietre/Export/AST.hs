@@ -1,4 +1,4 @@
-module Lang.Pietre.Export.Ast where
+module Lang.Pietre.Export.AST where
 
 import "this" Prelude
 
@@ -6,6 +6,8 @@ import "this" Prelude
 
 --------------------------------------------------------------------------------
 -- Pretty print
+
+{-
 
 instance Pretty Module where
   pretty Module {..} =
@@ -290,3 +292,5 @@ instance Plated TypedExpression where
     ModuloAssignmentExpr         e1 e2 -> liftA2 ModuloAssignmentExpr         (f e1) (f e2)
     ExponentiationAssignmentExpr e1 e2 -> liftA2 ExponentiationAssignmentExpr (f e1) (f e2)
     e                                  -> pure e
+
+-}
