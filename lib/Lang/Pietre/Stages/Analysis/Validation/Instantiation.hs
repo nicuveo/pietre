@@ -126,7 +126,6 @@ validateExpressionStatement
   -> ValidateT m (Typed Validated.Expression)
 validateExpressionStatement resolvedExpr = do
   validatedExpr <- validateFunctionExpression resolvedExpr
-  -- TODO: can this be simplified using gathered purity information?
   unless (_typeInfo validatedExpr `typeMatches` UnitType) $
     case _typedValue validatedExpr of
       FunctionCallExpr _ _ _ -> pass

@@ -6,7 +6,6 @@ module Lang.Pietre.Stages.Analysis.Validation
 import "this" Prelude
 
 import Control.Lens                                         hiding (mapping, op)
-import Control.Monad.Catch                                  (bracket_)
 import Data.Functor.Compose
 import Data.HashMap.Strict.Extra                            qualified as M
 import Data.HashSet                                         qualified as S
@@ -69,19 +68,13 @@ validateDefinition baseName WithLocation {..} = do
     if baseName `OSet.member` defStack
     then
       fatal $ ErrorCyclicDefinition baseName $ snd $ L.break (== baseName) $ toList defStack
-    else
-      try $ bracket_
-        setupValidation
-        teardownValidation
-        performValidation
-  where
-    setupValidation = do
-      vsDefinitionStack %= (baseName OSet.<|)
-
-    teardownValidation = do
+    else do
+      vsDefinitionStack %= (OSet.|> baseName)
+      result <- try performValidation
       vsDefinitionStack %= OSet.delete baseName
       vsValidated %= S.insert baseName
-
+      pure result
+  where
     performValidation = do
       result <-
         withContext baseName _location $
@@ -137,7 +130,9 @@ validateFunctionType
   -> ValidateT m (Validated.FunctionTypeInfo ParameterizedFunctor)
 validateFunctionType info = do
   let Resolved.FunctionType {..} = Resolved._funType info
-  defLocation     <- use currentLocation
+  baseName <- use currentName
+  defLocation <- use currentLocation
+  let originalDefinition = WithLocation defLocation info
   attemptedArgs   <- getCompose $ traverse2 (tryNested . validateFunctionArg)       _funArgs
   attemptedReturn <- getCompose $ traverse  (tryNested . validateParameterizedType) _funReturn
   validatedArgs   <- ensure attemptedArgs
@@ -147,7 +142,10 @@ validateFunctionType info = do
         , _funArgs   = validatedArgs
         , _funReturn = validatedReturn
         }
-  unless (isGeneric info) do
+  if isGeneric info
+  then do
+    vsFunctions %= M.insert baseName originalDefinition
+  else do
     let
       concreteReturn = reifyType @ConcreteFunctor M.empty validatedReturn
       concreteArgs = flip fmap2 validatedArgs \case
@@ -158,10 +156,9 @@ validateFunctionType info = do
         , _funArgs   = concreteArgs
         , _funReturn = concreteReturn
         }
-    baseName <- use currentName
     let request = FunctionInstantiationRequest
           { _firBaseName = baseName
-          , _firDefinition = WithLocation defLocation info
+          , _firDefinition = originalDefinition
           , _firFunType = concreteFunctionTypeInfo
           , _firParams = []
           }

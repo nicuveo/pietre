@@ -247,9 +247,9 @@ validateLValueExpression WithLocation {..} = do
   currentLocation .= _location
   case _located of
     Resolved.PathExpr path ->
-      unimplemented path
+      validateFunctionPathLValueExpression path
     Resolved.FieldAccessExpr expr field ->
-      unimplemented expr field
+      validateFunctionFieldAccessLValueExpression expr field
     Resolved.IndexExpr _ _ ->
       unimplemented
     incorrectExpression ->
@@ -327,7 +327,7 @@ validateFunctionPathExpression PathInfo {..} = do
         paramMapping = M.fromList $ zip (map (baseName, ) _funParams) validatedParams
         validatedArguments = fmap2 (reifyArg paramMapping) _funArgs
         validatedReturnType = reifyConcreteType paramMapping _funReturn
-        validatedFunctionInfo = FunctionTypeInfo [] validatedArguments validatedReturnType
+        validatedFunctionInfo = FunctionTypeInfo _funParams validatedArguments validatedReturnType
         name = Name baseName $ map assertName validatedParams
       unless (null _funParams) do
         functionDefinition <- retrieveFunctionDefinition baseName
@@ -339,6 +339,28 @@ validateFunctionPathExpression PathInfo {..} = do
               }
         vsInstanceRequests %= (:|> request)
       pure $ Typed (Validated.FunctionType validatedFunctionInfo) $ FunctionNameExpr name validatedFunctionInfo
+
+validateFunctionPathLValueExpression
+  :: MonadDiagnosis m
+  => Resolved.PathInfo
+  -> ValidateT m (Typed Validated.LValueExpression)
+validateFunctionPathLValueExpression PathInfo {..} = do
+  case _pathBase of
+    FunctionArgument argName argType -> validateArgPath argName argType
+    LetVariable varName              -> validateVarPath varName
+    role                             -> fatal $ ErrorNotAnLValue role
+  where
+    validateVarPath varName = do
+      varType <- retrieveVariableType varName
+      pure $ Typed varType $ LocalVariableLExpr varName
+
+    validateArgPath argName = \case
+      Resolved.ByReference path -> do
+        argType <- validateConcreteType path
+        pure $ Typed argType $ ReferenceArgumentLExpr argName
+      Resolved.ByValue path -> do
+        argType <- validateConcreteType path
+        pure $ Typed argType $ LocalVariableLExpr argName
 
 validateConstCastExpression
   :: (HasCallStack, MonadDiagnosis m)
@@ -449,6 +471,24 @@ validateFunctionFieldAccessExpression
   -> ValidateT m (Typed Validated.Expression)
 validateFunctionFieldAccessExpression expr fieldName = do
   validatedExpr <- validateFunctionExpression expr
+  validateFunctionFieldAccess Validated.FieldAccessExpr validatedExpr fieldName
+
+validateFunctionFieldAccessLValueExpression
+  :: MonadDiagnosis m
+  => WithLocation Resolved.Expression
+  -> Identifier
+  -> ValidateT m (Typed Validated.LValueExpression)
+validateFunctionFieldAccessLValueExpression expr fieldName = do
+  validatedExpr <- validateLValueExpression expr
+  validateFunctionFieldAccess Validated.FieldAccessLExpr validatedExpr fieldName
+
+validateFunctionFieldAccess
+  :: MonadDiagnosis m
+  => (Validated.StructInfo ConcreteFunctor -> Typed e -> Identifier -> e)
+  -> Typed e
+  -> Identifier
+  -> ValidateT m (Typed e)
+validateFunctionFieldAccess cons validatedExpr fieldName = do
   case _typeInfo validatedExpr of
     StructType StructTypeInfo {..} -> do
       Validated.StructInfo {..} <- retrieveStruct _structBaseName
@@ -458,7 +498,8 @@ validateFunctionFieldAccessExpression expr fieldName = do
       (_, fieldType) <-
         find ((fieldName ==) . fst) validatedFields `onNothing`
         fatal (ErrorFieldAccessFieldNotFound (_typeInfo validatedExpr) fieldName)
-      pure $ Typed fieldType $ Validated.FieldAccessExpr (Validated.StructInfo _structParams validatedFields) validatedExpr fieldName
+      let validatedStructInfo = Validated.StructInfo _structParams validatedFields
+      pure $ Typed fieldType $ cons validatedStructInfo validatedExpr fieldName
     wrongType ->
       fatal $ ErrorNotAStruct $ concreteToPartial wrongType
 
@@ -510,7 +551,7 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
       -- validate number of params
       validateParamsCountWith (<=) functionBaseName _funParams _pathParams
       partialParams <- ensureNested $ traverse (tryNested . validatePartialType) _pathParams
-      let namedPartialParams = zip _funParams partialParams
+      let namedPartialParams = zip _funParams $ partialParams ++ repeat Nothing
 
       -- validate arguments
       validatedFunctionArgs <- ensureNested $ fmap2 snd $ zipWithM
@@ -535,7 +576,7 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
 
       -- register function for instantiation
       let concreteFunctionTypeInfo = FunctionTypeInfo
-            { _funParams = []
+            { _funParams = _funParams
             , _funArgs = fmap2 (reifyArgType finalMapping) _funArgs
             , _funReturn = validatedReturnType
             }
@@ -630,7 +671,7 @@ validateStructExpression fieldValidationCallback resultConstructor structPath fi
   Validated.StructInfo {..} <- retrieveStruct _structBaseName
   let
     structFields = S.fromList $ map fst $ NE.toList _structValues
-    paramTypes = zip _structParams _structTypeParams
+    paramTypes = zip _structParams (_structTypeParams ++ repeat Nothing)
 
   -- check that all fields are "known"
   ensureNested $

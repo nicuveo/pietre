@@ -35,6 +35,7 @@ data Message
   | ErrorNotAConst Role
   | ErrorNotAStruct PartialType
   | ErrorNotAValue Role
+  | ErrorNotAnLValue Role
   | ErrorNotAFunctionRole Role
   | ErrorNotAFunctionType ConcreteType
   | ErrorAmbiguousPath Path (NonEmpty Role)
