@@ -1,18 +1,35 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Lang.Pietre.Stages.Analysis.Validation.Monad where
 
 import "this" Prelude
 
-import Data.Set                                  qualified as S
+import Control.Lens
+import Control.Monad.Catch
+import Data.HashMap.Strict.Extra                 qualified as M
+import Data.HashSet                              qualified as S
+import Data.Sequence                             qualified as Seq
 import Data.Set.Ordered                          (OSet)
+import Data.Set.Ordered                          qualified as OSet
+import Data.Tuple                                (swap)
 
-import Lang.Pietre.Representations.AST.Common
+import Lang.Pietre.Internal.Diagnosis
+import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.AST.Resolved  as Resolved
 import Lang.Pietre.Representations.AST.Validated as Validated
+import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Interface
+import Lang.Pietre.Representations.Location
+import Lang.Pietre.Representations.Name
 
 
-type ValidateT m = ReaderT ValidateInfo (StateT ValidateContext m)
+type ValidateT m = ReaderT ValidateInfo (StateT ValidateState m)
 
-runValidateT :: ValidateInfo -> ValidateT m a -> m (ValidateState, a)
+runValidateT
+  :: Monad m
+  => ValidateInfo
+  -> ValidateT m a
+  -> m (ValidateState, a)
 runValidateT info action = action
   & flip runReaderT info
   & flip runStateT initialState
@@ -28,8 +45,7 @@ runValidateT info action = action
       }
 
 data ValidateInfo = ValidateInfo
-  { _viModuleName       :: ModuleName
-  , _viDefinitions      :: DefinitionCache
+  { _viDefinitions      :: DefinitionCache
   , _viFunctions        :: FunctionCache
   , _viSymbols          :: SymbolCache
   , _viLocalDefinitions :: HashMap BaseName (WithLocation Resolved.Definition)
@@ -47,10 +63,11 @@ data ValidateState = ValidateState
 
 data FunctionInstantiationRequest = FunctionInstantiationRequest
   { _firBaseName   :: BaseName
-  , _firDefinition :: Resolved.FunctionInfo
+  , _firDefinition :: WithLocation Resolved.FunctionInfo
   , _firFunType    :: FunctionTypeInfo ConcreteFunctor
   , _firParams     :: [ConcreteType]
   }
+  deriving Show
 
 data ValidateContext = ValidateContext
   { _contextName      :: BaseName
@@ -65,8 +82,8 @@ makeLenses ''ValidateInfo
 makeLenses ''ValidateState
 makeLenses ''ValidateContext
 
-currentContext :: Lens' ValidateState ValidateContext
-currentContext = moduleContext . unsafeHead
+currentContext :: HasCallStack => Lens' ValidateState ValidateContext
+currentContext = vsContext . unsafeHead
   where
     unsafeHead f = \case
       (c:cs) -> (:cs) <$> f c
@@ -78,7 +95,7 @@ currentName = currentContext . contextName
 currentLocation :: Lens' ValidateState Location
 currentLocation = currentContext . contextLocation
 
-currentFunType :: Lens' ValidateState (Maybe ConcreteType)
+currentFunType :: Lens' ValidateState ConcreteType
 currentFunType = currentContext . contextFunType
 
 currentParams :: Lens' ValidateState (HashMap (BaseName, Identifier) ConcreteType)
@@ -88,32 +105,32 @@ currentVariables :: Lens' ValidateState (HashMap Identifier ConcreteType)
 currentVariables = currentContext . contextVariables
 
 withContext
-  :: BaseName
+  :: MonadDiagnosis m
+  => BaseName
   -> Location
-  -> ValidateT a
-  -> ValidateT a
+  -> ValidateT m a
+  -> ValidateT m a
 withContext name defLocation action = do
-  let context = AnalysisContext
+  let context = ValidateContext
         { _contextName      = name
         , _contextLocation  = defLocation
         , _contextFunType   = UnitType
         , _contextParams    = M.empty
         , _contextVariables = M.empty
         }
-  moduleContext %= (context :)
-  result <- try action
-  moduleContext %= drop 1
-  ensure result
+  bracket_
+    (vsContext %= (context :))
+    (vsContext %= drop 1)
+    action
 
+fatal :: MonadDiagnosis m => Message -> ValidateT m a
+fatal message = do
+  declName <- use currentName
+  declLocation <- use currentLocation
+  reportError $ Diagnostic (Just declName) declLocation message
 
-fatal :: MonadDiagnosis m => Message -> ValidationT m a
-fatal diagnosticMessage = do
-  baseName <- use currentName
-  location <- use currentLocation
-  reportError $ Diagnostic baseName location diagnosticMessage
-
-warn :: MonadDiagnosis m => Message -> ValidationT m a
-warn diagnosticMessage = do
-  baseName <- use currentName
-  location <- use currentLocation
-  reportWarning $ Diagnostic baseName location diagnosticMessage
+warn :: MonadDiagnosis m => Message -> ValidateT m ()
+warn message = do
+  declName <- use currentName
+  declLocation <- use currentLocation
+  reportWarning $ Diagnostic (Just declName) declLocation message

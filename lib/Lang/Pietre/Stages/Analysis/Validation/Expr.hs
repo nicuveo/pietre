@@ -2,26 +2,23 @@ module Lang.Pietre.Stages.Analysis.Validation.Expr where
 
 import "this" Prelude
 
-import Control.Lens                              hiding (mapping, op)
-import Control.Monad.Loops                       (whileJust)
-import Control.Monad.RWS.Strict
-import Control.Monad.Trans.Maybe                 (hoistMaybe)
-import Data.List qualified as L
-import Data.HashMap.Strict.Extra                 qualified as M
-import Data.HashSet                              qualified as S
-import Data.Set                                  qualified as Set
-import Data.Ordered.Set qualified as OSet
+import Control.Lens                                   hiding (cons, mapping, op,
+                                                       (...))
+import Data.HashMap.Strict.Extra                      qualified as M
+import Data.HashSet                                   qualified as S
+import Data.List.NonEmpty                             qualified as NE
 
-import Lang.Pietre.Batteries.BuiltIn
+import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Internal.ICE
-import Lang.Pietre.Representations.AST
-import Lang.Pietre.Representations.AST.Common    as Common
-import Lang.Pietre.Representations.AST.Resolved  as Resolved
-import Lang.Pietre.Representations.AST.Validated as Validated
+import Lang.Pietre.Representations.AST.Resolved       as Resolved
+import Lang.Pietre.Representations.AST.Validated      as Validated
 import Lang.Pietre.Representations.Identifier
-import Lang.Pietre.Representations.Interface
+import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
+import Lang.Pietre.Stages.Analysis.Validation.Context
+import Lang.Pietre.Stages.Analysis.Validation.Expect
 import Lang.Pietre.Stages.Analysis.Validation.Monad
+import Lang.Pietre.Stages.Analysis.Validation.Types
 
 
 validateConstExpression
@@ -31,81 +28,82 @@ validateConstExpression
 validateConstExpression WithLocation {..} = do
   currentLocation .= _location
   case _located of
-    Input.PathExpr path ->
-      validateConstPathExpr path
-    Input.CastExpr expr targetType -> do
-      validatedExpr <- try $ validateConstExpression expr
-      validatedType <- try $ validateConcreteType targetType
-      ensure <$> liftA2 validateConstCastExpression validatedExpr validatedType
-    Input.FieldAccessExpr expr field ->
+    Resolved.PathExpr path ->
+      validateConstPathExpression path
+    Resolved.CastExpr expr targetType -> do
+      attemptedExpr <- try $ validateConstExpression expr
+      validatedType <- validateConcreteType targetType
+      validatedExpr <- ensure attemptedExpr
+      validateConstCastExpression validatedExpr validatedType
+    Resolved.FieldAccessExpr expr field ->
       validateConstFieldAccessExpression expr field
-    Input.CallExpr _ _ ->
-      report unimplemented -- ErrorFunctionCallInConstExpression
-    Input.ArrayExpr _ ->
+    Resolved.CallExpr _ _ ->
+      fatal unimplemented -- ErrorFunctionCallInConstExpression
+    Resolved.ArrayExpr _ ->
       unimplemented
-    Input.IndexExpr _ _ ->
+    Resolved.IndexExpr _ _ ->
       unimplemented
-    Input.StructExpr structName fields -> do
-      validateStructConstExpression structName fields
-    Input.IntLiteralExpr i ->
-      pure $ Typed IntType $ Output.IntLiteralConstExpr i
-    Input.BoolLiteralExpr b ->
-      pure $ Typed BoolType $ Output.BoolLiteralConstExpr b
-    Input.CharLiteralExpr c ->
-      pure $ Typed CharType $ Output.CharLiteralConstExpr c
-    Input.StringLiteralExpr s ->
+    Resolved.StructExpr baseName fields -> do
+      validateStructConstExpression baseName fields
+    Resolved.IntLiteralExpr i ->
+      pure $ Typed IntType $ IntLiteralConstExpr i
+    Resolved.BoolLiteralExpr b ->
+      pure $ Typed BoolType $ BoolLiteralConstExpr b
+    Resolved.CharLiteralExpr c ->
+      pure $ Typed CharType $ CharLiteralConstExpr c
+    Resolved.StringLiteralExpr _ ->
       unimplemented
-    Input.ReferenceExpr _ ->
+    Resolved.ReferenceExpr _ ->
       fatal unimplemented -- ErrorReferenceExpressionInConstExpression
-    Input.BoolNegationExpr expr ->
+    Resolved.BoolNegationExpr expr ->
       validateBoolNegationConstExpression expr
-    Input.IntNegationExpr expr ->
+    Resolved.IntNegationExpr expr ->
       validateIntNegationConstExpression expr
-    Input.AdditionExpr e1 e2 ->
+    Resolved.AdditionExpr e1 e2 ->
       validateBinaryExprWith validateAdditionConstExpression e1 e2
-    Input.SubtractionExpr e1 e2 ->
+    Resolved.SubtractionExpr e1 e2 ->
       validateBinaryExprWith validateSubtractionConstExpression e1 e2
-    Input.MultiplicationExpr e1 e2 ->
+    Resolved.MultiplicationExpr e1 e2 ->
       validateBinaryExprWith validateMultiplicationConstExpression e1 e2
-    Input.ExponentiationExpr e1 e2 ->
+    Resolved.ExponentiationExpr e1 e2 ->
       validateBinaryExprWith validateExponentiationConstExpression e1 e2
-    Input.DivisionExpr e1 e2 ->
+    Resolved.DivisionExpr e1 e2 ->
       validateBinaryExprWith validateDivisionConstExpression e1 e2
-    Input.ModuloExpr e1 e2 ->
+    Resolved.ModuloExpr e1 e2 ->
       validateBinaryExprWith validateModuloConstExpression e1 e2
-    Input.EqualityExpr e1 e2 ->
+    Resolved.EqualityExpr e1 e2 ->
       validateBinaryExprWith validateEqualityConstExpression e1 e2
-    Input.DifferenceExpr e1 e2 ->
+    Resolved.DifferenceExpr e1 e2 ->
       validateBinaryExprWith validateDifferenceConstExpression e1 e2
-    Input.GreaterExpr e1 e2 ->
+    Resolved.GreaterExpr e1 e2 ->
       validateBinaryExprWith validateGreaterConstExpression e1 e2
-    Input.LesserExpr e1 e2 ->
+    Resolved.LesserExpr e1 e2 ->
       validateBinaryExprWith validateLesserConstExpression e1 e2
-    Input.GreaterEqExpr e1 e2 ->
+    Resolved.GreaterEqExpr e1 e2 ->
       validateBinaryExprWith validateGreaterEqConstExpression e1 e2
-    Input.LesserEqExpr e1 e2 ->
+    Resolved.LesserEqExpr e1 e2 ->
       validateBinaryExprWith validateLesserEqConstExpression e1 e2
-    Input.BoolAndExpr e1 e2 ->
+    Resolved.BoolAndExpr e1 e2 ->
       validateBinaryExprWith validateBoolAndConstExpression e1 e2
-    Input.BoolOrExpr e1 e2 ->
+    Resolved.BoolOrExpr e1 e2 ->
       validateBinaryExprWith validateBoolOrConstExpression e1 e2
-    RangeInclusiveExpr _ _ ->
+    Resolved.RangeInclusiveExpr _ _ ->
       unimplemented
-    RangeExclusiveExpr _ _ ->
+    Resolved.RangeExclusiveExpr _ _ ->
       unimplemented
-    AssignmentExpr _ _ ->
+    Resolved.AssignmentExpr _ _ ->
       fatal unimplemented -- ErrorAssignmentInConstExpresssion
-    AdditionAssignmentExpr _ _ ->
+    Resolved.AdditionAssignmentExpr _ _ ->
       fatal unimplemented -- ErrorAssignmentInConstExpresssion
-    SubtractionAssignmentExpr _ _ ->
+    Resolved.SubtractionAssignmentExpr _ _ ->
       fatal unimplemented -- ErrorAssignmentInConstExpresssion
-    MultiplicationAssignmentExpr _ _ ->
+    Resolved.MultiplicationAssignmentExpr _ _ ->
       fatal unimplemented -- ErrorAssignmentInConstExpresssion
-    DivisionAssignmentExpr _ _ ->
+    Resolved.DivisionAssignmentExpr _ _ ->
       fatal unimplemented -- ErrorAssignmentInConstExpresssion
-    ModuloAssignmentExpr _ _ ->
+    Resolved.ModuloAssignmentExpr _ _ ->
       fatal unimplemented -- ErrorAssignmentInConstExpresssion
-    ExponentiationAssignmentExpr _ _ ->
+    Resolved.ExponentiationAssignmentExpr _ _ ->
       fatal unimplemented -- ErrorAssignmentInConstExpresssion
   where
     compareExpect
@@ -122,7 +120,7 @@ validateConstExpression WithLocation {..} = do
     validateBinaryExprWith f e1 e2 = do
       lhs <- try $ validateConstExpression e1
       rhs <- try $ validateConstExpression e2
-      ensure <$> liftA2 f lhs rhs
+      join $ liftA2 f (ensure lhs) (ensure rhs)
 
     validateSubtractionConstExpression    = validateBinaryIntConstExpression (pure ... subtract)
     validateMultiplicationConstExpression = validateBinaryIntConstExpression (pure ... (*))
@@ -145,160 +143,191 @@ validateFunctionExpression
 validateFunctionExpression WithLocation {..} = do
   currentLocation .= _location
   case _located of
-    Input.PathExpr path ->
-      validateFunctionPathExpr path
-    Input.CastExpr expr targetType -> do
+    Resolved.PathExpr path ->
+      validateFunctionPathExpression path
+    Resolved.CastExpr expr targetType -> do
       validatedExpr <- try $ validateFunctionExpression expr
       validatedType <- try $ validateConcreteType targetType
-      ensure <$> liftA2 validateFunctionCastExpression validatedExpr validatedType
-    Input.FieldAccessExpr expr field ->
+      join $ liftA2 validateFunctionCastExpression (ensure validatedExpr) (ensure validatedType)
+    Resolved.FieldAccessExpr expr field ->
       validateFunctionFieldAccessExpression expr field
-    Input.CallExpr functionPath functionArgs ->
+    Resolved.CallExpr functionPath functionArgs ->
       validateFunctionCallExpression functionPath functionArgs
-    Input.ArrayExpr _ ->
+    Resolved.ArrayExpr _ ->
       unimplemented
-    Input.IndexExpr _ _ ->
+    Resolved.IndexExpr _ _ ->
       unimplemented
-    Input.StructExpr structName fields -> do
-      validateStructFunctionExpression structName fields
-    Input.IntLiteralExpr i ->
-      pure $ Typed IntType $ Output.IntLiteralExpr i
-    Input.BoolLiteralExpr b ->
-      pure $ Typed BoolType $ Output.BoolLiteralExpr b
-    Input.CharLiteralExpr c ->
-      pure $ Typed CharType $ Output.CharLiteralExpr c
-    Input.StringLiteralExpr s ->
+    Resolved.StructExpr baseName fields -> do
+      validateStructFunctionExpression baseName fields
+    Resolved.IntLiteralExpr i ->
+      pure $ Typed IntType $ Validated.IntLiteralExpr i
+    Resolved.BoolLiteralExpr b ->
+      pure $ Typed BoolType $ Validated.BoolLiteralExpr b
+    Resolved.CharLiteralExpr c ->
+      pure $ Typed CharType $ Validated.CharLiteralExpr c
+    Resolved.StringLiteralExpr _ ->
       unimplemented
-    Input.ReferenceExpr expr ->
-      report unimplemented -- ErrorReferenceExpressionOutsideOfFunctionCall
-    Input.BoolNegationExpr expr -> do
+    Resolved.ReferenceExpr _ ->
+      fatal unimplemented -- ErrorReferenceExpressionOutsideOfFunctionCall
+    Resolved.BoolNegationExpr expr -> do
       validateBoolNegationFunctionExpression expr
-    Input.IntNegationExpr expr -> do
+    Resolved.IntNegationExpr expr -> do
       validateIntNegationFunctionExpression expr
-    Input.AdditionExpr e1 e2 ->
+    Resolved.AdditionExpr e1 e2 ->
       validateBinaryExprWith validateAdditionFunctionExpression e1 e2
-    Input.SubtractionExpr e1 e2 ->
+    Resolved.SubtractionExpr e1 e2 ->
       validateBinaryExprWith validateSubtractionFunctionExpression e1 e2
-    Input.MultiplicationExpr e1 e2 ->
+    Resolved.MultiplicationExpr e1 e2 ->
       validateBinaryExprWith validateMultiplicationFunctionExpression e1 e2
-    Input.ExponentiationExpr e1 e2 ->
+    Resolved.ExponentiationExpr e1 e2 ->
       validateBinaryExprWith validateExponentiationFunctionExpression e1 e2
-    Input.DivisionExpr e1 e2 ->
+    Resolved.DivisionExpr e1 e2 ->
       validateBinaryExprWith validateDivisionFunctionExpression e1 e2
-    Input.ModuloExpr e1 e2 ->
+    Resolved.ModuloExpr e1 e2 ->
       validateBinaryExprWith validateModuloFunctionExpression e1 e2
-    Input.EqualityExpr e1 e2 ->
+    Resolved.EqualityExpr e1 e2 ->
       validateBinaryExprWith validateEqualityFunctionExpression e1 e2
-    Input.DifferenceExpr e1 e2 ->
+    Resolved.DifferenceExpr e1 e2 ->
       validateBinaryExprWith validateDifferenceFunctionExpression e1 e2
-    Input.GreaterExpr e1 e2 ->
+    Resolved.GreaterExpr e1 e2 ->
       validateBinaryExprWith validateGreaterFunctionExpression e1 e2
-    Input.LesserExpr e1 e2 ->
+    Resolved.LesserExpr e1 e2 ->
       validateBinaryExprWith validateLesserFunctionExpression e1 e2
-    Input.GreaterEqExpr e1 e2 ->
+    Resolved.GreaterEqExpr e1 e2 ->
       validateBinaryExprWith validateGreaterEqFunctionExpression e1 e2
-    Input.LesserEqExpr e1 e2 ->
+    Resolved.LesserEqExpr e1 e2 ->
       validateBinaryExprWith validateLesserEqFunctionExpression e1 e2
-    Input.BoolAndExpr e1 e2 ->
+    Resolved.BoolAndExpr e1 e2 ->
       validateBinaryExprWith validateBoolAndFunctionExpression e1 e2
-    Input.BoolOrExpr e1 e2 ->
+    Resolved.BoolOrExpr e1 e2 ->
       validateBinaryExprWith validateBoolOrFunctionExpression e1 e2
-    RangeInclusiveExpr _ _ ->
+    Resolved.RangeInclusiveExpr _ _ ->
       unimplemented
-    RangeExclusiveExpr _ _ ->
+    Resolved.RangeExclusiveExpr _ _ ->
       unimplemented
-    AssignmentExpr e1 e2 ->
+    Resolved.AssignmentExpr e1 e2 ->
       validateAssignmentExpression Validated.AssignmentExpr (const pass) e1 e2
-    AdditionAssignmentExpr e1 e2 ->
+    Resolved.AdditionAssignmentExpr e1 e2 ->
       validateAssignmentExpression Validated.AdditionAssignmentExpr (expectType IntType) e1 e2
-    SubtractionAssignmentExpr e1 e2 ->
+    Resolved.SubtractionAssignmentExpr e1 e2 ->
       validateAssignmentExpression Validated.SubtractionAssignmentExpr (expectType IntType) e1 e2
-    MultiplicationAssignmentExpr e1 e2 ->
+    Resolved.MultiplicationAssignmentExpr e1 e2 ->
       validateAssignmentExpression Validated.MultiplicationAssignmentExpr (expectType IntType) e1 e2
-    DivisionAssignmentExpr e1 e2 ->
+    Resolved.DivisionAssignmentExpr e1 e2 ->
       validateAssignmentExpression Validated.DivisionAssignmentExpr (expectType IntType) e1 e2
-    ModuloAssignmentExpr e1 e2 ->
+    Resolved.ModuloAssignmentExpr e1 e2 ->
       validateAssignmentExpression Validated.ModuloAssignmentExpr (expectType IntType) e1 e2
-    ExponentiationAssignmentExpr e1 e2 ->
+    Resolved.ExponentiationAssignmentExpr e1 e2 ->
       validateAssignmentExpression Validated.ExponentiationAssignmentExpr (expectType IntType) e1 e2
   where
     validateBinaryExprWith f e1 e2 = do
       lhs <- try $ validateFunctionExpression e1
       rhs <- try $ validateFunctionExpression e2
-      ensure <$> liftA2 f lhs rhs
+      join $ liftA2 f (ensure lhs) (ensure rhs)
 
-    validateSubtractionFunctionExpression    = validateBinaryIntFunctionExpression (pure ... subtract)
-    validateMultiplicationFunctionExpression = validateBinaryIntFunctionExpression (pure ... (*))
-    validateExponentiationFunctionExpression = validateBinaryIntFunctionExpression safeExp
-    validateDivisionFunctionExpression       = validateBinaryIntFunctionExpression (fmap fst ... safeDivMod)
-    validateModuloFunctionExpression         = validateBinaryIntFunctionExpression (fmap snd ... safeDivMod)
-    validateBoolAndFunctionExpression        = validateBinaryBoolFunctionExpression (&&)
-    validateBoolOrFunctionExpression         = validateBinaryBoolFunctionExpression (||)
-    validateEqualityFunctionExpression       = validateBinaryCompareFunctionExpression (==)
-    validateDifferenceFunctionExpression     = validateBinaryCompareFunctionExpression (/=)
-    validateGreaterFunctionExpression        = validateBinaryCompareFunctionExpression (>)
-    validateLesserFunctionExpression         = validateBinaryCompareFunctionExpression (<)
-    validateGreaterEqFunctionExpression      = validateBinaryCompareFunctionExpression (>=)
-    validateLesserEqFunctionExpression       = validateBinaryCompareFunctionExpression (<=)
+    validateSubtractionFunctionExpression    = validateBinaryIntFunctionExpression (pure ... subtract) Validated.SubtractionExpr
+    validateMultiplicationFunctionExpression = validateBinaryIntFunctionExpression (pure ... (*)) Validated.MultiplicationExpr
+    validateExponentiationFunctionExpression = validateBinaryIntFunctionExpression safeExp Validated.ExponentiationExpr
+    validateDivisionFunctionExpression       = validateBinaryIntFunctionExpression (fmap fst ... safeDivMod) Validated.DivisionExpr
+    validateModuloFunctionExpression         = validateBinaryIntFunctionExpression (fmap snd ... safeDivMod) Validated.ModuloExpr
+    validateBoolAndFunctionExpression        = validateBinaryBoolFunctionExpression (&&) Validated.BoolAndExpr
+    validateBoolOrFunctionExpression         = validateBinaryBoolFunctionExpression (||) Validated.BoolOrExpr
+    validateEqualityFunctionExpression       = validateBinaryCompareFunctionExpression (==) Validated.EqualityExpr
+    validateDifferenceFunctionExpression     = validateBinaryCompareFunctionExpression (/=) Validated.DifferenceExpr
+    validateGreaterFunctionExpression        = validateBinaryCompareFunctionExpression (>) Validated.GreaterExpr
+    validateLesserFunctionExpression         = validateBinaryCompareFunctionExpression (<) Validated.LesserExpr
+    validateGreaterEqFunctionExpression      = validateBinaryCompareFunctionExpression (>=) Validated.GreaterEqExpr
+    validateLesserEqFunctionExpression       = validateBinaryCompareFunctionExpression (<=) Validated.LesserEqExpr
 
-
-validateRangeExpression
+validateLValueExpression
   :: MonadDiagnosis m
   => WithLocation Resolved.Expression
-  -> ValidateT m (Typed RangeExpression)
+  -> ValidateT m (Typed Validated.LValueExpression)
+validateLValueExpression WithLocation {..} = do
+  currentLocation .= _location
+  case _located of
+    Resolved.PathExpr path ->
+      unimplemented path
+    Resolved.FieldAccessExpr expr field ->
+      unimplemented expr field
+    Resolved.IndexExpr _ _ ->
+      unimplemented
+    incorrectExpression ->
+      fatal $ ErrorRValueAssignment incorrectExpression
+
+validateRangeExpression
+  :: WithLocation Resolved.Expression
+  -> ValidateT m (ConcreteType, RangeExpression)
 validateRangeExpression _ = unimplemented
 
 validateConstPathExpression
   :: MonadDiagnosis m
-  => PathInfo Resolved
+  => Resolved.PathInfo
   -> ValidateT m (Typed ConstExpression)
 validateConstPathExpression PathInfo {..} = do
-  case _pathName of
+  case _pathBase of
     Constant name -> validateOtherConstValue name
-    role          -> report $ ErrorNotAConst role
+    role          -> fatal $ ErrorNotAConst role
   where
-    validateOtherConstValue name = do
-      validateParamsCount [] _pathParams
-      retrieveConstant name
+    validateOtherConstValue baseName = do
+      validateParamsCount baseName [] _pathParams
+      retrieveConstant baseName
 
 validateFunctionPathExpression
   :: MonadDiagnosis m
-  => PathInfo Resolved
-  -> ValidateT m (Typed Expression)
+  => Resolved.PathInfo
+  -> ValidateT m (Typed Validated.Expression)
 validateFunctionPathExpression PathInfo {..} = do
-  case _pathName of
-    BuiltinFunction baseName         -> unimplemented
+  case _pathBase of
+    BuiltinFunction _baseName        -> unimplemented
     Function baseName                -> validateFunctionPath baseName
     Constant baseName                -> validateConstPath baseName
     FunctionArgument argName argType -> validateArgPath argName argType
     LetVariable varName              -> validateVarPath varName
+    role                             -> fatal $ ErrorNotAValue role
   where
     validateConstPath baseName = do
-      validateParamsCount [] _pathParams
-      fromConstExpression <$> retrieveConstant name
+      validateParamsCount baseName [] _pathParams
+      fmap2 fromConstExpression $ retrieveConstant baseName
 
     validateVarPath varName = do
       varType <- retrieveVariableType varName
       pure $ Typed varType $ LocalVariableExpr varName
 
     validateArgPath argName = \case
-      ByReference path -> do
+      Resolved.ByReference path -> do
         argType <- validateConcreteType path
         pure $ Typed argType $ ReferenceArgumentExpr argName
-      ByValue path -> do
+      Resolved.ByValue path -> do
         argType <- validateConcreteType path
         pure $ Typed argType $ LocalVariableExpr argName
+
+    reifyConcreteType
+      :: HashMap (BaseName, Identifier) ConcreteType
+      -> ParameterizedType
+      -> ConcreteType
+    reifyConcreteType = reifyType @ConcreteFunctor
+
+    reifyArg
+      :: HashMap (BaseName, Identifier) ConcreteType
+      -> Validated.FunctionArgType ParameterizedFunctor
+      -> Validated.FunctionArgType ConcreteFunctor
+    reifyArg mapping = \case
+          Validated.ByReference t ->
+            Validated.ByReference $ reifyConcreteType mapping t
+          Validated.ByValue t ->
+            Validated.ByValue $ reifyConcreteType mapping t
 
     validateFunctionPath baseName = do
       FunctionTypeInfo {..} <- retrieveFunctionType baseName
       validatedParams <- ensureNested $
         traverse (tryNested . validateConcreteType) _pathParams
-      validateParamsCount _funParams validatedParams
+      validateParamsCount baseName _funParams validatedParams
       let
-        paramMapping = M.fromList $ zip _funParams validatedParams
-        validatedArguments = reifyType paramMapping . snd <$> _funArgs
-        validatedReturnType = reifyType paramMapping _funReturn
-        validatedFunctionInfo = FunctionTypeInfo _funParams validatedArguments validatedReturnType
+        paramMapping = M.fromList $ zip (map (baseName, ) _funParams) validatedParams
+        validatedArguments = fmap2 (reifyArg paramMapping) _funArgs
+        validatedReturnType = reifyConcreteType paramMapping _funReturn
+        validatedFunctionInfo = FunctionTypeInfo [] validatedArguments validatedReturnType
         name = Name baseName $ map assertName validatedParams
       unless (null _funParams) do
         functionDefinition <- retrieveFunctionDefinition baseName
@@ -309,12 +338,12 @@ validateFunctionPathExpression PathInfo {..} = do
               , _firParams = validatedParams
               }
         vsInstanceRequests %= (:|> request)
-      pure $ Typed (FunctionType validatedFunctionInfo) $ FunctionNameExpr name validatedFunctionInfo
+      pure $ Typed (Validated.FunctionType validatedFunctionInfo) $ FunctionNameExpr name validatedFunctionInfo
 
 validateConstCastExpression
-  :: MonadDiagnosis m
+  :: (HasCallStack, MonadDiagnosis m)
   => Typed ConstExpression
-  -> Type
+  -> ConcreteType
   -> ValidateT m (Typed ConstExpression)
 validateConstCastExpression validatedExpr targetType =
   validateCastExpression validatedExpr targetType intResult charResult boolResult enumResult
@@ -333,43 +362,43 @@ validateConstCastExpression validatedExpr targetType =
       pure $ BoolLiteralConstExpr $ intValue /= 0
     enumResult name values =
       if intValue < 0 || intValue >= length values
-      then report $ ErrorEnumOutOfBounds name intValue
+      then fatal $ ErrorEnumOutOfBounds name intValue
       else pure $ IntLiteralConstExpr intValue
 
 validateFunctionCastExpression
   :: MonadDiagnosis m
-  => Typed Expression
-  -> Type
-  -> ValidateT m (Typed Expression)
+  => Typed Validated.Expression
+  -> ConcreteType
+  -> ValidateT m (Typed Validated.Expression)
 validateFunctionCastExpression validatedExpr targetType =
   validateCastExpression validatedExpr targetType intResult charResult boolResult enumResult
   where
     resultWith f =
       case _typedValue validatedExpr of
-        BoolLiteralExpr b -> f $ fromEnum b
-        IntLiteralExpr  i -> f $ i
-        CharLiteralExpr c -> f $ ord c
-        _                 -> pure $ CastExpr validatedExpr targetType
+        Validated.BoolLiteralExpr b -> f $ fromEnum b
+        Validated.IntLiteralExpr  i -> f $ i
+        Validated.CharLiteralExpr c -> f $ ord c
+        _                          -> pure $ Validated.CastExpr validatedExpr targetType
     intResult =
-      resultWith (pure . IntLiteralExpr)
+      resultWith (pure . Validated.IntLiteralExpr)
     charResult =
-      resultWith (pure . CharLiteralExpr . chr)
+      resultWith (pure . Validated.CharLiteralExpr . chr)
     boolResult =
-      resultWith (pure . BoolLiteralExpr . (/= 0))
+      resultWith (pure . Validated.BoolLiteralExpr . (/= 0))
     enumResult name values =
       resultWith \v ->
         if v < 0 || v >= length values
-        then report $ ErrorEnumOutOfBounds name intValue
-        else pure $ IntLiteralConstExpr intValue
+        then fatal $ ErrorEnumOutOfBounds name v
+        else pure $ Validated.IntLiteralExpr v
 
 validateCastExpression
   :: MonadDiagnosis m
   => Typed expr
-  -> Type
-  -> ValidateT m (Typed expr)
-  -> ValidateT m (Typed expr)
-  -> ValidateT m (Typed expr)
-  -> (Name -> NonEmpty (Identifier, Name) -> ValidateT m (Typed expr))
+  -> ConcreteType
+  -> ValidateT m expr
+  -> ValidateT m expr
+  -> ValidateT m expr
+  -> (BaseName -> [Identifier] -> ValidateT m expr)
   -> ValidateT m (Typed expr)
 validateCastExpression validatedExpr targetType intResult charResult boolResult enumResult = do
   innerValue <-
@@ -388,21 +417,19 @@ validateCastExpression validatedExpr targetType intResult charResult boolResult 
         intResult
       (CharType, CharType) ->
         charResult
-      (CharType, CharType) ->
-        charResult
       (EnumType _ _, IntType) ->
         intResult
-      (IntType, EnumType enumName enumValues) -> _
-        enumResult name enumValues
-      (EnumType _ _) (EnumType enumName enumValues) ->
-        enumResult name enumValues
+      (IntType, EnumType baseName values) ->
+        enumResult baseName values
+      (EnumType _ _, EnumType baseName values) ->
+        enumResult baseName values
       _ ->
         fatal $ ErrorWrongCast (_typeInfo validatedExpr) targetType
   pure $ Typed targetType innerValue
 
 validateConstFieldAccessExpression
   :: MonadDiagnosis m
-  => Resolved.Expression
+  => WithLocation Resolved.Expression
   -> Identifier
   -> ValidateT m (Typed ConstExpression)
 validateConstFieldAccessExpression expr fieldName = do
@@ -411,120 +438,167 @@ validateConstFieldAccessExpression expr fieldName = do
     StructConstExpr _ fields -> do
       (_, fieldValue) <-
         find ((fieldName ==) . fst) fields `onNothing`
-        report (ErrorFieldAccessFieldNotFound (_typeInfo validatedExpr) fieldName)
+        fatal (ErrorFieldAccessFieldNotFound (_typeInfo validatedExpr) fieldName)
       pure fieldValue
-    _ -> report $ ErrorFieldAccessNotAStruct (_typeInfo validatedExpr)
+    _ -> fatal $ ErrorFieldAccessNotAStruct (_typeInfo validatedExpr)
 
 validateFunctionFieldAccessExpression
   :: MonadDiagnosis m
-  => Resolved.Expression
+  => WithLocation Resolved.Expression
   -> Identifier
-  -> ValidateT m (Typed ConstExpression)
+  -> ValidateT m (Typed Validated.Expression)
 validateFunctionFieldAccessExpression expr fieldName = do
   validatedExpr <- validateFunctionExpression expr
   case _typeInfo validatedExpr of
     StructType StructTypeInfo {..} -> do
-      StructInfo {..} <- retrieveStruct _structBaseName
+      Validated.StructInfo {..} <- retrieveStruct _structBaseName
       let
-        paramMapping = M.fromList $ zip _structParams _structTypeParams
-        validatedFields = map (reifyType paramMapping) _structValues
+        paramMapping = M.fromList $ zip (map (_structBaseName,) _structParams) _structTypeParams
+        validatedFields = fmap2 (reifyType @ConcreteFunctor paramMapping) _structValues
       (_, fieldType) <-
         find ((fieldName ==) . fst) validatedFields `onNothing`
-        report (ErrorFieldAccessFieldNotFound (_typeInfo validatedExpr) fieldName)
-      pure $ FieldAccessExpression (StructInfo _structParams validatedFields) fieldType fieldName
+        fatal (ErrorFieldAccessFieldNotFound (_typeInfo validatedExpr) fieldName)
+      pure $ Typed fieldType $ Validated.FieldAccessExpr (Validated.StructInfo _structParams validatedFields) validatedExpr fieldName
     wrongType ->
-      report $ ErrorNotAStruct wrongType
+      fatal $ ErrorNotAStruct $ concreteToPartial wrongType
 
 validateFunctionCallExpression
-  :: MonadDiagnosis m
-  => PathInfo Resolved
-  -> [WithLocation (Resolved.Expression)]
-  -> ValidateT m (Typed Expression)
-validateFunctionCallExpression PathInfo {..} functionArgs = do
-  (functionReference, funcTypeInfo@FunctionTypeInfo {..}) <- validateCallableObject
+  :: forall m
+   . MonadDiagnosis m
+  => Resolved.PathInfo
+  -> [WithLocation Resolved.Expression]
+  -> ValidateT m (Typed Validated.Expression)
+validateFunctionCallExpression PathInfo {..} functionArgs =
+  case _pathBase of
+    BuiltinFunction _baseName ->
+      unimplemented
+    LetVariable identifier ->
+      validateFunctionCallLetExpression identifier
+    Function functionName ->
+      validateFunctionCallFunctionName functionName
+    role ->
+      fatal $ ErrorNotAFunctionRole role
 
-  -- validate number of params
-  validateParamsCountWith (<=) _funParams _pathParams
-  partialParams <- ensureNested $ traverse (tryNested . validatePartialType) _pathParams
-  let namedPartialParams = zip _funParams partialParams
+  where
+    validateFunctionCallLetExpression identifier = do
+      functionTypeInfo@FunctionTypeInfo {..} <- retrieveVariableType identifier >>= \case
+        Validated.FunctionType info -> pure info
+        otherType -> fatal $ ErrorNotAFunctionType otherType
 
-  -- validate number of arguments
-  let expected = length _funArgs
-      actual   = length functionArgs
-  when (expected /= actual) $
-    fatal $ ErrorFunctionCallWrongNumberOfArguments _pathBase expected actual
+      -- TODO: document / fix this
+      declarationName <- use currentName
+      let fakeName = BaseName
+            (_nameModule declarationName)
+            (_nameIdent declarationName <> "." <> identifier)
 
-  -- validate arguments
-  validatedFunctionArgs <- ensureNested $ zipWithM
-    (tryNested ... validateFunctionCallArgument)
-    _funArgs
-    functionArgs
+      -- validate number of params
+      validateParamsCount fakeName [] _pathParams
 
-  -- collect parameter maps
-  parameterMaps <- ensureNested $ zipWithM
-    (tryNested ... buildTypeParameterMap)
-    (functionArgInnerType . snd <$> _funArgs)
-    (_typeInfo <$> validatedFunctionArgs)
-  let parametersMap = M.unionsWith (<>) $ fmap3 pure parameterMaps
+      -- validate arguments
+      validatedArgs <-
+        ensureNested $ for (zip _funArgs functionArgs) \((argName, argType), argExpression) ->
+          tryNested do
+            (actualType, validatedArg) <- validateFunctionCallArgument (argName, argType) argExpression
+            expectType actualType $ _typeInfo validatedArg
+            pure validatedArg
 
-  -- check unicity of type parameters and build parameter map
-  validatedTypeList <- ensureNested $
-    traverse (tryNested . validateParam parametersMap) _funParams
-  let functionTypeParams = snd <$> validatedTypeList
-      validatedReturnType = reifyType (M.fromList validatedTypeList) _funReturn
+      pure $ Typed _funReturn $ VariableCallExpr identifier functionTypeInfo validatedArgs
 
-  case functionReference of
-    Left varIdentifier ->
-      pure $ Typed validatedReturnType $ VariableCallExpr varIdentifier validatedFunctionArgs
-    Right functionBaseName -> do
+    validateFunctionCallFunctionName functionBaseName = do
+      FunctionTypeInfo {..} <- retrieveFunctionType functionBaseName
+
+      -- validate number of params
+      validateParamsCountWith (<=) functionBaseName _funParams _pathParams
+      partialParams <- ensureNested $ traverse (tryNested . validatePartialType) _pathParams
+      let namedPartialParams = zip _funParams partialParams
+
+      -- validate arguments
+      validatedFunctionArgs <- ensureNested $ fmap2 snd $ zipWithM
+        (tryNested ... validateFunctionCallArgument)
+        _funArgs
+        functionArgs
+
+      -- collect parameter maps
+      parameterMaps <- ensureNested $ zipWithM
+        (tryNested ... buildTypeParameterMap)
+        (functionArgInnerType . snd <$> _funArgs)
+        (_typeInfo <$> validatedFunctionArgs)
+      let parametersMap = unionsWith (<>) $ fmap2 pure $ map M.fromList parameterMaps
+
+      -- check unicity of type parameters and build parameter map
+      validatedTypeList <- ensureNested $
+        traverse (tryNested . validateParam parametersMap functionBaseName) namedPartialParams
+      let
+        finalMapping = M.fromList validatedTypeList
+        functionTypeParams = snd <$> validatedTypeList
+        validatedReturnType = reifyType @ConcreteFunctor finalMapping _funReturn
+
+      -- register function for instantiation
+      let concreteFunctionTypeInfo = FunctionTypeInfo
+            { _funParams = []
+            , _funArgs = fmap2 (reifyArgType finalMapping) _funArgs
+            , _funReturn = validatedReturnType
+            }
       unless (null _funParams) do
         functionDefinition <- retrieveFunctionDefinition functionBaseName
         let request = FunctionInstantiationRequest
               { _firBaseName = functionBaseName
               , _firDefinition = functionDefinition
-              , _firFunType = funcTypeInfo
+              , _firFunType = concreteFunctionTypeInfo
               , _firParams = functionTypeParams
               }
         vsInstanceRequests %= (:|> request)
-      let functionName = Name functionBaseName $ map assertName functionTypeParams
-      pure $ Typed validatedReturnType $ FunctionCallExpr functionName validatedFunctionArgs
 
-  where
+      let functionName = Name functionBaseName $ map assertName functionTypeParams
+      pure $ Typed validatedReturnType $ FunctionCallExpr functionName concreteFunctionTypeInfo validatedFunctionArgs
+
+    reifyArgType mapping = \case
+      Validated.ByReference t ->
+        Validated.ByReference $ reifyType @ConcreteFunctor mapping t
+      Validated.ByValue t ->
+        Validated.ByValue $ reifyType @ConcreteFunctor mapping t
+
+    validateFunctionCallArgument
+      :: (Identifier, Validated.FunctionArgType f)
+      -> WithLocation Resolved.Expression
+      -> ValidateT m (TypeTree f, Typed Validated.Expression)
     validateFunctionCallArgument (argName, argType) argExpression =
       case argType of
-        ByValue _ -> validateFunctionExpression argExpression
-        ByReference _ -> case argExpression of
-          ReferenceExpr subExpr -> validateFunctionExpression subExpr
-          _ -> fatal $ ErrorFunctionCallArgExpectingReference argName
+        Validated.ByValue actualType ->
+          (actualType,) <$> validateFunctionExpression argExpression
+        Validated.ByReference actualType ->
+          case _located argExpression of
+            ReferenceExpr _subExpr -> do
+              -- TODO: check it's a local variable
+              pure (actualType, undefined)
+            _ ->
+              fatal $ ErrorFunctionCallArgExpectingReference argName
 
-    validateCallableObject = case _pathBase of
-      BuiltinFunction functionName ->
-        unimplemented
-      Function functionName -> do
-        (Right functionName,) <$> retrieveFunctionType functionName
-      LetVariable identifier _ ->
-        retrieveVariableType identifier >>= \case
-          FunctionType info -> pure (Left identifier, info)
-          otherType -> fatal $ ErrorNotAFunction otherType
-      -- FunctionArgument Identifier (Common.FunctionArgType Resolved)
-      _ -> fatal $ ErrorNotAFunction function
-
-    validateParam typeMap (paramName, partialType) = do
-      (paramName, ) <$>
-        case fold $ M.lookup paramName typeMap of
+    validateParam
+      :: HashMap (BaseName, Identifier) [ConcreteType]
+      -> BaseName
+      -> (Identifier, PartialType)
+      -> ValidateT m ((BaseName, Identifier), ConcreteType)
+    validateParam typeMap baseName (paramName, partialType) = do
+      ((baseName, paramName), ) <$>
+        case fold $ M.lookup (baseName, paramName) typeMap of
           [] ->
-            concretizeType partialType `onNothingM`
-                fatal (ErrorStructAmbiguousType baseName paramName)
+            concretizeType partialType `onNothing`
+              fatal (ErrorFunctionAmbiguousType baseName paramName)
           possibleTypes -> do
             unless (typesAllMatch possibleTypes) $
-              report $ ErrorStructIncompatibleTypes baseName paramName possibleTypes
+              fatal $ ErrorFunctionIncompatibleTypes baseName paramName possibleTypes
             let concreteType = findFirstNonVoid possibleTypes
             validateTypePattern partialType concreteType
             pure concreteType
 
+    findFirstNonVoid = fromMaybe VoidType . find \case
+      VoidType -> False
+      _ -> True
+
 validateStructConstExpression
   :: MonadDiagnosis m
-  => PathInfo Resolved
+  => Resolved.PathInfo
   -> NonEmpty (Identifier, WithLocation Resolved.Expression)
   -> ValidateT m (Typed ConstExpression)
 validateStructConstExpression =
@@ -532,73 +606,89 @@ validateStructConstExpression =
 
 validateStructFunctionExpression
   :: MonadDiagnosis m
-  => PathInfo Resolved
-  -> NonEmpty (Identifier, WithLocation (Expression Resolved))
-  -> ValidateT m (Typed Expression)
-validateStructFunctionExpression structPath fields =
-  validateStructExpression validateFunctionExpression StructExpr
+  => Resolved.PathInfo
+  -> NonEmpty (Identifier, WithLocation Resolved.Expression)
+  -> ValidateT m (Typed Validated.Expression)
+validateStructFunctionExpression =
+  validateStructExpression validateFunctionExpression Validated.StructExpr
 
 validateStructExpression
-  :: MonadDiagnosis m
-  => (WithLocation Resolved.Expression -> ValidateT m (Typed ConstExpression))
-  -> ([Typed e] -> Validated.StructInfo -> Typed e)
-  -> PathInfo Resolved
-  -> NonEmpty (Identifier, WithLocation (Expression Resolved))
+  :: forall e m
+   . MonadDiagnosis m
+  => (WithLocation Resolved.Expression -> ValidateT m (Typed e))
+  -> (    Validated.StructInfo ConcreteFunctor
+       -> (NonEmpty (Identifier, Typed e))
+       -> e
+     )
+  -> Resolved.PathInfo
+  -> NonEmpty (Identifier, WithLocation Resolved.Expression)
   -> ValidateT m (Typed e)
 validateStructExpression fieldValidationCallback resultConstructor structPath fields = do
-  attemptedType <- try $ validateStructType
+  attemptedType <- try validateStructType
   validatedFields <- ensureNested $ traverse2 (tryNested . fieldValidationCallback) fields
   StructTypeInfo {..} <- ensure attemptedType
-  structInfo@StructInfo {..} <- retrieveStruct _structBaseName
+  Validated.StructInfo {..} <- retrieveStruct _structBaseName
   let
     structFields = S.fromList $ map fst $ NE.toList _structValues
-    paramTypes = M.fromList $ zip _structParams _structTypeParams
+    paramTypes = zip _structParams _structTypeParams
 
   -- check that all fields are "known"
   ensureNested $
-    for fields \(identifier, _) -> do
-      unless (S.member identifier structFields) $
-        tryNested $ report $ ErrorStructUnknownField _structBaseName identifier
+    for fields \(identifier, _) ->
+      tryNested $
+        unless (S.member identifier structFields) $
+          fatal $ ErrorStructUnknownField _structBaseName identifier
 
   -- check unicity of fields and collect parameter maps
   let fieldsMap = M.fromListWith (<>) $ NE.toList $ fmap2 pure validatedFields
   parameterMaps <- ensureNested $
     traverse (tryNested . validateField _structBaseName fieldsMap) _structValues
-  let parameterMap = unionsWith (<>) parameterMaps
+  let parametersMap = unionsWith (<>) parameterMaps
 
   -- check unicity of type parameters and build parameter map
-  structTypeParams <- ensureNested $
+  validatedTypeParams <- ensureNested $
     traverse (tryNested . validateParam _structBaseName parametersMap) paramTypes
 
-  let validatedStructType = StructTypeInfo
-        { _structBaseName   = _structBaseName
-        , _structTypeParams = structTypeParams
-        }
-  pure $ Typed (StructType validatedStructType) $ resultContructor structInfo validatedFields
+  let
+    finalMapping = M.fromList $ zip ((_structBaseName,) <$> _structParams) validatedTypeParams
+    validatedStructType = StructTypeInfo
+      { _structBaseName   = _structBaseName
+      , _structTypeParams = validatedTypeParams
+      }
+    validatedStructInfo = Validated.StructInfo
+      { _structParams
+      , _structValues = fmap2 (reifyType @ConcreteFunctor finalMapping) _structValues
+      }
+  pure $ Typed (StructType validatedStructType) $ resultConstructor validatedStructInfo validatedFields
   where
     validateStructType =
-      validatePartialType structPath >>= \case
+      validateNonEmptyPartialType structPath >>= \case
         StructType info -> pure info
-        otherType -> report $ NotAStruct otherType
+        otherType -> fatal $ ErrorNotAStruct (Just otherType)
 
     validateField baseName fieldsMap (fieldName, parameterizedType) = do
       case fold $ M.lookup fieldName fieldsMap of
         [] ->
-          report $ ErrorStructMissingField baseName fieldName
+          fatal $ ErrorStructMissingField baseName fieldName
         [expr] -> do
-          mappings <- buildTypeParameterMap fieldType (_typeInfo expr)
-          pure $ M.fromListWith (<>) $ fmap2 pure
+          mappings <- buildTypeParameterMap parameterizedType (_typeInfo expr)
+          pure $ M.fromListWith (<>) $ fmap2 pure mappings
         _ -> do
-          report $ ErrorStructDuplicatedField baseName fieldName
+          fatal $ ErrorStructDuplicatedField baseName fieldName
 
+    validateParam
+      :: BaseName
+      -> HashMap (BaseName, Identifier) [ConcreteType]
+      -> (Identifier, PartialType)
+      -> ValidateT m ConcreteType
     validateParam baseName typeMap (paramName, partialType) = do
-      case fold $ M.lookup paramName typeMap of
-        [] ->
-          concretizeType partialType `onNothingM`
-              fatal (ErrorStructAmbiguousType baseName paramName)
+      case fold $ M.lookup (baseName, paramName) typeMap of
+        [] -> do
+          concretizeType partialType `onNothing`
+            fatal (ErrorStructAmbiguousType baseName paramName)
         possibleTypes -> do
           unless (typesAllMatch possibleTypes) $
-            report $ ErrorStructIncompatibleTypes baseName paramName possibleTypes
+            fatal $ ErrorStructIncompatibleTypes baseName paramName possibleTypes
           let concreteType = findFirstNonVoid possibleTypes
           validateTypePattern partialType concreteType
           pure concreteType
@@ -613,15 +703,37 @@ validateBoolNegationConstExpression
   -> ValidateT m (Typed ConstExpression)
 validateBoolNegationConstExpression expr = do
   value <- expectConstBool =<< validateConstExpression expr
-  pure $ Typed BoolType (not value)
+  pure $ Typed BoolType $ BoolLiteralConstExpr (not value)
+
+validateBoolNegationFunctionExpression
+  :: MonadDiagnosis m
+  => WithLocation Resolved.Expression
+  -> ValidateT m (Typed Validated.Expression)
+validateBoolNegationFunctionExpression expr = do
+  validatedExpr <- validateFunctionExpression expr
+  expectType BoolType $ _typeInfo validatedExpr
+  pure $ Typed BoolType $ case _typedValue validatedExpr of
+    Validated.BoolLiteralExpr b -> Validated.BoolLiteralExpr (not b)
+    _                           -> Validated.BoolNegationExpr validatedExpr
 
 validateIntNegationConstExpression
   :: MonadDiagnosis m
   => WithLocation Resolved.Expression
   -> ValidateT m (Typed ConstExpression)
 validateIntNegationConstExpression expr = do
-  value <- expectConstBool =<< validateConstExpression expr
-  pure $ Typed IntType (-value)
+  value <- expectConstInt =<< validateConstExpression expr
+  pure $ Typed IntType $ IntLiteralConstExpr (-value)
+
+validateIntNegationFunctionExpression
+  :: MonadDiagnosis m
+  => WithLocation Resolved.Expression
+  -> ValidateT m (Typed Validated.Expression)
+validateIntNegationFunctionExpression expr = do
+  validatedExpr <- validateFunctionExpression expr
+  expectType IntType $ _typeInfo validatedExpr
+  pure $ Typed IntType $ case _typedValue validatedExpr of
+    Validated.IntLiteralExpr i -> Validated.IntLiteralExpr (-i)
+    _                          -> Validated.IntNegationExpr validatedExpr
 
 validateBinaryIntConstExpression
   :: MonadDiagnosis m
@@ -629,8 +741,26 @@ validateBinaryIntConstExpression
   -> Typed ConstExpression
   -> Typed ConstExpression
   -> ValidateT m (Typed ConstExpression)
-validateBinaryIntConstExpression f lhs rhs =
-  Typed IntType . join <$> liftA2 f (expectConstInt lhs) (expectConstInt rhs)
+validateBinaryIntConstExpression f lhs rhs = do
+  lhsValue <- expectConstInt lhs
+  rhsValue <- expectConstInt rhs
+  Typed IntType . IntLiteralConstExpr <$> f lhsValue rhsValue
+
+validateBinaryIntFunctionExpression
+  :: MonadDiagnosis m
+  => (Int -> Int -> ValidateT m Int)
+  -> (Typed Validated.Expression -> Typed Validated.Expression -> Validated.Expression)
+  -> Typed Validated.Expression
+  -> Typed Validated.Expression
+  -> ValidateT m (Typed Validated.Expression)
+validateBinaryIntFunctionExpression f c lhs rhs = do
+  expectType IntType $ _typeInfo lhs
+  expectType IntType $ _typeInfo rhs
+  Typed IntType <$> case (_typedValue lhs, _typedValue rhs) of
+    (Validated.IntLiteralExpr i1, Validated.IntLiteralExpr i2) ->
+      Validated.IntLiteralExpr <$> f i1 i2
+    _ ->
+      pure $ c lhs rhs
 
 validateBinaryBoolConstExpression
   :: MonadDiagnosis m
@@ -638,37 +768,59 @@ validateBinaryBoolConstExpression
   -> Typed ConstExpression
   -> Typed ConstExpression
   -> ValidateT m (Typed ConstExpression)
-validateBinaryBoolConstExpression f lhs rhs =
-  Typed BoolType <$> liftA2 f (expectConstBool lhs) (expectConstBool rhs)
+validateBinaryBoolConstExpression f lhs rhs = do
+  lhsValue <- expectConstBool lhs
+  rhsValue <- expectConstBool rhs
+  pure $ Typed BoolType $ BoolLiteralConstExpr $ f lhsValue rhsValue
+
+validateBinaryBoolFunctionExpression
+  :: MonadDiagnosis m
+  => (Bool -> Bool -> Bool)
+  -> (Typed Validated.Expression -> Typed Validated.Expression -> Validated.Expression)
+  -> Typed Validated.Expression
+  -> Typed Validated.Expression
+  -> ValidateT m (Typed Validated.Expression)
+validateBinaryBoolFunctionExpression f c lhs rhs = do
+  expectType BoolType $ _typeInfo lhs
+  expectType BoolType $ _typeInfo rhs
+  pure $ Typed BoolType $ case (_typedValue lhs, _typedValue rhs) of
+    (Validated.BoolLiteralExpr b1, Validated.BoolLiteralExpr b2) ->
+      Validated.BoolLiteralExpr $ f b1 b2
+    _ ->
+      c lhs rhs
 
 validateBinaryCompareConstExpression
   :: MonadDiagnosis m
-  -> (forall a. Ord a => a -> a -> Maybe Bool)
+  => (forall a. Ord a => a -> a -> Maybe Bool)
   -> Bool
   -> Typed ConstExpression
   -> Typed ConstExpression
   -> ValidateT m (Typed ConstExpression)
-validateBinaryCompareConstExpression f defaultCase lhs rhs
+validateBinaryCompareConstExpression f defaultValue lhs rhs = do
   expectType (_typeInfo lhs) (_typeInfo rhs)
-  pure $ Typed BoolType $ fromMaybe defaultCase $ go (_typedValue lhs) (_typedValue rhs)
+  result <- go (_typedValue lhs) (_typedValue rhs) `onNothingM`
+    pure defaultValue
+  pure $ Typed BoolType $ BoolLiteralConstExpr result
   where
     go lValue rValue = case (lValue, rValue) of
-      (StructConstExpr structType@StructType {..} lhsFields, StructConstExpr _ rhsFields) -> do
-        StructInfo {..} <- retrieveStruct _structBaseName
+      (StructConstExpr structType@Validated.StructInfo {..} lhsFields, StructConstExpr _ rhsFields) -> do
         comparisons <- for _structValues \(fieldName, _) -> do
           (_, lhsField) <- findField structType lhsFields fieldName
           (_, rhsField) <- findField structType rhsFields fieldName
           go (_typedValue lhsField) (_typedValue rhsField)
-        pure $ and comparisons
-      (IntLiteralConstExpr  i1, IntLiteralConstExpr  i2) -> pure $ f i1 i2
-      (CharLiteralConstExpr c1, CharLiteralConstExpr c2) -> pure $ f c1 c2
-      (BoolLiteralConstExpr b1, BoolLiteralConstExpr b2) -> pure $ f b1 b2
+        pure $ asum comparisons
+      (IntLiteralConstExpr  i1, IntLiteralConstExpr  i2) ->
+        pure $ f i1 i2
+      (CharLiteralConstExpr c1, CharLiteralConstExpr c2) ->
+        pure $ f c1 c2
+      (BoolLiteralConstExpr b1, BoolLiteralConstExpr b2) ->
+        pure $ f b1 b2
       _ ->
         reportICE
         "const expr validation"
         "unknown or incompatible compile time values"
-        [ "lhs: " ++ show e1
-        , "rhs: " ++ show e2
+        [ "lhs: " ++ show lValue
+        , "rhs: " ++ show rValue
         ]
 
     findField structType fields fieldName =
@@ -680,6 +832,25 @@ validateBinaryCompareConstExpression f defaultCase lhs rhs
           , "struct fields: " ++ show fields
           ]
 
+validateBinaryCompareFunctionExpression
+  :: MonadDiagnosis m
+  => (forall a. Ord a => a -> a -> Bool)
+  -> (Typed Validated.Expression -> Typed Validated.Expression -> Validated.Expression)
+  -> Typed Validated.Expression
+  -> Typed Validated.Expression
+  -> ValidateT m (Typed Validated.Expression)
+validateBinaryCompareFunctionExpression f c lhs rhs = do
+  expectType (_typeInfo lhs) (_typeInfo rhs)
+  pure $ Typed BoolType $ case (_typedValue lhs, _typedValue rhs) of
+    (Validated.IntLiteralExpr i1, Validated.IntLiteralExpr i2) ->
+      Validated.BoolLiteralExpr $ f i1 i2
+    (Validated.CharLiteralExpr c1, Validated.CharLiteralExpr c2) ->
+      Validated.BoolLiteralExpr $ f c1 c2
+    (Validated.BoolLiteralExpr b1, Validated.BoolLiteralExpr b2) ->
+      Validated.BoolLiteralExpr $ f b1 b2
+    _ ->
+      c lhs rhs
+
 validateAdditionConstExpression
   :: MonadDiagnosis m
   => Typed ConstExpression
@@ -689,16 +860,33 @@ validateAdditionConstExpression lhs rhs = do
   case _typeInfo lhs of
     IntType -> do
       intValue <- liftA2 (+) (expectConstInt lhs) (expectConstInt rhs)
-      pure $ Typed IntType intValue
+      pure $ Typed IntType $ IntLiteralConstExpr intValue
     _ ->
-      report $ ErrorWrongType [IntType] (_typeInfo lhs)
+      fatal $ ErrorWrongType [IntType] (_typeInfo lhs)
+
+validateAdditionFunctionExpression
+  :: MonadDiagnosis m
+  => Typed Validated.Expression
+  -> Typed Validated.Expression
+  -> ValidateT m (Typed Validated.Expression)
+validateAdditionFunctionExpression lhs rhs = do
+  case _typeInfo lhs of
+    IntType -> do
+      expectType IntType $ _typeInfo rhs
+      pure $ Typed IntType $ case (_typedValue lhs, _typedValue rhs) of
+        (Validated.IntLiteralExpr i1, Validated.IntLiteralExpr i2) ->
+          Validated.IntLiteralExpr (i1 + i2)
+        _ ->
+          Validated.AdditionExpr lhs rhs
+    _ ->
+      fatal $ ErrorWrongType [IntType] (_typeInfo lhs)
 
 validateAssignmentExpression
   :: MonadDiagnosis m
-  => (Typed LValueExpression -> Typed Expression -> Typed Expression)
+  => (Typed LValueExpression -> Typed Validated.Expression -> Validated.Expression)
   -> (ConcreteType -> ValidateT m ())
-  -> Resolved.Expression
-  -> Resolved.Expression
+  -> WithLocation Resolved.Expression
+  -> WithLocation Resolved.Expression
   -> ValidateT m (Typed Validated.Expression)
 validateAssignmentExpression cons typeValidationCallback lhs rhs = do
   attemptedLHS <- try $ validateLValueExpression lhs
@@ -707,7 +895,7 @@ validateAssignmentExpression cons typeValidationCallback lhs rhs = do
   validatedRHS <- ensure attemptedRHS
   expectType (_typeInfo validatedLHS) (_typeInfo validatedRHS)
   typeValidationCallback (_typeInfo validatedRHS)
-  pure $ cons validatedLHS validatedRHS
+  pure $ Typed UnitType $ cons validatedLHS validatedRHS
 
 
 safeDivMod
@@ -715,8 +903,8 @@ safeDivMod
   => Int
   -> Int
   -> ValidateT m (Int, Int)
-safeDiv x y = do
-  when (y == 0) $ report ErrorDivideByZero
+safeDivMod x y = do
+  when (y == 0) $ fatal ErrorDivideByZero
   pure $ x `divMod` y
 
 safeExp
@@ -732,9 +920,9 @@ fromConstExpression
   :: ConstExpression
   -> Validated.Expression
 fromConstExpression = \case
-  BoolLiteralConstExpr   x -> BoolLiteralExpr   x
-  IntLiteralConstExpr    x -> IntLiteralExpr    x
-  CharLiteralConstExpr   x -> CharLiteralExpr   x
-  StringLiteralConstExpr x -> StringLiteralExpr x
-  ArrayConstExpr         x -> ArrayExpr $ map fromConstExpression x
-  StructConstExpr        x -> StructExpr $ fmap3 fromConstExpression x
+  BoolLiteralConstExpr   x -> Validated.BoolLiteralExpr   x
+  IntLiteralConstExpr    x -> Validated.IntLiteralExpr    x
+  CharLiteralConstExpr   x -> Validated.CharLiteralExpr   x
+  StringLiteralConstExpr x -> Validated.StringLiteralExpr x
+  ArrayConstExpr         x -> Validated.ArrayExpr $ fmap2 fromConstExpression x
+  StructConstExpr   info x -> Validated.StructExpr info $ fmap3 fromConstExpression x

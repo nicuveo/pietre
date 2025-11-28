@@ -7,9 +7,6 @@ import "this" Prelude
 
 import Control.Lens
 import Data.Kind
-import Data.List.NonEmpty                     qualified as NE
-import Prettyprinter
-import Prettyprinter.Render.Text
 
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
@@ -38,23 +35,23 @@ type ShowConstraints p =
 --------------------------------------------------------------------------------
 -- Common AST definitions
 
-data Definition p
-  = TypeAliasDef (TypeAliasInfo p)
+data CommonDefinition p
+  = TypeAliasDef (CommonTypeAliasInfo p)
   | EnumDef      EnumInfo
-  | StructDef    (StructInfo p)
-  | ConstDef     (ConstInfo p)
-  | FunctionDef  (FunctionInfo p)
+  | StructDef    (CommonStructInfo p)
+  | ConstDef     (CommonConstInfo p)
+  | FunctionDef  (CommonFunctionInfo p)
 
-deriving instance ShowConstraints p => Show (Definition p)
+deriving instance ShowConstraints p => Show (CommonDefinition p)
 
 
-data TypeAliasInfo p = TypeAliasInfo
+data CommonTypeAliasInfo p = TypeAliasInfo
   { _aliasName   :: Identifier
   , _aliasParams :: [Identifier]
-  , _aliasValue  :: PathInfo p
+  , _aliasValue  :: CommonPathInfo p
   }
 
-deriving instance ShowConstraints p => Show (TypeAliasInfo p)
+deriving instance ShowConstraints p => Show (CommonTypeAliasInfo p)
 
 
 data EnumInfo = EnumInfo
@@ -63,132 +60,139 @@ data EnumInfo = EnumInfo
   } deriving Show
 
 
-data StructInfo p = StructInfo
+data CommonStructInfo p = StructInfo
   { _structName   :: Identifier
   , _structParams :: [Identifier]
-  , _structValues :: NonEmpty (Identifier, PathInfo p)
+  , _structValues :: NonEmpty (Identifier, CommonPathInfo p)
   }
 
-deriving instance ShowConstraints p => Show (StructInfo p)
+deriving instance ShowConstraints p => Show (CommonStructInfo p)
 
 
-data ConstInfo p = ConstInfo
+data CommonConstInfo p = ConstInfo
   { _constName :: Identifier
-  , _constType :: PathInfo p
+  , _constType :: CommonPathInfo p
   , _constExpr :: ExpressionType p
   }
 
-deriving instance ShowConstraints p => Show (ConstInfo p)
+deriving instance ShowConstraints p => Show (CommonConstInfo p)
 
 
-data FunctionInfo p = FunctionInfo
+data CommonFunctionInfo p = FunctionInfo
   { _funName :: Identifier
-  , _funType :: FunctionType p
-  , _funBody :: Block p
+  , _funType :: CommonFunctionType p
+  , _funBody :: CommonBlock p
   }
 
-deriving instance ShowConstraints p => Show (FunctionInfo p)
+deriving instance ShowConstraints p => Show (CommonFunctionInfo p)
+
+isGeneric :: CommonFunctionInfo p -> Bool
+isGeneric = not . null . _funParams . _funType
 
 
-data FunctionType p = FunctionType
+data CommonFunctionType p = FunctionType
   { _funParams :: [Identifier]
-  , _funArgs   :: [(Identifier, FunctionArgType p)]
-  , _funReturn :: Maybe (PathInfo p)
+  , _funArgs   :: [(Identifier, CommonFunctionArgType p)]
+  , _funReturn :: Maybe (CommonPathInfo p)
   } deriving Generic
 
+{-
 deriving instance Eq  (FunctionType Resolved)
 deriving instance Ord (FunctionType Resolved)
 instance Hashable (FunctionType Resolved)
+-}
 
-deriving instance ShowConstraints p => Show (FunctionType p)
+deriving instance ShowConstraints p => Show (CommonFunctionType p)
 
 
-data FunctionArgType p
-  = ByValue     (PathInfo p)
-  | ByReference (PathInfo p)
+data CommonFunctionArgType p
+  = ByValue     (CommonPathInfo p)
+  | ByReference (CommonPathInfo p)
   deriving Generic
 
+{-
 deriving instance Eq  (FunctionArgType Resolved)
 deriving instance Ord (FunctionArgType Resolved)
 instance Hashable (FunctionArgType Resolved)
+-}
 
-functionArgType :: FunctionArgType p -> PathInfo p
+functionArgType :: CommonFunctionArgType p -> CommonPathInfo p
 functionArgType = \case
   ByValue     p -> p
   ByReference p -> p
 
-deriving instance ShowConstraints p => Show (FunctionArgType p)
+deriving instance ShowConstraints p => Show (CommonFunctionArgType p)
 
 
-data Statement p
-  = IfStmt         (IfInfo      p)
-  | ForStmt        (ForInfoType p)
-  | WhileStmt      (WhileInfo   p)
-  | LetStmt        (LetInfoType p)
+data CommonStatement p
+  = IfStmt         (CommonIfInfo    p)
+  | ForStmt        (ForInfoType     p)
+  | WhileStmt      (CommonWhileInfo p)
+  | LetStmt        (LetInfoType     p)
   | ReturnStmt     (Maybe (ExpressionType p))
   | ContinueStmt
   | BreakStmt
   | ExpressionStmt (ExpressionType p)
 
-deriving instance ShowConstraints p => Show (Statement p)
+deriving instance ShowConstraints p => Show (CommonStatement p)
 
-type Block p = [WithLocation (Statement p)]
+type CommonBlock p = [WithLocation (CommonStatement p)]
 
 
-data IfInfo p = IfInfo
+data CommonIfInfo p = IfInfo
   { _ifExpr :: ExpressionType p
-  , _ifBody :: Block p
-  , _ifElse :: Maybe (ElseInfo p)
+  , _ifBody :: CommonBlock p
+  , _ifElse :: Maybe (CommonElseInfo p)
   }
 
-deriving instance ShowConstraints p => Show (IfInfo p)
+deriving instance ShowConstraints p => Show (CommonIfInfo p)
 
 
-data ElseInfo p
-  = ElseIf    (IfInfo p)
-  | ElseBlock (Block p)
+data CommonElseInfo p
+  = ElseIf    (CommonIfInfo p)
+  | ElseBlock (CommonBlock p)
 
-deriving instance ShowConstraints p => Show (ElseInfo p)
+deriving instance ShowConstraints p => Show (CommonElseInfo p)
 
 
-data ForInfo p = ForInfo
+data CommonForInfo p = ForInfo
   { _forVariableName :: Identifier
   , _forRangeExpr    :: ExpressionType p
-  , _forBody         :: Block p
+  , _forBody         :: CommonBlock p
   }
 
-deriving instance ShowConstraints p => Show (ForInfo p)
+deriving instance ShowConstraints p => Show (CommonForInfo p)
 
 
-data WhileInfo p = WhileInfo
+data CommonWhileInfo p = WhileInfo
   { _whileExpr :: ExpressionType p
-  , _whileBody :: Block p
+  , _whileBody :: CommonBlock p
   }
 
-deriving instance ShowConstraints p => Show (WhileInfo p)
+deriving instance ShowConstraints p => Show (CommonWhileInfo p)
 
 
-data LetInfo p = LetInfo
+data CommonLetInfo p = LetInfo
   { _letName :: Identifier
-  , _letType :: Maybe (PathInfo p)
+  , _letType :: Maybe (CommonPathInfo p)
   , _letExpr :: ExpressionType p
   }
 
-deriving instance ShowConstraints p => Show (LetInfo p)
+deriving instance ShowConstraints p => Show (CommonLetInfo p)
 
 
-data Expression p
-  = PathExpr                     (PathInfo p)
+data CommonExpression p
+  = PathExpr                     (CommonPathInfo p)
   | FieldAccessExpr              (ExpressionType p) Identifier
-  | CallExpr                     (PathInfo p) [ExpressionType p]
+  | CallExpr                     (CommonPathInfo p) [ExpressionType p]
   | ArrayExpr                    [ExpressionType p]
   | IndexExpr                    (ExpressionType p) (ExpressionType p)
-  | StructExpr                   (PathInfo p) (NonEmpty (Identifier, ExpressionType p))
+  | StructExpr                   (CommonPathInfo p) (NonEmpty (Identifier, ExpressionType p))
   | BoolLiteralExpr              Bool
   | IntLiteralExpr               Int
   | CharLiteralExpr              Char
   | StringLiteralExpr            Text
-  | ReferenceExpr                (PathInfo p)
+  | ReferenceExpr                (CommonPathInfo p)
   | IntNegationExpr              (ExpressionType p)
   | BoolNegationExpr             (ExpressionType p)
   | AdditionExpr                 (ExpressionType p) (ExpressionType p)
@@ -205,7 +209,7 @@ data Expression p
   | LesserEqExpr                 (ExpressionType p) (ExpressionType p)
   | BoolAndExpr                  (ExpressionType p) (ExpressionType p)
   | BoolOrExpr                   (ExpressionType p) (ExpressionType p)
-  | CastExpr                     (ExpressionType p) (PathInfo p)
+  | CastExpr                     (ExpressionType p) (CommonPathInfo p)
   | RangeInclusiveExpr           (ExpressionType p) (ExpressionType p)
   | RangeExclusiveExpr           (ExpressionType p) (ExpressionType p)
   | AssignmentExpr               (ExpressionType p) (ExpressionType p)
@@ -216,44 +220,42 @@ data Expression p
   | ModuloAssignmentExpr         (ExpressionType p) (ExpressionType p)
   | ExponentiationAssignmentExpr (ExpressionType p) (ExpressionType p)
 
-deriving instance ShowConstraints p => Show (Expression p)
-deriving instance Eq (WithLocation Expression Resolved) => Eq (Expression Resolved)
+deriving instance ShowConstraints p => Show (CommonExpression p)
 
 
-data PathInfo p = PathInfo
+data CommonPathInfo p = PathInfo
   { _pathBase   :: PathBodyType p
-  , _pathParams :: [PathInfo p]
+  , _pathParams :: [CommonPathInfo p]
   } deriving (Generic)
 
-deriving instance ShowConstraints p => Show (PathInfo p)
+deriving instance ShowConstraints p => Show (CommonPathInfo p)
+{-
 deriving instance Eq  (PathInfo Resolved)
 deriving instance Ord (PathInfo Resolved)
 instance Hashable (PathInfo Resolved)
-
+-}
 
 --------------------------------------------------------------------------------
 -- Lenses
 
-makeLenses ''Module
-makeLenses ''Import
-makeLenses ''PathInfo
-makeLenses ''TypeAliasInfo
+makeLenses ''CommonConstInfo
+makeLenses ''CommonForInfo
+makeLenses ''CommonFunctionInfo
+makeLenses ''CommonIfInfo
+makeLenses ''CommonLetInfo
+makeLenses ''CommonPathInfo
+makeLenses ''CommonStructInfo
+makeLenses ''CommonTypeAliasInfo
+makeLenses ''CommonWhileInfo
 makeLenses ''EnumInfo
-makeLenses ''StructInfo
-makeLenses ''ConstInfo
-makeLenses ''FunctionInfo
-makeLenses ''IfInfo
-makeLenses ''ForInfo
-makeLenses ''WhileInfo
-makeLenses ''LetInfo
-makeLenses ''TypedExpression
 
-makePrisms ''ImportType
-makePrisms ''Definition
-makePrisms ''FunctionArgType
-makePrisms ''Statement
-makePrisms ''ElseInfo
-makePrisms ''Expression
+makePrisms ''CommonDefinition
+makePrisms ''CommonElseInfo
+makePrisms ''CommonExpression
+makePrisms ''CommonFunctionArgType
+makePrisms ''CommonStatement
+
+{-
 
 instance Plated (Expression p) where
   plate f = \case
@@ -289,3 +291,5 @@ instance Plated (Expression p) where
     ModuloAssignmentExpr         e1 e2 -> liftA2 ModuloAssignmentExpr         (within f e1) (within f e2)
     ExponentiationAssignmentExpr e1 e2 -> liftA2 ExponentiationAssignmentExpr (within f e1) (within f e2)
     e                                  -> pure e
+
+-}

@@ -2,34 +2,23 @@ module Lang.Pietre.Stages.Analysis.Validation.Expect where
 
 import "this" Prelude
 
-import Control.Lens                                 hiding (mapping, op)
-import Control.Monad.Loops                          (whileJust)
-import Control.Monad.RWS.Strict
-import Control.Monad.Trans.Maybe                    (hoistMaybe)
-import Data.HashMap.Strict.Extra                    qualified as M
-import Data.HashSet                                 qualified as S
 import Data.List                                    qualified as L
-import Data.Ordered.Set                             qualified as OSet
-import Data.Set                                     qualified as Set
 
-import Lang.Pietre.Batteries.BuiltIn
+import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Internal.ICE
-import Lang.Pietre.Representations.AST
-import Lang.Pietre.Representations.AST.Common
-import Lang.Pietre.Representations.AST.Resolved
+import Lang.Pietre.Representations.AST.Resolved     qualified as Resolved
 import Lang.Pietre.Representations.AST.Validated
 import Lang.Pietre.Representations.Identifier
-import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Name
 import Lang.Pietre.Stages.Analysis.Validation.Monad
 
 
-assertConst
-  :: Monad m
+assertConstant
+  :: (HasCallStack, MonadDiagnosis m)
   => BaseName
-  -> Definition Validated
-  -> ValidateT m (Typed ConstExpr)
-assertConst baseName = \case
+  -> Definition
+  -> ValidateT m (Typed ConstExpression)
+assertConstant baseName = \case
   ConstDef constInfo -> pure constInfo
   -- TODO: explain why this is needed
   EnumDef enumInfo ->
@@ -40,89 +29,89 @@ assertConst baseName = \case
         reportICE
           "enum value resolution"
           "unknown enum constructor"
-          [ "name: " ++ show name
-          , "enum: " ++ show enumIfo
+          [ "name: " ++ show baseName
+          , "enum: " ++ show enumInfo
           ]
   definition -> reportICE
     "const definition retrieval"
     "definition not a const"
-    ["definition: " ++ definition]
+    ["definition: " ++ show definition]
 
 assertTypeAlias
-  :: Monad m
-  => Definition Validated
+  :: (HasCallStack, MonadDiagnosis m)
+  => Definition
   -> ValidateT m TypeAliasInfo
 assertTypeAlias = \case
   TypeAliasDef typeAliasInfo -> pure typeAliasInfo
   definition -> reportICE
     "type alias definition retrieval"
     "definition not a type alias"
-    ["definition: " ++ definition]
+    ["definition: " ++ show definition]
 
 assertEnum
-  :: Monad m
-  => Definition Validated
+  :: (HasCallStack, MonadDiagnosis m)
+  => Definition
   -> ValidateT m [Identifier]
 assertEnum = \case
   EnumDef enumInfo -> pure $ _enumValues enumInfo
   definition -> reportICE
     "enum definition retrieval"
     "definition not an enum"
-    ["definition: " ++ definition]
+    ["definition: " ++ show definition]
 
 assertStruct
-  :: Monad m
-  => Definition Validated
-  -> ValidateT m (StructInfo Validated)
+  :: (HasCallStack, MonadDiagnosis m)
+  => Definition
+  -> ValidateT m (StructInfo ParameterizedFunctor)
 assertStruct = \case
-  StructDef constInfo -> pure constInfo
+  StructDef structInfo -> pure structInfo
   definition -> reportICE
     "struct definition retrieval"
     "definition not a struct"
-    ["definition: " ++ definition]
+    ["definition: " ++ show definition]
+
+assertStructDefinition
+  :: (HasCallStack, MonadDiagnosis m)
+  => Resolved.Definition
+  -> ValidateT m Resolved.StructInfo
+assertStructDefinition = \case
+  Resolved.StructDef structInfo -> pure structInfo
+  definition -> reportICE
+    "struct definition retrieval"
+    "definition not a struct"
+    ["definition: " ++ show definition]
 
 assertFunctionType
-  :: Monad m
-  => Definition Validated
+  :: (HasCallStack, MonadDiagnosis m)
+  => Definition
   -> ValidateT m (FunctionTypeInfo ParameterizedFunctor)
 assertFunctionType = \case
   FunctionDef functionType -> pure functionType
   definition -> reportICE
     "function type retrieval"
     "definition not a function"
-    ["definition: " ++ definition]
-
-assertFunctionDefinition
-  :: Monad m
-  => Definition Validated
-  -> ValidateT m Resolved.FunctionInfo
-assertFunctionDefinition = \case
-  FunctionDef functionInfo -> pure functionInfo
-  definition -> reportICE
-    "function definition retrieval"
-    "definition not a function"
-    ["definition: " ++ definition]
+    ["definition: " ++ show definition]
 
 expectType
-  :: Monad m
-  => Type
-  -> Type
+  :: MonadDiagnosis m
+  => ConcreteType
+  -> ConcreteType
   -> ValidateT m ()
 expectType expected actual =
   unless (expected `typeMatches` actual) $
-    report $ ErrorWrongType [expected] actual
+    fatal $ ErrorWrongType [expected] actual
 
 expectTypeOneOf
-  :: Monad m
-  => [Type]
-  -> Type
+  :: MonadDiagnosis m
+  => [ConcreteType]
+  -> ConcreteType
   -> ValidateT m ()
 expectTypeOneOf expected actual =
   unless (any (`typeMatches` actual) expected) $
-    report $ ErrorWrongType expected actual
+    fatal $ ErrorWrongType expected actual
 
 expectConstInt
-  :: Monad m
+  :: (HasCallStack, MonadDiagnosis m)
   => Typed ConstExpression
   -> ValidateT m Int
 expectConstInt Typed {..} = do
@@ -132,7 +121,7 @@ expectConstInt Typed {..} = do
     _ -> reportICE "const expr validation" "not a literal int value" ["value: " ++ show _typedValue]
 
 expectConstBool
-  :: Monad m
+  :: (HasCallStack, MonadDiagnosis m)
   => Typed ConstExpression
   -> ValidateT m Bool
 expectConstBool Typed {..} = do
@@ -140,3 +129,41 @@ expectConstBool Typed {..} = do
   case _typedValue of
     BoolLiteralConstExpr i -> pure i
     _ -> reportICE "const expr validation" "not a literal bool value" ["value: " ++ show _typedValue]
+
+typeMatches
+  :: ConcreteType
+  -> ConcreteType
+  -> Bool
+typeMatches a b =
+  case (a,b) of
+    (VoidType,        _)               -> True
+    (_,               VoidType)        -> True
+    (IntType,         IntType)         -> True
+    (BoolType,        BoolType)        -> True
+    (CharType,        CharType)        -> True
+    (UnitType,        UnitType)        -> True
+    (EnumType n1 _,   EnumType n2 _)   -> n1 == n2
+    (StructType s1,   StructType s2)   -> structsMatch s1 s2
+    (FunctionType f1, FunctionType f2) -> functionsMatch f1 f2
+    _                                  -> False
+  where
+    structsMatch s1 s2 =
+      (_structBaseName s1 == _structBaseName s2) &&
+      and (zipWith typeMatches (_structTypeParams s1) (_structTypeParams s2))
+
+    functionsMatch f1 f2 =
+      (_funReturn f1 `typeMatches` _funReturn f2) &&
+      and (zipWith (functionArgsMatch `on` snd) (_funArgs f1) (_funArgs f2))
+
+    functionArgsMatch = curry \case
+      (ByReference t1, ByReference t2) -> t1 `typeMatches` t2
+      (ByValue     t1, ByValue     t2) -> t1 `typeMatches` t2
+      _ -> False
+
+typesAllMatch
+  :: [ConcreteType]
+  -> Bool
+typesAllMatch types = and do
+  (headType : remainingTypes) <- L.tails types
+  otherType <- remainingTypes
+  pure $ headType `typeMatches` otherType

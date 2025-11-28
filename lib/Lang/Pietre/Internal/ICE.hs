@@ -1,4 +1,7 @@
-module Lang.Pietre.Internal.ICE where
+module Lang.Pietre.Internal.ICE
+  ( module GHC.Stack
+  , module Lang.Pietre.Internal.ICE
+  ) where
 
 import "this" Prelude
 

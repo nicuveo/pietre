@@ -3,86 +3,97 @@ module Lang.Pietre.Stages.Analysis.Resolution (resolve) where
 import "this" Prelude
 
 import Control.Lens                                 hiding (mapping, op)
-import Control.Monad.Loops                          (whileJust)
-import Control.Monad.RWS.Strict
-import Control.Monad.Trans.Maybe                    (hoistMaybe)
+import Control.Monad.Catch                          (bracket)
+import Data.Functor.Compose
 import Data.HashMap.Strict.Extra                    qualified as M
-import Data.HashSet                                 qualified as S
-import Data.Set                                     qualified as Set
 
 import Lang.Pietre.Batteries.BuiltIn
-import Lang.Pietre.Internal.ICE
+import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Representations.AST.Common
 import Lang.Pietre.Representations.AST.Parsed       as Parsed
 import Lang.Pietre.Representations.AST.Resolved     as Resolved
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Interface
+import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 import Lang.Pietre.Stages.Analysis.Resolution.Monad
+import Lang.Pietre.Stages.Analysis.Resolution.Scope
 
 
 --------------------------------------------------------------------------------
 -- API
 
 resolve
-  :: Monad m
-  => ModuleName
-  -> BaseName
-  -> Scope
-  -> WithLocation Parsed.Definition
-  -> m (WithLocation Resolved.Definition)
-resolve moduleName declarationName topLevelScope def = do
-  runResolveT moduleName declarationName topLevelScope (_location def) $
-    traverse resolveDefinition def
+  :: MonadDiagnosis m
+  => HashMap ModuleName Interface
+  -> ModuleName
+  -> Module
+  -> m ( HashMap Identifier Role
+       , HashMap BaseName (WithLocation Resolved.Definition)
+       )
+resolve dependencies moduleName Module {..} = do
+  importedScope <- createImportedScope dependencies _modImports
+  (exported, definitions, localScope) <- parseLocalDeclarations moduleName _modDefinitions
+  let
+    combineMaps = M.unionWith (<>)
+    builtinScope = M.fromList $ map (fmap pure) builtins
+    topLevelScope = builtinScope `combineMaps` importedScope `combineMaps` localScope
+  resolvedDefinitions <- ensureNested $
+    M.forWithKey definitions
+      \declarationBaseName def -> tryNested do
+        let definitionLocation = _location def
+        resolved <- runResolveT declarationBaseName topLevelScope definitionLocation $ resolveDefinition $ _located def
+        pure $ resolved <$ def
+  pure (exported, resolvedDefinitions)
 
 
 --------------------------------------------------------------------------------
 -- Implementation
 
 resolveDefinition
-  :: Monad m
+  :: MonadDiagnosis m
   => Parsed.Definition
   -> ResolveT m Resolved.Definition
 resolveDefinition = \case
-  TypeAliasDef info -> resolveTypeAlias info
+  TypeAliasDef info -> TypeAliasDef <$> resolveTypeAlias info
+  StructDef    info -> StructDef    <$> resolveStruct info
+  ConstDef     info -> ConstDef     <$> resolveConst info
+  FunctionDef  info -> FunctionDef  <$> resolveFunction info
   EnumDef      info -> pure $ EnumDef info
-  StructDef    info -> resolveStruct info
-  ConstDef     info -> resolveConst info
-  FunctionDef  info -> resolveFunction info
 
 resolveTypeAlias
-  :: Monad m
-  => TypeAliasInfo Parsed
-  -> ResolveT m (TypeAliasInfo Resolved)
+  :: MonadDiagnosis m
+  => Parsed.TypeAliasInfo
+  -> ResolveT m Resolved.TypeAliasInfo
 resolveTypeAlias TypeAliasInfo {..} = do
   expandScopeWithTypeParameters _aliasParams
   resolvedValue <- resolvePath _aliasValue
   pure $ TypeAliasInfo _aliasName _aliasParams resolvedValue
 
 resolveStruct
-  :: Monad m
-  => StructInfo Parsed
-  -> ResolveT m (StructInfo Resolved)
+  :: MonadDiagnosis m
+  => Parsed.StructInfo
+  -> ResolveT m Resolved.StructInfo
 resolveStruct StructInfo {..} = do
   expandScopeWithTypeParameters _structParams
-  resolvedValues <- ensure =<< getCompose (traverse2 (Compose . try . resolvePath) _structValues)
+  resolvedValues <- ensureNested $ traverse2 (tryNested . resolvePath) _structValues
   pure $ StructInfo _structName _structParams resolvedValues
 
 resolveConst
-  :: Monad m
-  => ConstInfo Parsed
-  -> ResolveT m (ConstInfo Resolved)
+  :: MonadDiagnosis m
+  => Parsed.ConstInfo
+  -> ResolveT m Resolved.ConstInfo
 resolveConst ConstInfo {..} = do
   resolvedType <- try $ resolvePath _constType
   resolvedExpr <- try $ resolveExpression _constExpr
   ensure $ liftA2 (ConstInfo _constName) resolvedType resolvedExpr
 
 resolveFunction
-  :: Monad m
-  => FunctionInfo Parsed
-  -> ResolveT m (FunctionInfo Resolved)
-resolveFunction ConstInfo {..} = do
-  expandScopeWithTypeParameters _structParams
+  :: MonadDiagnosis m
+  => Parsed.FunctionInfo
+  -> ResolveT m Resolved.FunctionInfo
+resolveFunction FunctionInfo {..} = do
+  expandScopeWithTypeParameters $ _funParams _funType
   resolvedType <- resolveFunctionType _funType
   resolvedBody <-
     resolveBlock
@@ -91,40 +102,48 @@ resolveFunction ConstInfo {..} = do
   pure $ FunctionInfo _funName resolvedType resolvedBody
 
 resolveFunctionType
-  :: Monad m
-  => FunctionType Parsed
-  -> ResolveT m (FunctionType Resolved)
+  :: MonadDiagnosis m
+  => Parsed.FunctionType
+  -> ResolveT m Resolved.FunctionType
 resolveFunctionType FunctionType {..} = do
   resolvedArgs   <- getCompose $ traverse2 (Compose . try . resolveFunctionArg) _funArgs
   resolvedReturn <- getCompose $ traverse  (Compose . try . resolvePath)        _funReturn
   ensure $ liftA2 (FunctionType _funParams) resolvedArgs resolvedReturn
 
 resolveFunctionArg
-  :: Monad m
-  => FunctionType Parsed
-  -> ResolveT m (FunctionType Resolved)
+  :: MonadDiagnosis m
+  => Parsed.FunctionArgType
+  -> ResolveT m Resolved.FunctionArgType
 resolveFunctionArg = \case
   ByValue     path -> ByValue     <$> resolvePath path
   ByReference path -> ByReference <$> resolvePath path
 
 resolveBlock
-  :: Monad m
+  :: MonadDiagnosis m
   => ResolveT m ()
-  -> Block Parsed
-  -> ResolveT m (Block Resolved)
-resolveBlock updateScope statements = do
-  parentScope <- use rcScope
-  updateScope
-  resolvedStatements <- for statements \stmt -> do
-    rcLocation .= _location stmt
-    sequence <$> traverse (try . resolveStatement) stmt
-  rcScope .= parentScope
-  ensure $ sequence $ resolvedStatements
+  -> Parsed.Block
+  -> ResolveT m Resolved.Block
+resolveBlock updateScope statements =
+  bracket
+    setupBlock
+    teardownBlock
+    processBlock
+  where
+    setupBlock =
+      use rcScope
+    teardownBlock parentScope =
+      rcScope .= parentScope
+    processBlock _ = do
+      updateScope
+      ensureNested $
+        for statements \stmt -> tryNested do
+          rcLocation .= _location stmt
+          traverse resolveStatement stmt
 
 resolveStatement
-  :: Monad m
-  => Statement Parsed
-  -> ResolveT m (Statement Resolved)
+  :: MonadDiagnosis m
+  => Parsed.Statement
+  -> ResolveT m Resolved.Statement
 resolveStatement = \case
   IfStmt info ->
     IfStmt <$> resolveIf info
@@ -144,63 +163,63 @@ resolveStatement = \case
     ExpressionStmt <$> resolveExpression info
 
 resolveIf
-  :: Monad m
-  => IfInfo Parsed
-  -> ResolveT m (IfInfo Resolved)
+  :: MonadDiagnosis m
+  => Parsed.IfInfo
+  -> ResolveT m Resolved.IfInfo
 resolveIf IfInfo {..} = do
   resolvedExpr <- try $ resolveExpression _ifExpr
   resolvedBody <- try $ resolveBlock pass _ifBody
   resolvedElse <- getCompose $ traverse (Compose . try . resolveElse) _ifElse
-  ensure $ liftA3 IfInfo resolvedExpr resolvedBody resolveElse
+  ensure $ liftA3 IfInfo resolvedExpr resolvedBody resolvedElse
 
 resolveElse
-  :: Monad m
-  => ElseInfo Parsed
-  -> ResolveT m (ElseInfo Resolved)
+  :: MonadDiagnosis m
+  => Parsed.ElseInfo
+  -> ResolveT m Resolved.ElseInfo
 resolveElse = \case
   ElseIf    info  -> ElseIf    <$> resolveIf info
   ElseBlock block -> ElseBlock <$> resolveBlock pass block
 
 resolveFor
-  :: Monad m
-  => ForInfo Parsed
-  -> ResolveT m (ForInfo Resolved)
+  :: MonadDiagnosis m
+  => Parsed.ForInfo
+  -> ResolveT m Resolved.ForInfo
 resolveFor ForInfo {..} = do
   resolvedExpr <- try $ resolveExpression _forRangeExpr
   resolvedBody <- try $
     resolveBlock
-      (expandScopeWithVariable (_forVariableName) Nothing)
+      (expandScopeWithVariable _forVariableName)
       _forBody
-  ensure $ liftA2 (ForInfo _forVariableName) resolvedExpr resolveBody
+  ensure $ liftA2 (ForInfo _forVariableName) resolvedExpr resolvedBody
 
 resolveWhile
-  :: Monad m
-  => WhileInfo Parsed
-  -> ResolveT m (WhileInfo Resolved)
+  :: MonadDiagnosis m
+  => Parsed.WhileInfo
+  -> ResolveT m Resolved.WhileInfo
 resolveWhile WhileInfo {..} = do
   resolvedExpr <- try $ resolveExpression _whileExpr
   resolvedBody <- try $ resolveBlock pass _whileBody
-  ensure $ liftA2 WhileInfo resolvedExpr resolveBody
+  ensure $ liftA2 WhileInfo resolvedExpr resolvedBody
 
 resolveLet
-  :: Monad m
-  => LetInfo Parsed
-  -> ResolveT m (LetInfo Resolved)
+  :: MonadDiagnosis m
+  => Parsed.LetInfo
+  -> ResolveT m Resolved.LetInfo
 resolveLet LetInfo {..} = do
   resolvedType <- getCompose $ traverse (Compose . try . resolvePath) _letType
   resolvedExpr <- try $ resolveExpression _letExpr
-  expandScopeWithVariable _letName (join resolvedType)
+  expandScopeWithVariable _letName
   ensure $ liftA2 (LetInfo _letName) resolvedType resolvedExpr
 
 resolveExpression
-  :: Monad m
-  => WithLocation (Expression Parsed)
-  -> ResolveT m (Expression Resolved)
+  :: MonadDiagnosis m
+  => WithLocation Parsed.Expression
+  -> ResolveT m (WithLocation Resolved.Expression)
 resolveExpression expr = do
   rcLocation .= _location expr
-  case _located expr of
+  result <- case _located expr of
     PathExpr path ->
-      PathExpr <$> resolvePath
+      PathExpr <$> resolvePath path
     FieldAccessExpr lhs rhs ->
       liftA2 FieldAccessExpr (resolveExpression lhs) (pure rhs)
     CallExpr lhs args -> do
@@ -210,7 +229,7 @@ resolveExpression expr = do
     IndexExpr lhs rhs ->
       liftA2 IndexExpr (resolveExpression lhs) (resolveExpression rhs)
     StructExpr path fields ->
-      liftA2 StructExpr (resolvePath path) (traverse resolveExpression fields)
+      liftA2 StructExpr (resolvePath path) (traverse2 resolveExpression fields)
     BoolLiteralExpr b ->
       pure $ BoolLiteralExpr b
     IntLiteralExpr i ->
@@ -220,11 +239,11 @@ resolveExpression expr = do
     StringLiteralExpr s ->
       pure $ StringLiteralExpr s
     ReferenceExpr path ->
-      ReferenceExpr <$> resolveExpression path
-    IntNegationExpr expr ->
-      IntNegationExpr <$> resolveExpression expr
-    BoolNegationExpr expr ->
-      BoolNegationExpr <$> resolveExpression expr
+      ReferenceExpr <$> resolvePath path
+    IntNegationExpr e ->
+      IntNegationExpr <$> resolveExpression e
+    BoolNegationExpr e ->
+      BoolNegationExpr <$> resolveExpression e
     AdditionExpr lhs rhs ->
       liftA2 AdditionExpr (resolveExpression lhs) (resolveExpression rhs)
     SubtractionExpr lhs rhs ->
@@ -253,8 +272,8 @@ resolveExpression expr = do
       liftA2 BoolAndExpr (resolveExpression lhs) (resolveExpression rhs)
     BoolOrExpr lhs rhs ->
       liftA2 BoolOrExpr (resolveExpression lhs) (resolveExpression rhs)
-    CastExpr expr castType ->
-      liftA2 CastExpr (resolveExpression expr) (resolvePath castType)
+    CastExpr e castType ->
+      liftA2 CastExpr (resolveExpression e) (resolvePath castType)
     RangeInclusiveExpr lhs rhs ->
       liftA2 RangeInclusiveExpr (resolveExpression lhs) (resolveExpression rhs)
     RangeExclusiveExpr lhs rhs ->
@@ -273,21 +292,22 @@ resolveExpression expr = do
       liftA2 ModuloAssignmentExpr (resolveExpression lhs) (resolveExpression rhs)
     ExponentiationAssignmentExpr lhs rhs ->
       liftA2 ExponentiationAssignmentExpr (resolveExpression lhs) (resolveExpression rhs)
+  pure $ result <$ expr
 
 resolvePath
-  :: Monad m
-  -> PathInfo Parsed
-  -> ResolveT m (PathInfo Resolved)
+  :: MonadDiagnosis m
+  => Parsed.PathInfo
+  -> ResolveT m Resolved.PathInfo
 resolvePath PathInfo {..} = do
-  resolvedName   <- try $ resolvePathBody _pathName
+  resolvedName   <- try $ resolvePathBody _pathBase
   resolvedParams <- getCompose $ traverse (Compose . try . resolvePath) _pathParams
   ensure $ liftA2 PathInfo resolvedName resolvedParams
 
 resolvePathBody
-  :: Monad m
-  -> Path
+  :: MonadDiagnosis m
+  => Path
   -> ResolveT m Role
-resolveName path = do
+resolvePathBody path = do
   roles@(role :| others) <-
     lookupName path `onNothingM`
       fatal (ErrorRoleNotFound path)

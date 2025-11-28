@@ -35,7 +35,6 @@ library
       Lang.Pietre.Internal.Encoding
       Lang.Pietre.Internal.HKT
       Lang.Pietre.Internal.ICE
-      Lang.Pietre.Representations.AST
       Lang.Pietre.Representations.AST.Common
       Lang.Pietre.Representations.AST.Parsed
       Lang.Pietre.Representations.AST.Resolved
@@ -111,12 +110,14 @@ library
     , bytestring
     , containers
     , directory
+    , exceptions
     , extra
     , file-embed
     , filepath
     , hashable
     , hip
     , lens
+    , monad-control
     , monad-loops
     , mtl
     , ordered-containers
@@ -166,6 +167,7 @@ executable gramviz
     , bytestring
     , containers
     , directory
+    , exceptions
     , extra
     , file-embed
     , filepath
@@ -174,6 +176,7 @@ executable gramviz
     , hip
     , lens
     , megaparsec
+    , monad-control
     , monad-loops
     , mtl
     , ordered-containers
@@ -223,12 +226,14 @@ executable pc
     , bytestring
     , containers
     , directory
+    , exceptions
     , extra
     , file-embed
     , filepath
     , hashable
     , hip
     , lens
+    , monad-control
     , monad-loops
     , mtl
     , ordered-containers
@@ -288,12 +293,14 @@ test-suite tests
     , bytestring
     , containers
     , directory
+    , exceptions
     , extra
     , file-embed
     , filepath
     , hashable
     , hip
     , lens
+    , monad-control
     , monad-loops
     , mtl
     , ordered-containers

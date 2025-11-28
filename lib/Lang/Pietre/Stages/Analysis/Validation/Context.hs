@@ -1,71 +1,65 @@
 module Lang.Pietre.Stages.Analysis.Validation.Context where
 
-import "this" Prelude
+import                "this" Prelude
 
-import Control.Lens                                  hiding (mapping, op)
-import Control.Monad.Loops                           (whileJust)
-import Control.Monad.RWS.Strict
-import Control.Monad.Trans.Maybe                     (hoistMaybe)
-import Data.HashMap.Strict.Extra                     qualified as M
-import Data.HashSet                                  qualified as S
-import Data.List                                     qualified as L
-import Data.Ordered.Set                              qualified as OSet
-import Data.Set                                      qualified as Set
+import                Control.Lens                                  hiding
+                                                                    (mapping,
+                                                                     op)
+import                Data.HashMap.Strict.Extra                     qualified as M
 
-import Lang.Pietre.Batteries.BuiltIn
-import Lang.Pietre.Internal.ICE
-import Lang.Pietre.Representations.AST
-import Lang.Pietre.Representations.AST.Common        as Input
-import Lang.Pietre.Representations.AST.Resolved      as Input
-import Lang.Pietre.Representations.AST.Validated     as Output
-import Lang.Pietre.Representations.Identifier
-import Lang.Pietre.Representations.Interface
-import Lang.Pietre.Representations.Name
-import Lang.Pietre.Stages.Analysis.Validation.Expect
-import Lang.Pietre.Stages.Analysis.Validation.Monad
+import                Lang.Pietre.Internal.Diagnosis
+import                Lang.Pietre.Internal.ICE
+import                Lang.Pietre.Representations.AST.Resolved      qualified as Resolved
+import                Lang.Pietre.Representations.AST.Validated
+import                Lang.Pietre.Representations.Identifier
+import                Lang.Pietre.Representations.Location
+import                Lang.Pietre.Representations.Name
+import {-# SOURCE #-} Lang.Pietre.Stages.Analysis.Validation
+import                Lang.Pietre.Stages.Analysis.Validation.Expect
+import                Lang.Pietre.Stages.Analysis.Validation.Monad
 
 
 retrieveTypeAlias
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
-  -> ValidateT m (Typed Output.TypeAliasInfo)
+  -> ValidateT m TypeAliasInfo
 retrieveTypeAlias =
-  retrieveDefinition >=> traverse assertTypeAlias
+  retrieveDefinition >=> assertTypeAlias
 
 retrieveConstant
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
-  -> ValidateT m (Typed Output.ConstExpression)
+  -> ValidateT m (Typed ConstExpression)
 retrieveConstant baseName =
-  retrieveDefinition baseName >>= traverse (assertConstant baseName)
+  retrieveDefinition baseName >>= assertConstant baseName
 
 retrieveStruct
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
-  -> ValidateT m (StructInfo Validated)
+  -> ValidateT m (StructInfo ParameterizedFunctor)
 retrieveStruct =
-  retrieveDefinition >=> traverse assertStruct
+  retrieveDefinition >=> assertStruct
 
 retrieveEnum
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
   -> ValidateT m [Identifier]
 retrieveEnum =
-  retrieveDefinition >=> traverse assertEnum
+  retrieveDefinition >=> assertEnum
 
 retrieveFunctionType
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
   -> ValidateT m (FunctionTypeInfo ParameterizedFunctor)
 retrieveFunctionType =
-  retrieveDefinition >=> traverse assertFunctionType
+  retrieveDefinition >=> assertFunctionType
 
 retrieveFunctionDefinition
-  :: Monad m
+  :: (HasCallStack, MonadDiagnosis m)
   => BaseName
-  -> ValidateT m Resolved.FunctionInfo
+  -> ValidateT m (WithLocation Resolved.FunctionInfo)
 retrieveFunctionDefinition baseName =
-  ensure $ asumM
+  ensure =<< asumM
     [ lookupRemoteFunctionDefinition
     , lookupLocalFunctionDefinition
     , throwICE
@@ -73,7 +67,7 @@ retrieveFunctionDefinition baseName =
   where
     lookupRemoteFunctionDefinition =
       views viFunctions (M.lookup baseName)
-    lookupLocalFunctionDefinition baseName =
+    lookupLocalFunctionDefinition =
       uses vsFunctions (M.lookup baseName)
     throwICE = reportICE
       "function definition lookup"
@@ -81,77 +75,80 @@ retrieveFunctionDefinition baseName =
       ["function name: " ++ show baseName]
 
 retrieveTypeParameter
-  :: Monad m
+  :: (HasCallStack, MonadDiagnosis m)
   => BaseName
   -> Identifier
-  -> ValidateT m Type
-retrieveTypeParameter typeName paramName =
-  uses contextParams (M.lookup (typeName, paramName)) `onNothingM`
+  -> ValidateT m ConcreteType
+retrieveTypeParameter typeBaseName paramName =
+  uses currentParams (M.lookup (typeBaseName, paramName)) `onNothingM`
     reportICE
       "type parameter validation"
       "parameter name not found"
-      [ "type name: " ++ show typeName
+      [ "type name: " ++ show typeBaseName
       , "param name: " ++ show paramName
       ]
 
 retrieveStructParams
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
   -> ValidateT m [Identifier]
 retrieveStructParams baseName =
-  ensure $ asumM
-    [ fmap2 _structParams $ lookupRemoteDefinition
-    , fmap2 _structParams $ lookupLocalDefinition
-    , fmap (Just . _structParams) $ retrieveInputDefinition
+  ensure =<< asumM
+    [ fmap2 _structParams $
+        traverse assertStruct =<< lookupRemoteDefinition baseName
+    , fmap2 _structParams $
+        traverse assertStruct =<< lookupLocalDefinition baseName
+    , fmap (Just . Resolved._structParams) $
+        assertStructDefinition . _located =<< retrieveInputDefinition baseName
     ]
 
 retrieveDefinition
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
-  -> ValidateT m (Definition Validated)
+  -> ValidateT m Definition
 retrieveDefinition baseName =
-  ensure $ asumM
+  ensure =<< asumM
     [ lookupRemoteDefinition baseName
     , lookupLocalDefinition baseName
-    , attemptToValidateT baseName
+    , attemptToValidate baseName
     ]
 
 retrieveVariableType
-  :: Monad m
+  :: (HasCallStack, MonadDiagnosis m)
   => Identifier
   -> ValidateT m ConcreteType
 retrieveVariableType varName =
-  uses currentVariables (M.lookup varName) `onNothing`
+  uses currentVariables (M.lookup varName) `onNothingM`
     reportICE
       "variable type lookup"
       "variable type not found in scope"
       ["variable name: " ++ show varName]
 
 lookupRemoteDefinition
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
-  -> ValidateT m (Maybe (Definition Validated))
+  -> ValidateT m (Maybe Definition)
 lookupRemoteDefinition baseName =
   views viDefinitions (M.lookup baseName)
 
 lookupLocalDefinition
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
-  -> ValidateT m (Maybe (Definition Validated))
-lookupLocalDefinitions baseName =
+  -> ValidateT m (Maybe Definition)
+lookupLocalDefinition baseName =
   uses vsDefinitions (M.lookup baseName)
 
-attemptToValidateT
-  :: Monad m
+attemptToValidate
+  :: MonadDiagnosis m
   => BaseName
-  -> ValidateT m (Maybe (Definition Validated))
-attemptToValidateT baseName =
-  validate baseName =<< retrieveInputDefinition baseName
+  -> ValidateT m (Maybe Definition)
+attemptToValidate baseName =
+  validateDefinition baseName =<< retrieveInputDefinition baseName
 
 retrieveInputDefinition
-  :: Monad m
+  :: (HasCallStack, MonadDiagnosis m)
   => BaseName
-  -> ValidateT m (Definition Resolved)
+  -> ValidateT m (WithLocation Resolved.Definition)
 retrieveInputDefinition baseName = do
-  views viDefinitions (M.lookup baseName) `onNothingM`
+  views viLocalDefinitions (M.lookup baseName) `onNothingM`
     reportICE "validation definition lookup" "definition not found" ["name: " ++ show baseName]

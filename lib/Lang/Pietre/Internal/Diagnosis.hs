@@ -1,8 +1,23 @@
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 module Lang.Pietre.Internal.Diagnosis where
 
 import "this" Prelude
 
+import Control.Lens                              hiding (mapping, op)
+import Control.Monad.Catch                       (MonadCatch, MonadMask,
+                                                  MonadThrow)
 import Control.Monad.Trans.Control
+import Control.Monad.Trans.Maybe                 (hoistMaybe)
+import Data.Functor.Compose
+import Data.Sequence                             qualified as Seq
+
+import Lang.Pietre.Representations.AST.Resolved  as Resolved
+import Lang.Pietre.Representations.AST.Validated as Validated
+import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Location
+import Lang.Pietre.Representations.Name
 
 
 data Diagnostic = Diagnostic
@@ -18,55 +33,72 @@ data Message
   | ErrorRoleNotFound Path
   | ErrorNotAType Role
   | ErrorNotAConst Role
-  | ErrorNotAStruct Role
+  | ErrorNotAStruct PartialType
   | ErrorNotAValue Role
-  | ErrorNotAFunction Role
+  | ErrorNotAFunctionRole Role
+  | ErrorNotAFunctionType ConcreteType
   | ErrorAmbiguousPath Path (NonEmpty Role)
-  | ErrorCyclicDefinition Name
-  | ErrorIncorrectTypeParameterCount Name Int Int
+  | ErrorCyclicDefinition BaseName [BaseName]
+  | ErrorIncorrectTypeParameterCount BaseName Int Int
   | ErrorDuplicatedTypeParameter Identifier
   | ErrorEnumDuplicatedEntry Identifier
-  | ErrorWrongType [Type] Type
-  | ErrorIncompatibleType HollowType Type
-  | ErrorWrongCast (PathInfo Resolved) (PathInfo Resolved)
-  | ErrorEnumOutOfBounds (EnumInfo Resolved) Int
-  | ErrorStructMissingField (PathInfo Resolved) Identifier
-  | ErrorStructDuplicatedField (PathInfo Resolved) Identifier
-  | ErrorStructUnknownField (PathInfo Resolved) Identifier
-  | ErrorStructAmbiguousType (PathInfo Resolved) Identifier
-  | ErrorStructIncompatibleTypes (PathInfo Resolved) Identifier (NonEmpty (PathInfo Resolved))
-  | ErrorFunctionAmbiguousType (PathInfo Resolved) Identifier
-  | ErrorFunctionIncompatibleTypes (PathInfo Resolved) Identifier (NonEmpty (PathInfo Resolved))
-  | ErrorFieldAccessNotAStruct Type
-  | ErrorFieldAccessFieldNotFound Type Identifier
+  | ErrorWrongType [ConcreteType] ConcreteType
+  | ErrorIncompatibleType PartialType ConcreteType
+  | ErrorWrongCast ConcreteType ConcreteType
+  | ErrorEnumOutOfBounds BaseName Int
+  | ErrorStructMissingField BaseName Identifier
+  | ErrorStructDuplicatedField BaseName Identifier
+  | ErrorStructUnknownField BaseName Identifier
+  | ErrorStructAmbiguousType BaseName Identifier
+  | ErrorStructIncompatibleTypes BaseName Identifier [ConcreteType]
+  | ErrorFunctionAmbiguousType BaseName Identifier
+  | ErrorFunctionIncompatibleTypes BaseName Identifier [ConcreteType]
+  | ErrorFieldAccessNotAStruct ConcreteType
+  | ErrorFieldAccessFieldNotFound ConcreteType Identifier
   | ErrorReservedIdentifier Identifier
   | ErrorPlaceholder Text
   | ErrorFunctionDuplicatedArg Identifier
   | ErrorBreakNotInLoop
   | ErrorContinueNotInLoop
-  | ErrorFunctionCallWrongNumberOfArguments (PathInfo Resolved) Int Int
+  | ErrorFunctionCallWrongNumberOfArguments BaseName Int Int
   | ErrorDivideByZero
   | ErrorNegativeExponent
-  | ErrorReferenceNotLocalVariable (Expression Resolved)
+  | ErrorReferenceNotLocalVariable Resolved.Expression
   | ErrorFunctionCallArgExpectingReference Identifier
-  | ErrorRValueAssignment (Expression Resolved)
-  | ErrorIfExprNotBoolean (PathInfo Resolved)
-  | ErrorWhileExprNotBoolean (PathInfo Resolved)
+  | ErrorRValueAssignment Resolved.Expression
   | ErrorTypeParametersToTypeParameter Identifier
   | WarningNameShadow (NonEmpty Role) Identifier Role
-  | WarningUnexpectedTopLevelExpression (Expression Resolved)
+  | WarningUnexpectedTopLevelExpression Validated.Expression
   deriving Show
 
 
-newtype DiagnosisT m a = DiagnosisT (DiagnosisState -> (DiagnosisState, m (Maybe a)))
-  deriving (Functor, Applicative, Monad, MonadTrans)
+newtype DiagnosisT m a = DiagnosisT (MaybeT (StateT DiagnosisState m) a)
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadThrow
+    , MonadCatch
+    , MonadMask
+    , MonadIO
+    )
 
-runDiagnosisT :: DiagnosisT m a -> m (Seq Diagnostic, Maybe a)
-runDiagnosisT (DiagnosisT step) =
-  let (DiagnosisState {..}, maybeResult) = step (DiagnosisState Seq.empty False)
-  in pure $ if _dsAnyError
-            then (_dsAllDiagnostics, Nothing)
-            else (_dsAllDiagnostics, maybeResult)
+instance MonadTrans DiagnosisT where
+  lift = DiagnosisT . lift . lift
+
+runDiagnosisT
+  :: Monad m
+  => DiagnosisT m a
+  -> m (Seq Diagnostic, Maybe a)
+runDiagnosisT (DiagnosisT action) = do
+  (maybeResult, DiagnosisState {..}) <- action
+    & runMaybeT
+    & flip runStateT startingState
+  pure $ if _dsAnyError
+         then (_dsAllDiagnostics, Nothing)
+         else (_dsAllDiagnostics, maybeResult)
+  where
+    startingState = DiagnosisState Seq.empty False
 
 runDiagnosis :: Diagnosis a -> (Seq Diagnostic, Maybe a)
 runDiagnosis = runIdentity . runDiagnosisT
@@ -80,25 +112,34 @@ data DiagnosisState = DiagnosisState
 
 makeLenses ''DiagnosisState
 
-class Monad m => MonadDiagnosis m where
+class MonadMask m => MonadDiagnosis m where
   reportWarning :: Diagnostic -> m ()
   reportError   :: Diagnostic -> m a
   try           :: m a -> m (Maybe a)
   ensure        :: Maybe a -> m a
 
-instance Monad m => MonadDiagnosis (DiagnosisT m) where
-  reportWarning d =
-    DiagnosisT \s -> (s & dsAllDiagnostics %~ (:|> d), pure $ Just ())
-  reportError d = DiagnosisT \DiagnostisState {..} ->
-    (DiagnosisState (_dsAllDiagnostics :|> d) True, pure Nothing)
-  try (DiagnosisT step) = DiagnosisT (fmap Just . step)
-  ensure ma = DiagnosisT (, pure ma)
+instance MonadMask m => MonadDiagnosis (DiagnosisT m) where
+  reportWarning d = DiagnosisT do
+    dsAllDiagnostics %= (:|> d)
+    pure ()
+  reportError d = DiagnosisT do
+    dsAllDiagnostics %= (:|> d)
+    dsAnyError .= True
+    mzero
+  try (DiagnosisT action) =
+    DiagnosisT $ lift $ runMaybeT action
+  ensure =
+    DiagnosisT . hoistMaybe
 
-instance (MonadDiagnosis m, MonadTransControl t) => MonadDiagnosis t m where
+instance {-# OVERLAPPABLE #-}
+  ( MonadDiagnosis m
+  , MonadTransControl t
+  , MonadMask (t m)
+  ) => MonadDiagnosis (t m) where
   reportWarning = lift . reportWarning
   reportError = lift . reportError
   ensure = lift . ensure
-  try ma = liftWith \run -> try (run ma)
+  try ma = liftWith (\run -> try (run ma)) >>= traverse (restoreT . pure)
 
 
 tryNested :: MonadDiagnosis m => m a -> Compose m Maybe a

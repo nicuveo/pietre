@@ -1,22 +1,36 @@
-module Lang.Pietre.Representations.AST.Validated where
+{-# LANGUAGE PatternSynonyms      #-}
+{-# LANGUAGE TemplateHaskell      #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+
+module Lang.Pietre.Representations.AST.Validated
+  ( module Lang.Pietre.Representations.AST.Validated
+  , module Common
+  ) where
 
 import "this" Prelude
 
 import Control.Lens
 import Data.Kind
-import Data.List.NonEmpty                     qualified as NE
-import Prettyprinter
-import Prettyprinter.Render.Text
 
+import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Internal.HKT
-import Lang.Pietre.Representations.AST.Common (ASTPhase (Validated))
-import Lang.Pietre.Representations.AST.Common qualified as Common
+import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.Identifier
-import Lang.Pietre.Representations.Location
+import Lang.Pietre.Representations.Name
+
+import Lang.Pietre.Representations.AST.Common as Common (ASTPhase (..),
+                                                         ASTRepresentation (..),
+                                                         CommonBlock,
+                                                         CommonElseInfo (..),
+                                                         CommonIfInfo (..),
+                                                         CommonStatement (..),
+                                                         CommonWhileInfo (..),
+                                                         EnumInfo (..))
 
 
 --------------------------------------------------------------------------------
--- AST Phase
+-- AST Representation
 
 instance ASTRepresentation Validated where
   type PathBodyType   Validated = Void
@@ -26,16 +40,16 @@ instance ASTRepresentation Validated where
 
 
 --------------------------------------------------------------------------------
--- Parsed AST definitions
+-- Types
 
 type ConcreteFunctor      = Identity
 type PartialFunctor       = Maybe
-type ParameterizedFunctor = Either Identifier
+type ParameterizedFunctor = Either (BaseName, Identifier)
 type ConcreteType         = TypeTree ConcreteFunctor
-type PartialType          = TypeNode PartialFunctor
+type PartialType          = TypeTree PartialFunctor
 type ParameterizedType    = TypeTree ParameterizedFunctor
 
-type TypeTree (f :: Type -> Type) (n :: Type) = HKT f (TypeNode f n)
+type TypeTree (f :: Type -> Type) = HKT f (TypeNode f)
 
 data TypeNode f
   = IntType
@@ -46,50 +60,111 @@ data TypeNode f
   | EnumType BaseName [Identifier]
   | StructType (StructTypeInfo f)
   | FunctionType (FunctionTypeInfo f)
-  deriving Show
+
+deriving instance (Show (HKT f (TypeNode f))) => Show (TypeNode f)
+
+instance FFunctor TypeNode where
+  ffmap f = \case
+    IntType -> IntType
+    BoolType -> BoolType
+    CharType -> CharType
+    UnitType -> UnitType
+    VoidType -> VoidType
+    EnumType n cs -> EnumType n cs
+    StructType StructTypeInfo {..} ->
+      StructType $ StructTypeInfo
+        _structBaseName
+        (ffrecur @TypeNode f <$> _structTypeParams)
+    FunctionType FunctionTypeInfo {..} ->
+      FunctionType $ FunctionTypeInfo
+        _funParams
+        (fmap2 ffmapFunArgs _funArgs)
+        (ffrecur @TypeNode f _funReturn)
+    where
+      ffmapFunArgs = \case
+        ByReference t -> ByReference $ ffrecur @TypeNode f t
+        ByValue     t -> ByValue     $ ffrecur @TypeNode f t
 
 data StructTypeInfo f = StructTypeInfo
   { _structBaseName   :: BaseName
   , _structTypeParams :: [TypeTree f]
   }
-  deriving Show
 
+deriving instance Show (HKT f (TypeNode f)) => Show (StructTypeInfo f)
+
+typeName :: ConcreteType -> Maybe Name
+typeName = \case
+  IntType  ->
+    Just IntName
+  BoolType ->
+    Just BoolName
+  CharType ->
+    Just CharName
+  UnitType ->
+    Just UnitName
+  VoidType ->
+    Just UnitName
+  EnumType baseName _ ->
+    Just $ Name baseName []
+  StructType StructTypeInfo {..} ->
+    Name _structBaseName <$> traverse typeName _structTypeParams
+  FunctionType _ ->
+    Nothing
+
+assertName :: HasCallStack => ConcreteType -> Name
+assertName t = fromMaybe raiseError $ typeName t
+  where
+    raiseError =
+      reportICE
+        "name assertion"
+        "name not found for given type"
+        ["type: " ++ show t]
+
+
+--------------------------------------------------------------------------------
+-- Definitions
 
 data Definition
   = TypeAliasDef TypeAliasInfo
-  | EnumDef      Common.EnumInfo
+  | EnumDef      EnumInfo
   | StructDef    (StructInfo ParameterizedFunctor)
   | ConstDef     (Typed ConstExpression)
   | FunctionDef  (FunctionTypeInfo ParameterizedFunctor)
   deriving Show
 
-data TypeAliasInfo p = TypeAliasInfo
+data TypeAliasInfo = TypeAliasInfo
   { _aliasParams :: [Identifier]
   , _aliasValue  :: ParameterizedType
   }
+  deriving Show
 
 data StructInfo f = StructInfo
   { _structParams :: [Identifier]
   , _structValues :: NonEmpty (Identifier, TypeTree f)
   }
-  deriving Show
+
+deriving instance Show (HKT f (TypeNode f)) => Show (StructInfo f)
 
 
 data FunctionInfo = FunctionInfo
   { _funType :: FunctionTypeInfo ConcreteFunctor
-  , _funBody :: Common.Block Validated
+  , _funBody :: Block
   }
+  deriving Show
 
 data FunctionTypeInfo f = FunctionTypeInfo
   { _funParams :: [Identifier]
   , _funArgs   :: [(Identifier, FunctionArgType f)]
   , _funReturn :: TypeTree f
-  } deriving Show
+  }
+
+deriving instance Show (HKT f (TypeNode f)) => Show (FunctionTypeInfo f)
 
 data FunctionArgType f
   = ByValue     (TypeTree f)
   | ByReference (TypeTree f)
-  deriving Show
+
+deriving instance Show (HKT f (TypeNode f)) => Show (FunctionArgType f)
 
 functionArgInnerType :: FunctionArgType f -> TypeTree f
 functionArgInnerType = \case
@@ -100,7 +175,7 @@ data ForInfo = ForInfo
   { _forVariableName :: Identifier
   , _forVariableType :: ConcreteType
   , _forRangeExpr    :: RangeExpression
-  , _forBody         :: Common.Block Validated
+  , _forBody         :: Block
   }
   deriving Show
 
@@ -114,7 +189,7 @@ data Typed a = Typed
   { _typeInfo   :: ConcreteType
   , _typedValue :: a
   }
-  deriving (Show, Functor, Applicative, Monad)
+  deriving (Show, Functor, Foldable, Traversable)
 
 data ConstExpression
   = ArrayConstExpr         [Typed ConstExpression]
@@ -129,9 +204,9 @@ data Expression
   = LocalVariableExpr            Identifier
   | ReferenceArgumentExpr        Identifier
   | IndexExpr                    (Typed Expression) (Typed Expression)
-  | FunctionNameExpr             Name FunctionTypeInfo
-  | FunctionCallExpr             Name FunctionTypeInfo [Typed Expression]
-  | VariableCallExpr             Identifier FunctionTypeInfo [Typed Expression]
+  | FunctionNameExpr             Name (FunctionTypeInfo ConcreteFunctor)
+  | FunctionCallExpr             Name (FunctionTypeInfo ConcreteFunctor) [Typed Expression]
+  | VariableCallExpr             Identifier (FunctionTypeInfo ConcreteFunctor) [Typed Expression]
   | ArrayExpr                    [Typed Expression]
   | StructExpr                   (StructInfo ConcreteFunctor) (NonEmpty (Identifier, Typed Expression))
   | FieldAccessExpr              (StructInfo ConcreteFunctor) (Typed Expression) Identifier
@@ -180,34 +255,13 @@ data LValueExpression
 
 
 --------------------------------------------------------------------------------
--- Helper functions
+-- Re-exports
 
-typeName :: ConcreteType -> Maybe Name
-typeName = \case
-  IntType  ->
-    Just IntName
-  BoolType ->
-    Just BoolName
-  CharType ->
-    Just CharName
-  UnitType ->
-    Just UnitName
-  VoidType ->
-    Just UnitName
-  EnumType name _ ->
-    Just name
-  StructType StructType {..} ->
-    Name _structBaseName <$> mapMaybe getTypeName _structTypeParams
-  FunctionType _ ->
-    Nothing
-
-assertName :: ConcreteType -> Name
-assertName t =
-  typeName t `onNothing`
-    reportICE
-      "name assertion"
-      "name not found for given type"
-      ["type: " ++ show t]
+type IfInfo    = CommonIfInfo    Validated
+type ElseInfo  = CommonElseInfo  Validated
+type Statement = CommonStatement Validated
+type WhileInfo = CommonWhileInfo Validated
+type Block     = CommonBlock     Validated
 
 
 --------------------------------------------------------------------------------
@@ -229,12 +283,13 @@ makePrisms ''LValueExpression
 instance Plated ConstExpression where
   plate f = \case
     ArrayConstExpr  xs    -> ArrayConstExpr     <$> traverse2 f xs
-    StructConstExpr si fs -> StructConstExpr si <$> traverse3 f fields
+    StructConstExpr si fs -> StructConstExpr si <$> traverse3 f fs
     leaf                  -> pure leaf
 
 instance Plated Expression where
   plate f = \case
-    CallExpr           n t args   -> CallExpr n t <$> traverse2 f args
+    FunctionCallExpr   n t xs     -> FunctionCallExpr n t <$> traverse2 f xs
+    VariableCallExpr   n t xs     -> VariableCallExpr n t <$> traverse2 f xs
     ArrayExpr          xs         -> ArrayExpr <$> traverse2 f xs
     StructExpr         si fields  -> StructExpr si <$> traverse3 f fields
     FieldAccessExpr    si expr fn -> liftA2 (FieldAccessExpr si) (traverse f expr) (pure fn)

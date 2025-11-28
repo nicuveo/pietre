@@ -4,8 +4,8 @@ import "this" Prelude
 
 import Control.Lens
 
-import Lang.Pietre.Batteries.BuiltIn
-import Lang.Pietre.Representations.AST
+import Lang.Pietre.Internal.ICE
+import Lang.Pietre.Representations.AST.Validated
 import Lang.Pietre.Representations.Interface
 
 
@@ -16,7 +16,7 @@ simplifyModule
   :: Interface
   -> Interface
 simplifyModule =
-  interfaceDefinitions . traverse . traverse %~ simplify
+  interfaceSymbols . traverse %~ simplify
 
 
 --------------------------------------------------------------------------------
@@ -25,85 +25,63 @@ simplifyModule =
 class Simplifiable a where
   simplify :: a -> a
 
-instance Simplifiable (Definition Resolved) where
-  simplify = \case
-    TypeAliasDef info -> TypeAliasDef $ simplify info
-    StructDef    info -> StructDef    $ simplify info
-    ConstDef     info -> ConstDef     $ simplify info
-    FunctionDef  info -> FunctionDef  $ simplify info
-    EnumDef      info -> EnumDef info
-
-instance Simplifiable (TypeAliasInfo Resolved) where
-  simplify = aliasValue %~ simplify
-
-instance Simplifiable (StructInfo Resolved) where
-  simplify = structValues . traverse . traverse %~ simplify
-
-instance Simplifiable (ConstInfo Resolved) where
-  simplify ConstInfo {..} = ConstInfo
-    _constName
-    (simplify _constType)
-    (simplify _constExpr)
-
-instance Simplifiable (FunctionInfo Resolved) where
+instance Simplifiable FunctionInfo where
   simplify FunctionInfo {..} = FunctionInfo
-    _funName
-    (simplify _funType)
-    (fmap simplify _funBody)
+    _funType
+    (fmap2 simplify _funBody)
 
-instance Simplifiable (FunctionType Resolved) where
-  simplify FunctionType {..} = FunctionType
-    _funParams
-    (fmap2 simplify _funArgs)
-    (fmap  simplify _funReturn)
-
-instance Simplifiable (FunctionArgType Resolved) where
-  simplify = \case
-    ByValue     p -> ByValue     $ simplify p
-    ByReference p -> ByReference $ simplify p
-
-instance Simplifiable (Statement Resolved) where
+instance Simplifiable Statement where
   simplify = \case
     IfStmt         info -> IfStmt         $ simplify info
     ForStmt        info -> ForStmt        $ simplify info
     WhileStmt      info -> WhileStmt      $ simplify info
     LetStmt        info -> LetStmt        $ simplify info
-    ReturnStmt     expr -> ReturnStmt     $ fmap simplify expr
+    ReturnStmt     expr -> ReturnStmt     $ simplify expr
     ExpressionStmt expr -> ExpressionStmt $ simplify expr
     ContinueStmt        -> ContinueStmt
     BreakStmt           -> BreakStmt
 
-instance Simplifiable (IfInfo Resolved) where
+instance Simplifiable IfInfo where
   simplify IfInfo {..} = IfInfo
     (simplify _ifExpr)
-    (fmap simplify _ifBody)
-    (fmap simplify _ifElse)
+    (simplify _ifBody)
+    (simplify _ifElse)
 
-instance Simplifiable (ElseInfo Resolved) where
+instance Simplifiable ElseInfo where
   simplify = \case
     ElseIf    info  -> ElseIf $ simplify info
-    ElseBlock stmts -> ElseBlock $ fmap simplify stmts
+    ElseBlock stmts -> ElseBlock $ simplify stmts
 
-instance Simplifiable (ForInfo Resolved) where
+instance Simplifiable ForInfo where
   simplify ForInfo {..} = ForInfo
     _forVariableName
+    _forVariableType
     (simplify _forRangeExpr)
-    (fmap simplify _forBody)
+    (simplify _forBody)
 
-instance Simplifiable (WhileInfo Resolved) where
+instance Simplifiable WhileInfo where
   simplify WhileInfo {..} = WhileInfo
     (simplify _whileExpr)
-    (fmap simplify _whileBody)
+    (simplify _whileBody)
 
-instance Simplifiable (LetInfo Resolved) where
+instance Simplifiable LetInfo where
   simplify LetInfo {..} = LetInfo
     _letName
-    (fmap simplify _letType)
-    (simplify _letExpr)
+    (simplify _letValue)
 
-instance Simplifiable (PathInfo Resolved) where
-  simplify = pathParams . traverse %~ simplify
+instance (Functor f, Simplifiable a) => Simplifiable (f a) where
+  simplify = fmap simplify
 
+instance Simplifiable RangeExpression where
+  simplify = unimplemented
+
+instance Simplifiable LValueExpression where
+  simplify = unimplemented
+
+instance Simplifiable Expression where
+  simplify = unimplemented
+
+{-
 instance Simplifiable TypedExpression where
   simplify = rewrite \ref -> case _exprValue ref of
     AdditionExpr lhs (IntExpression 0) -> Just lhs
@@ -141,3 +119,4 @@ instance Simplifiable TypedExpression where
     DifferenceExpr lhs (BoolExpression False) -> Just lhs
 
     _ -> Nothing
+-}

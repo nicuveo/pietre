@@ -28,8 +28,5 @@ data Name = Name
 
 instance Hashable Name
 
-pattern ConcreteName :: BaseName -> Name
-pattern ConcreteName baseName = Name baseName []
-
 makeLenses ''Name
 makeLenses ''BaseName

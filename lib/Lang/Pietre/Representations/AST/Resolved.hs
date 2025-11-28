@@ -1,17 +1,18 @@
-module Lang.Pietre.Representations.AST.Resolved where
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+
+module Lang.Pietre.Representations.AST.Resolved
+  ( module Lang.Pietre.Representations.AST.Resolved
+  , module Common
+  ) where
 
 import "this" Prelude
 
-import Control.Lens
-import Data.Kind
-import Data.List.NonEmpty                     qualified as NE
-import Prettyprinter
-import Prettyprinter.Render.Text
-
-import Lang.Pietre.Representations.AST.Common (ASTPhase (Resolved))
-import Lang.Pietre.Representations.AST.Common qualified as Common
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
+import Lang.Pietre.Representations.Name
+
+import Lang.Pietre.Representations.AST.Common as Common
 
 
 --------------------------------------------------------------------------------
@@ -19,16 +20,16 @@ import Lang.Pietre.Representations.Location
 
 instance ASTRepresentation Resolved where
   type PathBodyType   Resolved = Role
-  type ExpressionType Resolved = WithLocation (Common.Expression Resolved)
-  type ForInfoType    Resolved = Common.ForInfo Resolved
-  type LetInfoType    Resolved = Common.LetInfo Resolved
+  type ExpressionType Resolved = WithLocation Expression
+  type ForInfoType    Resolved = ForInfo
+  type LetInfoType    Resolved = LetInfo
 
 
 --------------------------------------------------------------------------------
 -- Resolved AST definitions
 
 data Role
-  = BuiltinType BaseName
+  = BuiltinType Name
   | BuiltinFunction BaseName
   | Struct BaseName
   | Enum BaseName
@@ -38,15 +39,28 @@ data Role
   | TypeParameter BaseName Identifier
   | Placeholder
   -- | FunctionPointer (Common.FunctionType Resolved)
-  | FunctionArgument Identifier (Common.FunctionArgType Resolved)
-  | LetVariable Identifier (Maybe (Common.PathInfo Resolved))
-  deriving (Show, Eq, Ord, Generic)
+  | FunctionArgument Identifier FunctionArgType
+  | LetVariable Identifier
 
-instance Hashable Role
+deriving instance ShowConstraints Resolved => Show Role
 
 
 --------------------------------------------------------------------------------
 -- Re-exports
 
-type Definition = Common.Definition Resolved
-type FunctionInfo = Common.FunctionInfo Resolved
+type Block           = CommonBlock           Resolved
+type ConstInfo       = CommonConstInfo       Resolved
+type Definition      = CommonDefinition      Resolved
+type ElseInfo        = CommonElseInfo        Resolved
+type Expression      = CommonExpression      Resolved
+type ForInfo         = CommonForInfo         Resolved
+type FunctionArgType = CommonFunctionArgType Resolved
+type FunctionInfo    = CommonFunctionInfo    Resolved
+type FunctionType    = CommonFunctionType    Resolved
+type IfInfo          = CommonIfInfo          Resolved
+type LetInfo         = CommonLetInfo         Resolved
+type PathInfo        = CommonPathInfo        Resolved
+type Statement       = CommonStatement       Resolved
+type StructInfo      = CommonStructInfo      Resolved
+type TypeAliasInfo   = CommonTypeAliasInfo   Resolved
+type WhileInfo       = CommonWhileInfo       Resolved

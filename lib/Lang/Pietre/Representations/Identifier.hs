@@ -6,4 +6,4 @@ import Prettyprinter
 
 
 newtype Identifier = Identifier { rawIdentifier :: Text }
-  deriving (Show, Eq, Ord, Hashable, Pretty, IsString)
+  deriving (Show, Eq, Ord, Hashable, Pretty, IsString, Semigroup, Monoid)

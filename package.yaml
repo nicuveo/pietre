@@ -55,12 +55,14 @@ dependencies:
   - bytestring
   - containers
   - directory
+  - exceptions
   - extra
   - file-embed
   - filepath
   - hashable
   - hip
   - lens
+  - monad-control
   - monad-loops
   - mtl
   - ordered-containers

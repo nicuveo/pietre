@@ -1,33 +1,38 @@
-module Lang.Pietre.Stages.Lowering where
+module Lang.Pietre.Stages.Lowering (lowerModule) where
 
-import "this" Prelude
-
-import Control.Lens
-import Control.Monad.Extra
-import Data.HashMap.Strict                       qualified as M
-import GHC.Stack
-
-import Lang.Pietre.Batteries.BuiltIn
+-- import "this" Prelude
+--
+-- import Control.Lens
+-- import Control.Monad.Extra
+-- import Data.HashMap.Strict                       qualified as M
+-- import GHC.Stack
+--
+-- import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Internal.ICE
-import Lang.Pietre.Representations.AST           as AST
-import Lang.Pietre.Representations.Identifier
-import Lang.Pietre.Representations.Interface
-import Lang.Pietre.Representations.IR            as IR
-import Lang.Pietre.Representations.Location
-import Lang.Pietre.Representations.Name
-import Lang.Pietre.Stages.Analysis.Instantiation
-import Lang.Pietre.Stages.Lowering.Collection
-import Lang.Pietre.Stages.Lowering.Monad
+-- import Lang.Pietre.Representations.AST.Validated as AST
+-- import Lang.Pietre.Representations.Identifier
+-- import Lang.Pietre.Representations.Interface
+-- import Lang.Pietre.Representations.IR        as IR
+-- import Lang.Pietre.Representations.Location
+-- import Lang.Pietre.Representations.Name
+-- import Lang.Pietre.Stages.Lowering.Collection
+-- import Lang.Pietre.Stages.Lowering.Monad
+
+lowerModule :: a
+lowerModule = unimplemented
+
+{-
 
 lowerModule
   :: Interface
   -> IR
 lowerModule moduleInteface@Interface {..} =
-  fmap (lowerFunction moduleInteface) _interfaceSymbols
+  unimplemented
+  -- fmap (lowerFunction moduleInteface) _interfaceSymbols
 
 lowerFunction
   :: Interface
-  -> AST.FunctionInfo Resolved
+  -> AST.FunctionInfo
   -> IR.Function
 lowerFunction interface FunctionInfo {..} =
   runLowering interface do
@@ -619,3 +624,5 @@ registerBlockArgument label name blockArgument = do
         [ "parent terminator: " ++ show terminator
         , "child label: " ++ show label
         ]
+
+-}

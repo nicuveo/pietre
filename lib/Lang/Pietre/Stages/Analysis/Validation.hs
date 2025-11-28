@@ -1,110 +1,173 @@
-module Lang.Pietre.Stages.Analysis.Validation (validate) where
+module Lang.Pietre.Stages.Analysis.Validation
+  ( validate
+  , validateDefinition
+  ) where
 
 import "this" Prelude
 
-import Control.Lens                              hiding (mapping, op)
-import Control.Monad.Loops                       (whileJust)
-import Control.Monad.RWS.Strict
-import Control.Monad.Trans.Maybe                 (hoistMaybe)
-import Data.List qualified as L
-import Data.HashMap.Strict.Extra                 qualified as M
-import Data.HashSet                              qualified as S
-import Data.Set                                  qualified as Set
-import Data.Ordered.Set qualified as OSet
+import Control.Lens                                         hiding (mapping, op)
+import Control.Monad.Catch                                  (bracket_)
+import Data.Functor.Compose
+import Data.HashMap.Strict.Extra                            qualified as M
+import Data.HashSet                                         qualified as S
+import Data.List                                            qualified as L
+import Data.Set.Ordered                                     qualified as OSet
 
-import Lang.Pietre.Batteries.BuiltIn
-import Lang.Pietre.Internal.ICE
-import Lang.Pietre.Representations.AST
-import Lang.Pietre.Representations.AST.Common
-import Lang.Pietre.Representations.AST.Resolved  as Resolved
-import Lang.Pietre.Representations.AST.Validated as Validated
-import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Internal.Diagnosis
+import Lang.Pietre.Representations.AST.Resolved             as Resolved
+import Lang.Pietre.Representations.AST.Validated            as Validated
 import Lang.Pietre.Representations.Interface
+import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Stages.Analysis.Validation.Monad
+import Lang.Pietre.Stages.Analysis.Validation.Context
+import Lang.Pietre.Stages.Analysis.Validation.Expect
 import Lang.Pietre.Stages.Analysis.Validation.Expr
+import Lang.Pietre.Stages.Analysis.Validation.Instantiation
+import Lang.Pietre.Stages.Analysis.Validation.Monad
+import Lang.Pietre.Stages.Analysis.Validation.Types
 
+
+--------------------------------------------------------------------------------
+-- API
 
 validate
+  :: MonadDiagnosis m
+  => DefinitionCache
+  -> FunctionCache
+  -> SymbolCache
+  -> HashMap BaseName (WithLocation Resolved.Definition)
+  -> m ( DefinitionCache
+       , FunctionCache
+       , SymbolCache
+       )
+validate definitionCache functionCache symbolCache localDefinitions = do
+  let validateInfo = ValidateInfo
+        { _viDefinitions      = definitionCache
+        , _viFunctions        = functionCache
+        , _viSymbols          = symbolCache
+        , _viLocalDefinitions = localDefinitions
+        }
+  (ValidateState {..}, symbols) <- runValidateT validateInfo do
+    void $ ensureNested $
+      M.forWithKey localDefinitions \declarationName resolvedDeclaration ->
+        tryNested $
+          validateDefinition declarationName resolvedDeclaration
+    instantiateAllSymbols
+  pure (_vsDefinitions, _vsFunctions, symbols)
+
+validateDefinition
   :: MonadDiagnosis m
   => BaseName
   -> WithLocation Resolved.Definition
   -> ValidateT m (Maybe Validated.Definition)
-validate baseName definition = do
-  alreadyValidated <- uses vsValidated $ S.member name
+validateDefinition baseName WithLocation {..} = do
+  alreadyValidated <- uses vsValidated $ S.member baseName
   if alreadyValidated
   then lookupLocalDefinition baseName
   else do
     defStack <- use vsDefinitionStack
-    if name `OSet.member` defStack
-    then report $ ErrorCyclicDefinition (snd $ L.break (== name) $ OSet.toList defStack) name
-    else do
+    if baseName `OSet.member` defStack
+    then
+      fatal $ ErrorCyclicDefinition baseName $ snd $ L.break (== baseName) $ toList defStack
+    else
+      try $ bracket_
+        setupValidation
+        teardownValidation
+        performValidation
+  where
+    setupValidation = do
       vsDefinitionStack %= (baseName OSet.<|)
-      result <- try $
-        withContext baseName (_location definition) $
-          case _located definition of
-            TypeAliasDef info -> validateTypeAlias info
-            StructDef    info -> validateStruct info
-            EnumDef      info -> pure $ EnumDef info
-            ConstDef     info -> validateConst info
-            FunctionDef  info -> validateFunctionType info
+
+    teardownValidation = do
       vsDefinitionStack %= OSet.delete baseName
       vsValidated %= S.insert baseName
-      whenJust result \definition -> do
-        vsDefinitions %= M.insert baseName definition
+
+    performValidation = do
+      result <-
+        withContext baseName _location $
+          case _located of
+            Resolved.TypeAliasDef info ->
+              Validated.TypeAliasDef <$> validateTypeAlias info
+            Resolved.StructDef info ->
+              Validated.StructDef <$> validateStruct info
+            Resolved.ConstDef info ->
+              Validated.ConstDef <$> validateConst info
+            Resolved.FunctionDef info ->
+              Validated.FunctionDef <$> validateFunctionType info
+            Resolved.EnumDef info ->
+              pure $ Validated.EnumDef info
+      vsDefinitions %= M.insert baseName result
       pure result
+
+
+--------------------------------------------------------------------------------
+-- Implementation
 
 validateTypeAlias
   :: MonadDiagnosis m
-  => TypeAliasInfo Resolved
-  -> ValidateT m Validated.Definition
-validateTypeAlias TypeAliasInfo {..} = do
+  => Resolved.TypeAliasInfo
+  -> ValidateT m Validated.TypeAliasInfo
+validateTypeAlias Resolved.TypeAliasInfo {..} = do
   validatedValue <- validateParameterizedType _aliasValue
-  pure $ TypeAliasDef $ Output.TypeAliasInfo _aliasParams validatedValue
+  pure $ Validated.TypeAliasInfo _aliasParams validatedValue
 
 validateConst
   :: MonadDiagnosis m
-  => ConstInfo Resolved
-  -> ValidateT m Validated.Definition
-validateConst ConstInfo {..} = do
-  attemptedType <- try $ validateType _constType
+  => Resolved.ConstInfo
+  -> ValidateT m (Typed Validated.ConstExpression)
+validateConst Resolved.ConstInfo {..} = do
+  attemptedType <- try $ validateConcreteType _constType
   attemptedExpr <- try $ validateConstExpression _constExpr
   validatedType <- ensure attemptedType
   validatedExpr <- ensure attemptedExpr
-  expectType validatedType (_typeInfo resolvedExpr)
-  pure $ ConstDef $ validatedExpr
+  expectType validatedType (_typeInfo validatedExpr)
+  pure validatedExpr
 
 validateStruct
   :: MonadDiagnosis m
-  => Input.StructInfo Resolved
-  -> ValidateT m Validated.Definition
-validateStruct StructInfo {..} =
+  => Resolved.StructInfo
+  -> ValidateT m (Validated.StructInfo ParameterizedFunctor)
+validateStruct Resolved.StructInfo {..} = do
   fields <- traverse2 validateParameterizedType _structValues
-  pure $ StructDef $ StructInfo _structParams fields
+  pure $ Validated.StructInfo _structParams fields
 
 validateFunctionType
   :: MonadDiagnosis m
-  => FunctionInfo Resolved
-  -> ValidateT m Validated.Definition
+  => Resolved.FunctionInfo
+  -> ValidateT m (Validated.FunctionTypeInfo ParameterizedFunctor)
 validateFunctionType info = do
-  let FunctionType {..} = _funType info
-  attemptedArgs   <- getCompose (traverse2 (tryNested . validateFunctionArg)       _funArgs)
-  attemptedReturn <- getCompose (traverse  (tryNested . validateParameterizedType) _funReturn)
-  validatedFunctionTypeInfo <- liftA2
-    (FunctionTypeInfo _funParams)
-    (ensure attemptedArgs)
-    (ensure attemptedReturn)
+  let Resolved.FunctionType {..} = Resolved._funType info
+  defLocation     <- use currentLocation
+  attemptedArgs   <- getCompose $ traverse2 (tryNested . validateFunctionArg)       _funArgs
+  attemptedReturn <- getCompose $ traverse  (tryNested . validateParameterizedType) _funReturn
+  validatedArgs   <- ensure attemptedArgs
+  validatedReturn <- fromMaybe (Right UnitType) <$> ensure attemptedReturn
+  let validatedFunctionTypeInfo = FunctionTypeInfo
+        { _funParams = _funParams
+        , _funArgs   = validatedArgs
+        , _funReturn = validatedReturn
+        }
   unless (isGeneric info) do
-    baseName <- currentName
+    let
+      concreteReturn = reifyType @ConcreteFunctor M.empty validatedReturn
+      concreteArgs = flip fmap2 validatedArgs \case
+        Validated.ByReference innerType -> Validated.ByReference $ reifyType @ConcreteFunctor M.empty innerType
+        Validated.ByValue     innerType -> Validated.ByValue     $ reifyType @ConcreteFunctor M.empty innerType
+      concreteFunctionTypeInfo = FunctionTypeInfo
+        { _funParams = _funParams
+        , _funArgs   = concreteArgs
+        , _funReturn = concreteReturn
+        }
+    baseName <- use currentName
     let request = FunctionInstantiationRequest
           { _firBaseName = baseName
-          , _firDefinition = info
-          , _firFunType = validatedFunctionTypeInfo
+          , _firDefinition = WithLocation defLocation info
+          , _firFunType = concreteFunctionTypeInfo
           , _firParams = []
           }
     vsInstanceRequests %= (:|> request)
-  pure $ FunctionDef validatedFunctionTypeInfo
+  pure validatedFunctionTypeInfo
   where
     validateFunctionArg = \case
-      ByReference path -> ByReference <$> validatedParameterizedType path
-      ByValue     path -> ByValue     <$> validatedParameterizedType path
+      Resolved.ByReference path -> Validated.ByReference <$> validateParameterizedType path
+      Resolved.ByValue     path -> Validated.ByValue     <$> validateParameterizedType path

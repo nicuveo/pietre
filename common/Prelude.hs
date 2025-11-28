@@ -38,7 +38,7 @@ module Prelude
 
 -- re-exports
 
-import Control.Applicative        as P (liftA)
+import Control.Applicative        as P (liftA, liftA3)
 import Control.Arrow              as P (first, left, second, (&&&), (***),
                                         (<<<), (>>>))
 import Control.Monad              as P

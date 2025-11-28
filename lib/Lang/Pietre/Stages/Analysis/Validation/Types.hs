@@ -1,189 +1,195 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 module Lang.Pietre.Stages.Analysis.Validation.Types where
 
 import "this" Prelude
 
-import Control.Lens                                 hiding (mapping, op)
-import Control.Monad.Loops                          (whileJust)
-import Control.Monad.RWS.Strict
-import Control.Monad.Trans.Maybe                    (hoistMaybe)
-import Data.HashMap.Strict.Extra                    qualified as M
-import Data.HashSet                                 qualified as S
-import Data.List                                    qualified as L
-import Data.Ordered.Set                             qualified as OSet
-import Data.Set                                     qualified as Set
+import Control.Lens                                   hiding (mapping, op)
+import Data.Either.Extra                              (eitherToMaybe)
+import Data.HashMap.Strict.Extra                      qualified as M
 
 import Lang.Pietre.Batteries.BuiltIn
+import Lang.Pietre.Internal.Diagnosis
+import Lang.Pietre.Internal.HKT
 import Lang.Pietre.Internal.ICE
-import Lang.Pietre.Representations.AST
-import Lang.Pietre.Representations.AST.Common
-import Lang.Pietre.Representations.AST.Resolved     as Resolved
-import Lang.Pietre.Representations.AST.Validated    as Validated
+import Lang.Pietre.Representations.AST.Resolved       as Resolved hiding
+                                                                  (pattern FunctionType)
+import Lang.Pietre.Representations.AST.Validated      as Validated
 import Lang.Pietre.Representations.Identifier
-import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Stages.Analysis.Validation.Expr
+import Lang.Pietre.Stages.Analysis.Validation.Context
 import Lang.Pietre.Stages.Analysis.Validation.Monad
 
 
 validateConcreteType
-  :: Monad m
-  => PathInfo Resolved
-  -> Validate m Type
+  :: forall m
+   . MonadDiagnosis m
+  => Resolved.PathInfo
+  -> ValidateT m ConcreteType
 validateConcreteType = go M.empty
   where
+    go
+      :: HashMap (BaseName, Identifier) ConcreteType
+      -> Resolved.PathInfo
+      -> ValidateT m ConcreteType
     go localMappings PathInfo {..} = do
       params <- traverse (go localMappings) _pathParams
-      case _pathName of
+      case _pathBase of
         BuiltinType name                 -> validateBuiltinType name params
         Struct baseName                  -> validateStructType baseName params
         Enum baseName                    -> validateEnumType baseName params
-        TypeAlias baseName               -> validateTypeAliasType go localMappings baseName params
-        TypeParameter typeName paramName -> validateTypeParameterType localMappings typeName paramName
-        FunctionPointer functionType     -> unimplemented
-        BuiltinFunction _                -> fatal $ ErrorNotAType _pathName
-        Constant baseName                -> fatal $ ErrorNotAType _pathName
-        Function baseName                -> fatal $ ErrorNotAType _pathName
-        Placeholder                      -> fatal $ ErrorNotAType _pathName
-        FunctionArgument argName argType -> fatal $ ErrorNotAType _pathName
-        LetVariable varName varType      -> fatal $ ErrorNotAType _pathName
+        TypeAlias baseName               -> validateTypeAliasType @ConcreteFunctor localMappings baseName params
+        TypeParameter baseName paramName -> validateTypeParameterType @ConcreteFunctor localMappings baseName paramName
+        _                                -> fatal $ ErrorNotAType _pathBase
 
     validateStructType baseName actualParams = do
       expectedParams <- retrieveStructParams baseName
-      validateParamsCount expectedParams actualParams
-      pure $ StructTypeInfo
-        { _structName       = baseName
+      validateParamsCount baseName expectedParams actualParams
+      pure $ StructType $ StructTypeInfo
+        { _structBaseName   = baseName
         , _structTypeParams = actualParams
         }
 
+
+validateNonEmptyPartialType
+  :: forall m
+   . MonadDiagnosis m
+  => Resolved.PathInfo
+  -> ValidateT m (TypeNode PartialFunctor)
+validateNonEmptyPartialType path =
+  validatePartialType path `onNothingM`
+    fatal (ErrorPlaceholder "placeholder at root")
+
 validatePartialType
-  :: Monad m
-  => PathInfo Resolved
-  -> Validate m PartialType
-validatePartialType path =
-  go M.empty path `onNothingM`
-    report $ ErrorPlaceholder "placeholder at root"
+  :: forall m
+   . MonadDiagnosis m
+  => Resolved.PathInfo
+  -> ValidateT m PartialType
+validatePartialType = go M.empty
   where
+    go
+      :: HashMap (BaseName, Identifier) PartialType
+      -> Resolved.PathInfo
+      -> ValidateT m PartialType
     go localMappings PathInfo {..} = do
       params <- traverse (go localMappings) _pathParams
-      case _pathName of
+      case _pathBase of
         BuiltinType name                 -> Just <$> validateBuiltinType name params
         Struct baseName                  -> validateStructType baseName params
-        Enum baseName                    -> validateEnumType baseName params
-        TypeAlias baseName               -> validateTypeAliasType go localMappings baseName params
-        TypeParameter typeName paramName -> validateTypeParameterType localMappings typeName paramName
-        FunctionPointer functionType     -> unimplemented
+        Enum baseName                    -> Just <$> validateEnumType baseName params
+        TypeAlias baseName               -> validateTypeAliasType @PartialFunctor localMappings baseName params
+        TypeParameter baseName paramName -> validateTypeParameterType @PartialFunctor localMappings baseName paramName
         Placeholder                      -> pure Nothing
-        BuiltinFunction _                -> fatal $ ErrorNotAType _pathName
-        Constant baseName                -> fatal $ ErrorNotAType _pathName
-        Function baseName                -> fatal $ ErrorNotAType _pathName
-        FunctionArgument argName argType -> fatal $ ErrorNotAType _pathName
-        LetVariable varName varType      -> fatal $ ErrorNotAType _pathName
+        _                                -> fatal $ ErrorNotAType _pathBase
 
     validateStructType baseName actualParams = do
       expectedParams <- retrieveStructParams baseName
-      validateParamsCountWith (<=) expectedParams actualParams
-      pure $ StructTypeInfo
-        { _structName       = baseName
+      validateParamsCountWith (<=) baseName expectedParams actualParams
+      pure $ Just $ StructType $ StructTypeInfo
+        { _structBaseName   = baseName
         , _structTypeParams = actualParams
         }
 
 validateParameterizedType
-  :: Monad m
-  => PathInfo Resolved
-  -> Validate m ParameterizedType
+  :: forall m
+   . MonadDiagnosis m
+  => Resolved.PathInfo
+  -> ValidateT m ParameterizedType
 validateParameterizedType = go M.empty
   where
+    go
+      :: HashMap (BaseName, Identifier) ParameterizedType
+      -> Resolved.PathInfo
+      -> ValidateT m ParameterizedType
     go localMappings PathInfo {..} = do
       params <- traverse (go localMappings) _pathParams
-      case _pathName of
+      case _pathBase of
         BuiltinType name                 -> Right <$> validateBuiltinType name params
         Struct baseName                  -> validateStructType baseName params
-        Enum baseName                    -> validateEnumType baseName params
-        TypeAlias baseName               -> validateTypeAliasType go localMappings baseName params
-        TypeParameter typeName paramName -> validateTypeParameterType localMappings typeName paramName
-        FunctionPointer functionType     -> unimplemented
-        Placeholder                      -> report $ ErrorPlaceholder unimplemented
-        BuiltinFunction _                -> report $ ErrorNotAType _pathName
-        Constant baseName                -> report $ ErrorNotAType _pathName
-        Function baseName                -> report $ ErrorNotAType _pathName
-        FunctionArgument argName argType -> report $ ErrorNotAType _pathName
-        LetVariable varName varType      -> report $ ErrorNotAType _pathName
+        Enum baseName                    -> Right <$> validateEnumType baseName params
+        TypeAlias baseName               -> validateTypeAliasType @ParameterizedFunctor localMappings baseName params
+        TypeParameter baseName paramName -> pure $ Left (baseName, paramName)
+        Placeholder                      -> fatal $ ErrorPlaceholder unimplemented
+        _                                -> fatal $ ErrorNotAType _pathBase
     validateStructType baseName actualParams = do
       expectedParams <- retrieveStructParams baseName
-      validateParamsCount expectedParams actualParams
-      pure $ StructTypeInfo
-        { _structName       = baseName
+      validateParamsCount baseName expectedParams actualParams
+      pure $ Right $ StructType $ StructTypeInfo
+        { _structBaseName   = baseName
         , _structTypeParams = actualParams
         }
 
 validateBuiltinType
-  :: Monad m
+  :: (HasCallStack, MonadDiagnosis m)
   => Name
   -> [TypeTree f]
-  -> Validate m (TypeNode f)
+  -> ValidateT m (TypeNode f)
 validateBuiltinType name params = case name of
-  IntName  -> validateNoParams *> IntType
-  CharName -> validateNoParams *> CharType
-  BoolName -> validateNoParams *> BoolType
-  UnitName -> validateNoParams *> UnitType
+  IntName  -> validateNoParams $> IntType
+  CharName -> validateNoParams $> CharType
+  BoolName -> validateNoParams $> BoolType
+  UnitName -> validateNoParams $> UnitType
   VoidName -> pure VoidType
+  _ ->
+    reportICE
+      "builtin type validation"
+      "unknown builtin type"
+      ["name: " ++ show name]
   where
     validateNoParams =
-      when (length params > 0) $
-        report $ ErrorIncorrectTypeParameterCount name 0 (length params)
+      validateParamsCount (_nameBase name) [] params
 
 validateEnumType
-  :: Monad m
+  :: MonadDiagnosis m
   => BaseName
   -> [TypeTree f]
-  -> Validate m (TypeNode f)
+  -> ValidateT m (TypeNode f)
 validateEnumType baseName params = do
-  validateParamsCount [] actualParams
+  validateParamsCount baseName [] params
   values <- retrieveEnum baseName
   pure $ EnumType baseName values
 
 validateTypeAliasType
-  :: Monad m
-  => (    M.HashMap (BaseName, Identifier) t
-       -> PathInfo Resolved
-       -> Validate m t
-     )
-  -> M.HashMap (BaseName, Identifier) t
-  -> BaseName
-  -> [t]
-  -> Validate m t
-validateTypeAliasType f localMappings baseName params = do
-  TypeAliasInfo {..} <- retrieveTypeAlias baseName
-  validateParamsCount _aliasParams params
-  let newMappings = M.fromList $ zip (map (baseName,) _aliasParams) params
-  f (M.union newMappings localMappings) _aliasValue
-
-{-
-validateTypeAliasType
-  :: (Applicative f, Monad m)
+  :: forall f m
+   . (Applicative f, MonadDiagnosis m, Show (TypeTree f))
   => M.HashMap (BaseName, Identifier) (TypeTree f)
   -> BaseName
   -> [TypeTree f]
-  -> Validate m (TypeTree f)
-validateTypeAliasType localMappings typeName paramName =
-  M.lookup (typeName, paramName) localMappings `onNothing`
-    fmap (abstract pure) (retrieveTypeParameter typeName paramName)
--}
+  -> ValidateT m (TypeTree f)
+validateTypeAliasType localMappings baseName params = do
+  Validated.TypeAliasInfo {..} <- retrieveTypeAlias baseName
+  validateParamsCount baseName _aliasParams params
+  let newMappings = M.fromList $ zip (map (baseName,) _aliasParams) params
+  pure $ reifyType @f (M.union newMappings localMappings) _aliasValue
+
+validateTypeParameterType
+  :: forall f m
+   . (Applicative f, MonadDiagnosis m)
+  => M.HashMap (BaseName, Identifier) (TypeTree f)
+  -> BaseName
+  -> Identifier
+  -> ValidateT m (TypeTree f)
+validateTypeParameterType localMappings baseName paramName =
+  M.lookup (baseName, paramName) localMappings `onNothing`
+    fmap adapt (retrieveTypeParameter baseName paramName)
+  where
+    adapt :: ConcreteType -> TypeTree f
+    adapt = hpure @f . abstract @f pure
 
 buildTypeParameterMap
-  :: Monad m
+  :: MonadDiagnosis m
   => ParameterizedType
-  -> Type
-  -> Validate m [(Identifier, Type)]
+  -> ConcreteType
+  -> ValidateT m [((BaseName, Identifier), ConcreteType)]
 buildTypeParameterMap expected actual =
   go expected actual
   where
-    abort = report (ErrorIncompatibleType expected actual)
+    errorMessage = ErrorIncompatibleType (parameterizedToPartial expected) actual
     go e a = case (e, a) of
       (Left identifier, _) ->
         pure [(identifier, a)]
       (Right (StructType structType), VoidType) -> do
-        concat <$> zipWithM go (snd <$> _structFields structType) (VoidType <$ _structFields structType)
+        concat <$> traverse (uncurry go) (map (, VoidType) $ _structTypeParams structType)
       (_, VoidType) ->
         pure []
       (Right IntType, IntType) ->
@@ -195,23 +201,25 @@ buildTypeParameterMap expected actual =
       (Right UnitType, UnitType) ->
         pure []
       (Right (EnumType name1 _), EnumType name2 _) -> do
-        unless (name1 == name2) abort
+        unless (name1 == name2) $
+          fatal errorMessage
         pure []
       (Right (StructType structType1), StructType structType2) -> do
-        unless (_structName structType1 == _structName structType2) abort
-        concat <$> zipWithM go (snd <$> _structFields structType1) (snd <$> _structFields structType2)
+        unless (_structBaseName structType1 == _structBaseName structType2) $
+          fatal errorMessage
+        concat <$> zipWithM go (_structTypeParams structType1) (_structTypeParams structType2)
       _ ->
-        abort
+        fatal errorMessage
 
 validateTypePattern
-  :: Monad m
+  :: MonadDiagnosis m
   => PartialType
-  -> Type
-  -> Validate m ()
+  -> ConcreteType
+  -> ValidateT m ()
 validateTypePattern expected actual =
   go expected actual
   where
-    abort = report (ErrorIncompatibleType expected actual)
+    errorMessage = ErrorIncompatibleType expected actual
     go e a = case (e, a) of
       (Nothing, _) -> pass
       (_, VoidType) -> pass
@@ -220,140 +228,136 @@ validateTypePattern expected actual =
       (Just CharType, CharType) -> pass
       (Just UnitType, UnitType) -> pass
       (Just (EnumType name1 _), EnumType name2 _) -> do
-        unless (name1 == name2) abort
+        unless (name1 == name2) $
+          fatal errorMessage
       (Just (StructType structType1), StructType structType2) -> do
-        unless (_structName structType1 == _structName structType2) abort
+        unless (_structBaseName structType1 == _structBaseName structType2) $
+          fatal errorMessage
+        void $ zipWithM go (_structTypeParams structType1) (_structTypeParams structType2)
       _ ->
-        abort
+        fatal errorMessage
 
 validateParamsCount
-  :: Monad m
-  => [Identifier]
-  -> [t]
-  -> Validate m ()
-validateParamsCount = validateParamsCountWith (==)
-
-validateParamsCountWith
-  :: Monad m
-  => (Int -> Int -> Bool)
+  :: MonadDiagnosis m
+  => BaseName
   -> [Identifier]
   -> [t]
-  -> Validate m ()
-validateParamsCountWith cmp expectedParams actualParams = do
+  -> ValidateT m ()
+validateParamsCount =
+  validateParamsCountWith (==)
+
+validateParamsCountWith
+  :: MonadDiagnosis m
+  => (Int -> Int -> Bool)
+  -> BaseName
+  -> [Identifier]
+  -> [t]
+  -> ValidateT m ()
+validateParamsCountWith cmp baseName expectedParams actualParams = do
   let actual   = length actualParams
       expected = length expectedParams
   unless (actual `cmp` expected) $
-    report $ ErrorIncorrectTypeParameterCount baseName expected actual
+    fatal $ ErrorIncorrectTypeParameterCount baseName expected actual
+
+concreteToPartial
+  :: ConcreteType
+  -> PartialType
+concreteToPartial =
+  ffrecur (Just . runIdentity)
+
+parameterizedToPartial
+  :: ParameterizedType
+  -> PartialType
+parameterizedToPartial =
+  ffrecur eitherToMaybe
 
 concretizeType
   :: PartialType
   -> Maybe ConcreteType
-concretizeType = \case
-  Nothing ->
-    Nothing
-  Just IntType ->
-    Just IntType
-  Just BoolType ->
-    Just BoolType
-  Just CharType ->
-    Just CharType
-  Just UnitType ->
-    Just UnitType
-  Just VoidType ->
-    Just VoidType
-  Just (EnumType name values) ->
-    Just $ EnumType name values
-  Just (StructType structInfo) ->
-    StructType <$> concretizeStructType structInfo
-  Just (FunctionType functionInfo) ->
-    FunctionType <$> concretizeFunctionType functionInfo
+concretizeType = go
   where
+    go = \case
+      Nothing ->
+        Nothing
+      Just IntType ->
+        Just IntType
+      Just BoolType ->
+        Just BoolType
+      Just CharType ->
+        Just CharType
+      Just UnitType ->
+        Just UnitType
+      Just VoidType ->
+        Just VoidType
+      Just (EnumType name values) ->
+        Just $ EnumType name values
+      Just (StructType structInfo) ->
+        StructType <$> concretizeStructType structInfo
+      Just (FunctionType functionInfo) ->
+        FunctionType <$> concretizeFunctionType functionInfo
+
     concretizeFunctionType FunctionTypeInfo {..} = do
-      concreteArgs   <- traverse concretizeFunctionArg _funArgs
-      concreteReturn <- traverse concretizeType _funReturn
-      pure $ FunctionTypeInfo concreteArgs concreteReturn
+      concreteArgs   <- traverse2 concretizeFunctionArg _funArgs
+      concreteReturn <- go _funReturn
+      pure $ FunctionTypeInfo _funParams concreteArgs concreteReturn
 
     concretizeFunctionArg = \case
-      ByValue     t -> ByValue     <$> concretizeType t
-      ByReference t -> ByReference <$> concretizeType t
+      Validated.ByValue     t -> Validated.ByValue     <$> go t
+      Validated.ByReference t -> Validated.ByReference <$> go t
 
     concretizeStructType StructTypeInfo {..} = do
-      concreteTypeParams <- traverse  concretizeType _structTypeParams
-      pure $ StructTypeInfo _structName concreteTypeParams
+      concreteTypeParams <- traverse go _structTypeParams
+      pure $ StructTypeInfo _structBaseName concreteTypeParams
 
 reifyType
-  :: Applicative f
-  => HashMap Identifier (TypeTree f)
+  :: forall f
+   . (HasCallStack, Applicative f, Show (TypeTree f))
+  => HashMap (BaseName, Identifier) (TypeTree f)
   -> ParameterizedType
   -> TypeTree f
 reifyType mappings = \case
-  Left identifier ->
-    lookupParameter identifier
+  -- TODO: rewrite as ffrecur
+  Left typeParameter ->
+    lookupParameter typeParameter
   Right IntType ->
-    hpure IntType
+    raise IntType
   Right BoolType ->
-    hpure BoolType
+    raise BoolType
   Right CharType ->
-    hpure CharType
+    raise CharType
   Right UnitType ->
-    hpure UnitType
+    raise UnitType
   Right VoidType ->
-    hpure VoidType
+    raise VoidType
   Right (EnumType name values) ->
-    hpure $ EnumType name values
+    raise $ EnumType name values
   Right (StructType structInfo) ->
-    hpure $ StructType $ reifyStructType structInfo
+    raise $ StructType $ reifyStructType structInfo
   Right (FunctionType functionInfo) ->
-    hpure $ FunctionType $ reifyFunctionType functionInfo
+    raise $ FunctionType $ reifyFunctionType functionInfo
   where
+    raise :: TypeNode f -> TypeTree f
+    raise = hpure @f
+
     reifyFunctionType FunctionTypeInfo {..} = FunctionTypeInfo
-      { _funArgs   = fmap reifyFunctionArg _funArgs
-      , _funReturn = fmap (reifyType mappings) _funReturn
+      { _funParams = []
+      , _funArgs   = fmap2 reifyFunctionArg _funArgs
+      , _funReturn = reifyType @f mappings _funReturn
       }
 
     reifyFunctionArg = \case
-      ByValue     t -> ByValue     $ reifyType mappings t
-      ByReference t -> ByReference $ reifyType mappings t
+      Validated.ByValue     t -> Validated.ByValue     $ reifyType @f mappings t
+      Validated.ByReference t -> Validated.ByReference $ reifyType @f mappings t
 
-    reifyStructType StructTypeInfo {..} = StructTypeInfo
-      { _structName       = _structName
-      , _structTypeParams = fmap (reifyType mappings) _structTypeParams
-      }
+    reifyStructType =
+      structTypeParams %~ fmap (reifyType @f mappings)
 
+    lookupParameter :: (BaseName, Identifier) -> TypeTree f
     lookupParameter identifier =
-      M.lookup identifier mappins `onNothing`
+      flip fromMaybe (M.lookup identifier mappings) $
         reportICE
           "type reification"
           "no information for type parameter"
-          [ "parameter name:   " ++ show name
+          [ "parameter name:   " ++ show identifier
           , "known parameters: " ++ show mappings
           ]
-
-typeMatches
-  :: Type
-  -> Type
-  -> Bool
-typeMatches a b =
-  case (a,b) of
-    (VoidType,        _)               -> True
-    (_,               VoidType)        -> True
-    (IntType,         IntType)         -> True
-    (BoolType,        BoolType)        -> True
-    (CharType,        CharType)        -> True
-    (UnitType,        UnitType)        -> True
-    (EnumType n1 _,   EnumType n2 _)   -> n1 == n2
-    (StructType s1,   StructType s2)   -> structsMatch s1 s2
-    (FunctionType f1, FunctionType f2) -> f1 == f2
-    _                                  -> False
-  where
-    structsMatch s1 s2 =
-      (_structBaseName s1 == _structBaseName s2) &&
-      and (zipWith typeMatches (_structTypeParams s1) (_structTypeParams s2))
-
-typesAllMatch
-  :: [Type]
-  -> Bool
-typesAllMatch types = and do
-  (headType : remainingTypes) <- L.tails types
-  otherType <- remainingTypes
-  pure $ headType `typeMatches` otherType

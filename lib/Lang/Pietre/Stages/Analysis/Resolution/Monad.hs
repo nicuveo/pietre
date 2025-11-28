@@ -1,21 +1,16 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Lang.Pietre.Stages.Analysis.Resolution.Monad where
 
 import "this" Prelude
 
 import Control.Lens
-import Control.Monad.Extra                      (whenM)
-import Control.Monad.RWS.Strict
 import Data.HashMap.Strict                      qualified as M
-import Data.Set                                 qualified as S
-import Data.Tuple
 
-import Lang.Pietre.Internal.ICE
+import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Representations.AST.Resolved
-import Lang.Pietre.Representations.Identifier
-import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
-import Lang.Pietre.Stages.Analysis.Diagnostic
 
 
 --------------------------------------------------------------------------------
@@ -26,8 +21,7 @@ type ResolveT m = ReaderT ResolveInfo (StateT ResolveContext m)
 type Scope = HashMap Path (NonEmpty Role)
 
 data ResolveInfo = ResolveInfo
-  { _riModuleName      :: ModuleName
-  , _riDeclarationName :: BaseName
+  { _riDeclarationName :: BaseName
   }
 
 data ResolveContext = ResolveContext
@@ -36,15 +30,16 @@ data ResolveContext = ResolveContext
   }
 
 runResolveT
-  :: ModuleName
-  -> BaseName
+  :: Monad m
+  => BaseName
   -> Scope
   -> Location
   -> ResolveT m a
-runResolveT moduleName declarationName topLevelScope declarationLocation action =
+  -> m a
+runResolveT declarationName topLevelScope declarationLocation action =
   action
-    & flip runReaderT (ResolveInfo moduleName declarationName)
-    & flip execStateT (ResolveContext topLevelScope declarationLocation)
+    & flip runReaderT (ResolveInfo declarationName)
+    & flip evalStateT (ResolveContext topLevelScope declarationLocation)
 
 
 makeLenses ''ResolveInfo
@@ -54,18 +49,18 @@ makeLenses ''ResolveContext
 lookupName
   :: Monad m
   => Path
-  -> ResolveT m (Maybe (NonEmpty [Role]))
+  -> ResolveT m (Maybe (NonEmpty Role))
 lookupName = uses rcScope . M.lookup
 
 
 fatal :: MonadDiagnosis m => Message -> ResolveT m a
-fatal diagnosticMessage = do
-  baseName <- view riDeclarationName
-  location <- use rcLocation
-  reportError $ Diagnostic baseName location diagnosticMessage
+fatal message = do
+  declName <- view riDeclarationName
+  declLocation <- use rcLocation
+  reportError $ Diagnostic (Just declName) declLocation message
 
-warn :: MonadDiagnosis m => Message -> ResolveT m a
-warn diagnosticMessage = do
-  baseName <- view riDeclarationName
-  location <- use rcLocation
-  reportWarning $ Diagnostic baseName location diagnosticMessage
+warn :: MonadDiagnosis m => Message -> ResolveT m ()
+warn message = do
+  declName <- view riDeclarationName
+  declLocation <- use rcLocation
+  reportWarning $ Diagnostic (Just declName) declLocation message

@@ -11,8 +11,8 @@ module Lang.Pietre.Stages.Parsing where
 
 import "this" Prelude
 
-import Control.Monad.Loops                  (unfoldM)
-import Lang.Pietre.Representations.AST
+import Control.Monad.Loops                    (unfoldM)
+import Lang.Pietre.Representations.AST.Parsed
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
 import Lang.Pietre.Stages.Parsing.Lexer
@@ -30,5 +30,5 @@ lex = runParser $ unfoldM $ fmap filterOutEOF alexGetNextToken
 parseModule :: FilePath -> Text -> Either ParseError Module
 parseModule = runParser moduleParser
 
-parseExpr :: FilePath -> Text -> Either ParseError (Expression Parsed)
+parseExpr :: FilePath -> Text -> Either ParseError Expression
 parseExpr = fmap _located ... runParser expressionParser
