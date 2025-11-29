@@ -56,14 +56,14 @@ main = do
           let moduleName = pure $ Identifier $ T.pack $ takeBaseName filename
           source    <- liftIO $ readFile filename
           parsedAST <- parseModule filename source `onLeft` (error . show)
-          interface@Interface {..} <- analyzeModule
-            interfaces
-            definitions
-            functions
-            symbols
-            moduleName
-            parsedAST
-          -- let simplifiedInterface@Interface{..} = simplifyModule interface
+          interface@Interface {..} <- simplifyModule <$>
+            analyzeModule
+              interfaces
+              definitions
+              functions
+              symbols
+              moduleName
+              parsedAST
           put ( M.insert moduleName interface interfaces
               , definitions <> _interfaceDefinitions
               , symbols     <> _interfaceSymbols

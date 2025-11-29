@@ -200,6 +200,16 @@ data ConstExpression
   | StringLiteralConstExpr Text
   deriving Show
 
+pattern IntConstExpr :: Int -> Typed ConstExpression
+pattern IntConstExpr i = Typed IntType (IntLiteralConstExpr i)
+
+pattern CharConstExpr :: Char -> Typed ConstExpression
+pattern CharConstExpr c = Typed CharType (CharLiteralConstExpr c)
+
+pattern BoolConstExpr :: Bool -> Typed ConstExpression
+pattern BoolConstExpr b = Typed BoolType (BoolLiteralConstExpr b)
+
+
 data Expression
   = LocalVariableExpr            Identifier
   | ReferenceArgumentExpr        Identifier
@@ -241,6 +251,16 @@ data Expression
   | ExponentiationAssignmentExpr (Typed LValueExpression) (Typed Expression)
   deriving Show
 
+pattern IntExpr :: Int -> Typed Expression
+pattern IntExpr i = Typed IntType (IntLiteralExpr i)
+
+pattern CharExpr :: Char -> Typed Expression
+pattern CharExpr c = Typed CharType (CharLiteralExpr c)
+
+pattern BoolExpr :: Bool -> Typed Expression
+pattern BoolExpr b = Typed BoolType (BoolLiteralExpr b)
+
+
 data RangeExpression
   = RangeInclusiveExpr (Typed Expression) (Typed Expression)
   | RangeExclusiveExpr (Typed Expression) (Typed Expression)
@@ -273,6 +293,7 @@ makeLenses ''StructInfo
 makeLenses ''FunctionInfo
 makeLenses ''ForInfo
 makeLenses ''LetInfo
+makeLenses ''Typed
 
 makePrisms ''Definition
 makePrisms ''FunctionArgType
@@ -280,41 +301,41 @@ makePrisms ''Expression
 makePrisms ''ConstExpression
 makePrisms ''LValueExpression
 
-instance Plated ConstExpression where
-  plate f = \case
-    ArrayConstExpr  xs    -> ArrayConstExpr     <$> traverse2 f xs
-    StructConstExpr si fs -> StructConstExpr si <$> traverse3 f fs
+instance Plated (Typed ConstExpression) where
+  plate f Typed {..} = Typed _typeInfo <$> case _typedValue of
+    ArrayConstExpr  xs    -> ArrayConstExpr     <$> traverse f xs
+    StructConstExpr si fs -> StructConstExpr si <$> traverse2 f fs
     leaf                  -> pure leaf
 
-instance Plated Expression where
-  plate f = \case
-    FunctionCallExpr   n t xs     -> FunctionCallExpr n t <$> traverse2 f xs
-    VariableCallExpr   n t xs     -> VariableCallExpr n t <$> traverse2 f xs
-    ArrayExpr          xs         -> ArrayExpr <$> traverse2 f xs
-    StructExpr         si fields  -> StructExpr si <$> traverse3 f fields
-    FieldAccessExpr    si expr fn -> liftA2 (FieldAccessExpr si) (traverse f expr) (pure fn)
-    IntNegationExpr    expr       -> IntNegationExpr  <$> traverse f expr
-    BoolNegationExpr   expr       -> BoolNegationExpr <$> traverse f expr
-    CastExpr           lhs t      -> liftA2 CastExpr           (traverse f lhs) (pure t)
-    IndexExpr          lhs rhs    -> liftA2 IndexExpr          (traverse f lhs) (traverse f rhs)
-    AdditionExpr       lhs rhs    -> liftA2 AdditionExpr       (traverse f lhs) (traverse f rhs)
-    SubtractionExpr    lhs rhs    -> liftA2 SubtractionExpr    (traverse f lhs) (traverse f rhs)
-    MultiplicationExpr lhs rhs    -> liftA2 MultiplicationExpr (traverse f lhs) (traverse f rhs)
-    DivisionExpr       lhs rhs    -> liftA2 DivisionExpr       (traverse f lhs) (traverse f rhs)
-    ModuloExpr         lhs rhs    -> liftA2 ModuloExpr         (traverse f lhs) (traverse f rhs)
-    ExponentiationExpr lhs rhs    -> liftA2 ExponentiationExpr (traverse f lhs) (traverse f rhs)
-    EqualityExpr       lhs rhs    -> liftA2 EqualityExpr       (traverse f lhs) (traverse f rhs)
-    DifferenceExpr     lhs rhs    -> liftA2 DifferenceExpr     (traverse f lhs) (traverse f rhs)
-    GreaterExpr        lhs rhs    -> liftA2 GreaterExpr        (traverse f lhs) (traverse f rhs)
-    LesserExpr         lhs rhs    -> liftA2 LesserExpr         (traverse f lhs) (traverse f rhs)
-    GreaterEqExpr      lhs rhs    -> liftA2 GreaterEqExpr      (traverse f lhs) (traverse f rhs)
-    LesserEqExpr       lhs rhs    -> liftA2 LesserEqExpr       (traverse f lhs) (traverse f rhs)
-    BoolAndExpr        lhs rhs    -> liftA2 BoolAndExpr        (traverse f lhs) (traverse f rhs)
-    BoolOrExpr         lhs rhs    -> liftA2 BoolOrExpr         (traverse f lhs) (traverse f rhs)
+instance Plated (Typed Expression) where
+  plate f Typed {..} = Typed _typeInfo <$> case _typedValue of
+    FunctionCallExpr   n t xs     -> FunctionCallExpr n t <$> traverse f xs
+    VariableCallExpr   n t xs     -> VariableCallExpr n t <$> traverse f xs
+    ArrayExpr          xs         -> ArrayExpr <$> traverse f xs
+    StructExpr         si fields  -> StructExpr si <$> traverse2 f fields
+    FieldAccessExpr    si expr fn -> liftA2 (FieldAccessExpr si) (f expr) (pure fn)
+    IntNegationExpr    expr       -> IntNegationExpr  <$> f expr
+    BoolNegationExpr   expr       -> BoolNegationExpr <$> f expr
+    CastExpr           lhs t      -> liftA2 CastExpr           (f lhs) (pure t)
+    IndexExpr          lhs rhs    -> liftA2 IndexExpr          (f lhs) (f rhs)
+    AdditionExpr       lhs rhs    -> liftA2 AdditionExpr       (f lhs) (f rhs)
+    SubtractionExpr    lhs rhs    -> liftA2 SubtractionExpr    (f lhs) (f rhs)
+    MultiplicationExpr lhs rhs    -> liftA2 MultiplicationExpr (f lhs) (f rhs)
+    DivisionExpr       lhs rhs    -> liftA2 DivisionExpr       (f lhs) (f rhs)
+    ModuloExpr         lhs rhs    -> liftA2 ModuloExpr         (f lhs) (f rhs)
+    ExponentiationExpr lhs rhs    -> liftA2 ExponentiationExpr (f lhs) (f rhs)
+    EqualityExpr       lhs rhs    -> liftA2 EqualityExpr       (f lhs) (f rhs)
+    DifferenceExpr     lhs rhs    -> liftA2 DifferenceExpr     (f lhs) (f rhs)
+    GreaterExpr        lhs rhs    -> liftA2 GreaterExpr        (f lhs) (f rhs)
+    LesserExpr         lhs rhs    -> liftA2 LesserExpr         (f lhs) (f rhs)
+    GreaterEqExpr      lhs rhs    -> liftA2 GreaterEqExpr      (f lhs) (f rhs)
+    LesserEqExpr       lhs rhs    -> liftA2 LesserEqExpr       (f lhs) (f rhs)
+    BoolAndExpr        lhs rhs    -> liftA2 BoolAndExpr        (f lhs) (f rhs)
+    BoolOrExpr         lhs rhs    -> liftA2 BoolOrExpr         (f lhs) (f rhs)
     leaf                          -> pure leaf
 
-instance Plated LValueExpression where
-  plate f = \case
-    FieldAccessLExpr si expr fn -> liftA2 (FieldAccessLExpr si) (traverse f expr) (pure fn)
-    IndexLExpr       lhs rhs    -> liftA2 IndexLExpr (traverse f lhs) (traverse f rhs)
+instance Plated (Typed LValueExpression) where
+  plate f Typed {..} = Typed _typeInfo <$> case _typedValue of
+    FieldAccessLExpr si expr fn -> liftA2 (FieldAccessLExpr si) (f expr) (pure fn)
+    IndexLExpr       lhs rhs    -> liftA2 IndexLExpr (f lhs) (f rhs)
     leaf                        -> pure leaf

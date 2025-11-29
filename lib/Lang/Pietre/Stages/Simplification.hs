@@ -4,9 +4,9 @@ import "this" Prelude
 
 import Control.Lens
 
-import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.AST.Validated
 import Lang.Pietre.Representations.Interface
+import Lang.Pietre.Representations.Location
 
 
 --------------------------------------------------------------------------------
@@ -56,7 +56,7 @@ instance Simplifiable ForInfo where
   simplify ForInfo {..} = ForInfo
     _forVariableName
     _forVariableType
-    (simplify _forRangeExpr)
+    _forRangeExpr
     (simplify _forBody)
 
 instance Simplifiable WhileInfo where
@@ -69,54 +69,55 @@ instance Simplifiable LetInfo where
     _letName
     (simplify _letValue)
 
-instance (Functor f, Simplifiable a) => Simplifiable (f a) where
+instance Simplifiable a => Simplifiable [a] where
   simplify = fmap simplify
 
-instance Simplifiable RangeExpression where
-  simplify = unimplemented
+instance Simplifiable a => Simplifiable (Maybe a) where
+  simplify = fmap simplify
 
-instance Simplifiable LValueExpression where
-  simplify = unimplemented
+instance Simplifiable a => Simplifiable (WithLocation a) where
+  simplify = fmap simplify
 
-instance Simplifiable Expression where
-  simplify = unimplemented
+instance Simplifiable (Typed LValueExpression) where
+  simplify = id
 
-{-
-instance Simplifiable TypedExpression where
-  simplify = rewrite \ref -> case _exprValue ref of
-    AdditionExpr lhs (IntExpression 0) -> Just lhs
-    AdditionExpr (IntExpression 0) rhs -> Just rhs
+instance Simplifiable (Typed ConstExpression) where
+  simplify = id
 
-    SubtractionExpr lhs (IntExpression 0) -> Just lhs
-    SubtractionExpr (IntExpression 0) rhs -> Just (ref & exprValue .~ IntNegationExpr rhs)
+instance Simplifiable (Typed Expression) where
+  simplify = rewrite \ref -> case _typedValue ref of
+    AdditionExpr lhs (IntExpr 0) -> Just lhs
+    AdditionExpr (IntExpr 0) rhs -> Just rhs
 
-    MultiplicationExpr lhs (IntExpression 1) -> Just lhs
-    MultiplicationExpr (IntExpression 1) rhs -> Just rhs
+    SubtractionExpr lhs (IntExpr 0) -> Just lhs
+    SubtractionExpr (IntExpr 0) rhs -> Just (ref & typedValue .~ IntNegationExpr rhs)
 
-    DivisionExpr lhs (IntExpression 1) -> Just lhs
+    MultiplicationExpr lhs (IntExpr 1) -> Just lhs
+    MultiplicationExpr (IntExpr 1) rhs -> Just rhs
 
-    ExponentiationExpr lhs (IntExpression 1) -> Just lhs
+    DivisionExpr lhs (IntExpr 1) -> Just lhs
 
-    BoolAndExpr (BoolExpression True ) rhs -> Just rhs
-    BoolAndExpr (BoolExpression False) _   -> Just (ref & exprValue .~ BoolLiteralExpr False)
-    BoolAndExpr lhs (BoolExpression True ) -> Just lhs
+    ExponentiationExpr lhs (IntExpr 1) -> Just lhs
 
-    BoolOrExpr (BoolExpression True ) _    -> Just (ref & exprValue .~ BoolLiteralExpr True)
-    BoolOrExpr (BoolExpression False) rhs  -> Just rhs
-    BoolOrExpr lhs (BoolExpression False)  -> Just lhs
+    BoolAndExpr (BoolExpr True ) rhs -> Just rhs
+    BoolAndExpr (BoolExpr False) _   -> Just (ref & typedValue .~ BoolLiteralExpr False)
+    BoolAndExpr lhs (BoolExpr True ) -> Just lhs
 
-    BoolNegationExpr (TypedExpression _ _ BoolType (BoolNegationExpr expr)) -> Just expr
-    IntNegationExpr  (TypedExpression _ _ IntType  (IntNegationExpr  expr)) -> Just expr
+    BoolOrExpr (BoolExpr True ) _    -> Just (ref & typedValue .~ BoolLiteralExpr True)
+    BoolOrExpr (BoolExpr False) rhs  -> Just rhs
+    BoolOrExpr lhs (BoolExpr False)  -> Just lhs
 
-    EqualityExpr (BoolExpression True) rhs  -> Just rhs
-    EqualityExpr lhs (BoolExpression True)  -> Just lhs
-    EqualityExpr (BoolExpression False) rhs -> Just (ref & exprValue .~ BoolNegationExpr rhs)
-    EqualityExpr lhs (BoolExpression False) -> Just (ref & exprValue .~ BoolNegationExpr lhs)
+    BoolNegationExpr (Typed BoolType (BoolNegationExpr expr)) -> Just expr
+    IntNegationExpr  (Typed IntType  (IntNegationExpr  expr)) -> Just expr
 
-    DifferenceExpr (BoolExpression True) rhs  -> Just (ref & exprValue .~ BoolNegationExpr rhs)
-    DifferenceExpr lhs (BoolExpression True)  -> Just (ref & exprValue .~ BoolNegationExpr lhs)
-    DifferenceExpr (BoolExpression False) rhs -> Just rhs
-    DifferenceExpr lhs (BoolExpression False) -> Just lhs
+    EqualityExpr (BoolExpr True) rhs  -> Just rhs
+    EqualityExpr lhs (BoolExpr True)  -> Just lhs
+    EqualityExpr (BoolExpr False) rhs -> Just (ref & typedValue .~ BoolNegationExpr rhs)
+    EqualityExpr lhs (BoolExpr False) -> Just (ref & typedValue .~ BoolNegationExpr lhs)
+
+    DifferenceExpr (BoolExpr True) rhs  -> Just (ref & typedValue .~ BoolNegationExpr rhs)
+    DifferenceExpr lhs (BoolExpr True)  -> Just (ref & typedValue .~ BoolNegationExpr lhs)
+    DifferenceExpr (BoolExpr False) rhs -> Just rhs
+    DifferenceExpr lhs (BoolExpr False) -> Just lhs
 
     _ -> Nothing
--}
