@@ -81,7 +81,7 @@ parseLocalDeclarations
   -> [WithLocation Parsed.Definition]
   -> m
      ( HashMap Identifier Role
-     , HashMap BaseName (WithLocation Parsed.Definition)
+     , [(BaseName, WithLocation Parsed.Definition)]
      , Scope
      )
 parseLocalDeclarations moduleName definitions = do
@@ -108,9 +108,10 @@ parseLocalDeclarations moduleName definitions = do
     exports :: HashMap Identifier Role
     exports = fst <$> validatedBindings
 
-    definitionMap :: HashMap BaseName (WithLocation Parsed.Definition)
-    definitionMap = M.fromList do
-      (identifier, (_, definition)) <- M.toList validatedBindings
+    definitionList :: [(BaseName, WithLocation Parsed.Definition)]
+    definitionList = do
+      definition <- definitions
+      (identifier, _) <- declarationTopLevelBindings moduleName $ _located definition
       let baseName = BaseName moduleName identifier
       pure (baseName, definition)
 
@@ -120,7 +121,7 @@ parseLocalDeclarations moduleName definitions = do
       path <- [pure identifier, moduleName <> pure identifier]
       pure (path, pure role)
 
-  pure (exports, definitionMap, scope)
+  pure (exports, definitionList, scope)
 
 declarationTopLevelBindings
   :: ModuleName

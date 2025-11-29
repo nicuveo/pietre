@@ -34,7 +34,7 @@ validate
   => DefinitionCache
   -> FunctionCache
   -> SymbolCache
-  -> HashMap BaseName (WithLocation Resolved.Definition)
+  -> [(BaseName, WithLocation Resolved.Definition)]
   -> m ( DefinitionCache
        , FunctionCache
        , SymbolCache
@@ -44,13 +44,12 @@ validate definitionCache functionCache symbolCache localDefinitions = do
         { _viDefinitions      = definitionCache
         , _viFunctions        = functionCache
         , _viSymbols          = symbolCache
-        , _viLocalDefinitions = localDefinitions
+        , _viLocalDefinitions = M.fromList localDefinitions
         }
   (ValidateState {..}, symbols) <- runValidate validateInfo do
-    void $ ensureNested $
-      M.forWithKey localDefinitions \declarationName resolvedDeclaration ->
-        tryNested $
-          validateDefinition declarationName resolvedDeclaration
+    void
+      $ ensureNested
+      $ traverse (tryNested . uncurry validateDefinition) localDefinitions
     instantiateAllSymbols
   pure (_vsDefinitions, _vsFunctions, symbols)
 
