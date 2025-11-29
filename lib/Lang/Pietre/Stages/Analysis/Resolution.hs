@@ -28,7 +28,7 @@ resolve
   -> ModuleName
   -> Module
   -> m ( HashMap Identifier Role
-       , HashMap BaseName (WithLocation Resolved.Definition)
+       , [(BaseName, WithLocation Resolved.Definition)]
        )
 resolve dependencies moduleName Module {..} = do
   importedScope <- createImportedScope dependencies _modImports
@@ -38,11 +38,11 @@ resolve dependencies moduleName Module {..} = do
     builtinScope = M.fromList $ map (fmap pure) builtins
     topLevelScope = builtinScope `combineMaps` importedScope `combineMaps` localScope
   resolvedDefinitions <- ensureNested $
-    M.forWithKey definitions
-      \declarationBaseName def -> tryNested do
+    for definitions
+      \(declarationBaseName, def) -> tryNested do
         let definitionLocation = _location def
         resolved <- runResolveT declarationBaseName topLevelScope definitionLocation $ resolveDefinition $ _located def
-        pure $ resolved <$ def
+        pure (declarationBaseName, resolved <$ def)
   pure (exported, resolvedDefinitions)
 
 
