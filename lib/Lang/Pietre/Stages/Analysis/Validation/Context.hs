@@ -20,44 +20,39 @@ import                Lang.Pietre.Stages.Analysis.Validation.Monad
 
 
 retrieveTypeAlias
-  :: MonadDiagnosis m
-  => BaseName
-  -> ValidateT m TypeAliasInfo
+  :: BaseName
+  -> Validate TypeAliasInfo
 retrieveTypeAlias =
   retrieveDefinition >=> assertTypeAlias
 
 retrieveConstant
-  :: MonadDiagnosis m
-  => BaseName
-  -> ValidateT m (Typed ConstExpression)
+  :: BaseName
+  -> Validate (Typed ConstExpression)
 retrieveConstant baseName =
   retrieveDefinition baseName >>= assertConstant baseName
 
 retrieveStruct
-  :: MonadDiagnosis m
-  => BaseName
-  -> ValidateT m (StructInfo ParameterizedFunctor)
+  :: BaseName
+  -> Validate (StructInfo ParameterizedFunctor)
 retrieveStruct =
   retrieveDefinition >=> assertStruct
 
 retrieveEnum
-  :: MonadDiagnosis m
-  => BaseName
-  -> ValidateT m [Identifier]
+  :: BaseName
+  -> Validate [Identifier]
 retrieveEnum =
   retrieveDefinition >=> assertEnum
 
 retrieveFunctionType
-  :: MonadDiagnosis m
-  => BaseName
-  -> ValidateT m (FunctionTypeInfo ParameterizedFunctor)
+  :: BaseName
+  -> Validate (FunctionTypeInfo ParameterizedFunctor)
 retrieveFunctionType =
   retrieveDefinition >=> assertFunctionType
 
 retrieveFunctionDefinition
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => BaseName
-  -> ValidateT m (WithLocation Resolved.FunctionInfo)
+  -> Validate (WithLocation Resolved.FunctionInfo)
 retrieveFunctionDefinition baseName =
   ensure =<< asumM
     [ lookupRemoteFunctionDefinition
@@ -75,10 +70,10 @@ retrieveFunctionDefinition baseName =
       ["function name: " ++ show baseName]
 
 retrieveTypeParameter
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => BaseName
   -> Identifier
-  -> ValidateT m ConcreteType
+  -> Validate ConcreteType
 retrieveTypeParameter typeBaseName paramName =
   uses currentParams (M.lookup (typeBaseName, paramName)) `onNothingM`
     reportICE
@@ -89,9 +84,8 @@ retrieveTypeParameter typeBaseName paramName =
       ]
 
 retrieveStructParams
-  :: MonadDiagnosis m
-  => BaseName
-  -> ValidateT m [Identifier]
+  :: BaseName
+  -> Validate [Identifier]
 retrieveStructParams baseName =
   ensure =<< asumM
     [ fmap2 _structParams $
@@ -103,9 +97,8 @@ retrieveStructParams baseName =
     ]
 
 retrieveDefinition
-  :: MonadDiagnosis m
-  => BaseName
-  -> ValidateT m Definition
+  :: BaseName
+  -> Validate Definition
 retrieveDefinition baseName =
   ensure =<< asumM
     [ lookupRemoteDefinition baseName
@@ -114,9 +107,9 @@ retrieveDefinition baseName =
     ]
 
 retrieveVariableType
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => Identifier
-  -> ValidateT m ConcreteType
+  -> Validate ConcreteType
 retrieveVariableType varName =
   uses currentVariables (M.lookup varName) `onNothingM`
     reportICE
@@ -125,30 +118,27 @@ retrieveVariableType varName =
       ["variable name: " ++ show varName]
 
 lookupRemoteDefinition
-  :: MonadDiagnosis m
-  => BaseName
-  -> ValidateT m (Maybe Definition)
+  :: BaseName
+  -> Validate (Maybe Definition)
 lookupRemoteDefinition baseName =
   views viDefinitions (M.lookup baseName)
 
 lookupLocalDefinition
-  :: MonadDiagnosis m
-  => BaseName
-  -> ValidateT m (Maybe Definition)
+  :: BaseName
+  -> Validate (Maybe Definition)
 lookupLocalDefinition baseName =
   uses vsDefinitions (M.lookup baseName)
 
 attemptToValidate
-  :: MonadDiagnosis m
-  => BaseName
-  -> ValidateT m (Maybe Definition)
+  :: BaseName
+  -> Validate (Maybe Definition)
 attemptToValidate baseName =
   validateDefinition baseName =<< retrieveInputDefinition baseName
 
 retrieveInputDefinition
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => BaseName
-  -> ValidateT m (WithLocation Resolved.Definition)
+  -> Validate (WithLocation Resolved.Definition)
 retrieveInputDefinition baseName = do
   views viLocalDefinitions (M.lookup baseName) `onNothingM`
     reportICE "validation definition lookup" "definition not found" ["name: " ++ show baseName]

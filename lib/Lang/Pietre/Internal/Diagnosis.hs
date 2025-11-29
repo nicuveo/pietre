@@ -78,11 +78,16 @@ newtype DiagnosisT m a = DiagnosisT (MaybeT (StateT DiagnosisState m) a)
     ( Functor
     , Applicative
     , Monad
+    , MonadReader r
     , MonadThrow
     , MonadCatch
     , MonadMask
     , MonadIO
     )
+
+instance MonadState s m => MonadState s (DiagnosisT m) where
+  get = DiagnosisT $ lift $ lift get
+  put = DiagnosisT . lift . lift . put
 
 instance MonadTrans DiagnosisT where
   lift = DiagnosisT . lift . lift
@@ -113,13 +118,14 @@ data DiagnosisState = DiagnosisState
 
 makeLenses ''DiagnosisState
 
-class MonadMask m => MonadDiagnosis m where
+class Monad m => MonadDiagnosis m where
   reportWarning :: Diagnostic -> m ()
   reportError   :: Diagnostic -> m a
   try           :: m a -> m (Maybe a)
   ensure        :: Maybe a -> m a
+  subsume       :: (Seq Diagnostic, Maybe a) -> m a
 
-instance MonadMask m => MonadDiagnosis (DiagnosisT m) where
+instance Monad m => MonadDiagnosis (DiagnosisT m) where
   reportWarning d = DiagnosisT do
     dsAllDiagnostics %= (:|> d)
     pure ()
@@ -129,18 +135,23 @@ instance MonadMask m => MonadDiagnosis (DiagnosisT m) where
     mzero
   try (DiagnosisT action) =
     DiagnosisT $ lift $ runMaybeT action
-  ensure =
-    DiagnosisT . hoistMaybe
+  ensure maybeValue = DiagnosisT do
+    when (isNothing maybeValue) $
+      dsAnyError .= True
+    hoistMaybe maybeValue
+  subsume (diagnostics, maybeResult) = do
+    DiagnosisT $ dsAllDiagnostics %= (<> diagnostics)
+    ensure maybeResult
 
 instance {-# OVERLAPPABLE #-}
   ( MonadDiagnosis m
   , MonadTransControl t
-  , MonadMask (t m)
   ) => MonadDiagnosis (t m) where
   reportWarning = lift . reportWarning
   reportError = lift . reportError
   ensure = lift . ensure
   try ma = liftWith (\run -> try (run ma)) >>= traverse (restoreT . pure)
+  subsume = lift . subsume
 
 
 tryNested :: MonadDiagnosis m => m a -> Compose m Maybe a
@@ -148,3 +159,27 @@ tryNested = Compose . try
 
 ensureNested :: MonadDiagnosis m => Compose m Maybe a -> m a
 ensureNested = getCompose >=> ensure
+
+bracket
+  :: MonadDiagnosis m
+  => m a
+  -> (a -> m c)
+  -> (a -> m b)
+  -> m b
+bracket setup teardown action = do
+  resource <- setup
+  result <- try $ action resource
+  teardown resource
+  ensure result
+
+bracket_
+  :: MonadDiagnosis m
+  => m a
+  -> m c
+  -> m b
+  -> m b
+bracket_ setup teardown action = do
+  setup
+  result <- try action
+  teardown
+  ensure result

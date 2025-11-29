@@ -3,7 +3,6 @@ module Lang.Pietre.Stages.Analysis.Resolution (resolve) where
 import "this" Prelude
 
 import Control.Lens                                 hiding (mapping, op)
-import Control.Monad.Catch                          (bracket)
 import Data.Functor.Compose
 import Data.HashMap.Strict.Extra                    qualified as M
 

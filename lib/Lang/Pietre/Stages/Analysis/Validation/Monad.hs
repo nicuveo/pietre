@@ -5,13 +5,11 @@ module Lang.Pietre.Stages.Analysis.Validation.Monad where
 import "this" Prelude
 
 import Control.Lens
-import Control.Monad.Catch
 import Data.HashMap.Strict.Extra                 qualified as M
 import Data.HashSet                              qualified as S
 import Data.Sequence                             qualified as Seq
 import Data.Set.Ordered                          (OSet)
 import Data.Set.Ordered                          qualified as OSet
-import Data.Tuple                                (swap)
 
 import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Internal.ICE
@@ -23,17 +21,20 @@ import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 
 
-type ValidateT m = ReaderT ValidateInfo (StateT ValidateState m)
+type Validate = DiagnosisT (ReaderT ValidateInfo (State ValidateState))
 
-runValidateT
-  :: Monad m
+runValidate
+  :: MonadDiagnosis m
   => ValidateInfo
-  -> ValidateT m a
+  -> Validate a
   -> m (ValidateState, a)
-runValidateT info action = action
-  & flip runReaderT info
-  & flip runStateT initialState
-  & fmap swap
+runValidate info action = do
+  let ((diagnostics, result), validateState) =
+        action
+        & runDiagnosisT
+        & flip runReaderT info
+        & flip runState initialState
+  subsume (diagnostics, (validateState, ) <$> result)
   where
     initialState = ValidateState
       { _vsDefinitions      = M.empty
@@ -105,11 +106,10 @@ currentVariables :: Lens' ValidateState (HashMap Identifier ConcreteType)
 currentVariables = currentContext . contextVariables
 
 withContext
-  :: MonadDiagnosis m
-  => BaseName
+  :: BaseName
   -> Location
-  -> ValidateT m a
-  -> ValidateT m a
+  -> Validate a
+  -> Validate a
 withContext name defLocation action = do
   let context = ValidateContext
         { _contextName      = name
@@ -123,13 +123,13 @@ withContext name defLocation action = do
     (vsContext %= drop 1)
     action
 
-fatal :: MonadDiagnosis m => Message -> ValidateT m a
+fatal :: Message -> Validate a
 fatal message = do
   declName <- use currentName
   declLocation <- use currentLocation
   reportError $ Diagnostic (Just declName) declLocation message
 
-warn :: MonadDiagnosis m => Message -> ValidateT m ()
+warn :: Message -> Validate ()
 warn message = do
   declName <- use currentName
   declLocation <- use currentLocation

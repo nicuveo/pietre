@@ -3,7 +3,6 @@ module Lang.Pietre.Stages.Analysis.Validation.Instantiation (instantiateAllSymbo
 import "this" Prelude
 
 import Control.Lens                                  hiding (mapping, op)
-import Control.Monad.Catch                           (bracket)
 import Control.Monad.Loops                           (iterateUntilM)
 import Data.HashMap.Strict.Extra                     qualified as M
 import Data.Sequence                                 qualified as Seq
@@ -24,8 +23,7 @@ import Lang.Pietre.Stages.Analysis.Validation.Types
 -- API
 
 instantiateAllSymbols
-  :: MonadDiagnosis m
-  => ValidateT m SymbolCache
+  :: Validate SymbolCache
 instantiateAllSymbols = do
   originalRequests <- use vsInstanceRequests
   snd <$> iterateUntilM (Seq.null . fst) processBatch (originalRequests, M.empty)
@@ -54,9 +52,8 @@ instantiateAllSymbols = do
 -- Implementation
 
 instantiate
-  :: MonadDiagnosis m
-  => FunctionInstantiationRequest
-  -> ValidateT m Validated.FunctionInfo
+  :: FunctionInstantiationRequest
+  -> Validate Validated.FunctionInfo
 instantiate FunctionInstantiationRequest {..} = do
   let FunctionTypeInfo {..} = _firFunType
   baseName <- use currentName
@@ -66,10 +63,9 @@ instantiate FunctionInstantiationRequest {..} = do
   pure $ Validated.FunctionInfo _firFunType functionBody
 
 validateBlock
-  :: MonadDiagnosis m
-  => ValidateT m ()
+  :: Validate ()
   -> [WithLocation Resolved.Statement]
-  -> ValidateT m [WithLocation Validated.Statement]
+  -> Validate [WithLocation Validated.Statement]
 validateBlock initContext stmts =
   bracket
     initBlockVariables
@@ -85,9 +81,8 @@ validateBlock initContext stmts =
       ensureNested $ traverse (tryNested . validateStatement) stmts
 
 validateStatement
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Statement
-  -> ValidateT m (WithLocation Validated.Statement)
+  :: WithLocation Resolved.Statement
+  -> Validate (WithLocation Validated.Statement)
 validateStatement statement = do
   currentLocation .= _location statement
   resultStatement <- case _located statement of
@@ -110,9 +105,8 @@ validateStatement statement = do
   pure $ resultStatement <$ statement
 
 validateReturnStatement
-  :: MonadDiagnosis m
-  => Maybe (WithLocation Resolved.Expression)
-  -> ValidateT m (Maybe (Typed Validated.Expression))
+  :: Maybe (WithLocation Resolved.Expression)
+  -> Validate (Maybe (Typed Validated.Expression))
 validateReturnStatement returnExpr = do
   validatedExpr <- traverse validateFunctionExpression returnExpr
   let exprReturnType = maybe UnitType _typeInfo validatedExpr
@@ -121,9 +115,8 @@ validateReturnStatement returnExpr = do
   pure validatedExpr
 
 validateExpressionStatement
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
-  -> ValidateT m (Typed Validated.Expression)
+  :: WithLocation Resolved.Expression
+  -> Validate (Typed Validated.Expression)
 validateExpressionStatement resolvedExpr = do
   validatedExpr <- validateFunctionExpression resolvedExpr
   unless (_typeInfo validatedExpr `typeMatches` UnitType) $
@@ -134,9 +127,8 @@ validateExpressionStatement resolvedExpr = do
   pure validatedExpr
 
 validateLetStatement
-  :: MonadDiagnosis m
-  => Resolved.LetInfo
-  -> ValidateT m Validated.LetInfo
+  :: Resolved.LetInfo
+  -> Validate Validated.LetInfo
 validateLetStatement Resolved.LetInfo {..} = do
   attemptedExpr <- try $ validateFunctionExpression _letExpr
   attemptedType <- try $ traverse validatePartialType _letType
@@ -148,9 +140,8 @@ validateLetStatement Resolved.LetInfo {..} = do
   pure $ Validated.LetInfo _letName validatedExpr
 
 validateIfStatement
-  :: MonadDiagnosis m
-  => Resolved.IfInfo
-  -> ValidateT m Validated.IfInfo
+  :: Resolved.IfInfo
+  -> Validate Validated.IfInfo
 validateIfStatement = go
   where
     go IfInfo {..} = do
@@ -164,27 +155,24 @@ validateIfStatement = go
       ElseBlock block  -> ElseBlock <$> validateBlock pass block
 
 validateWhileStatement
-  :: MonadDiagnosis m
-  => Resolved.WhileInfo
-  -> ValidateT m Validated.WhileInfo
+  :: Resolved.WhileInfo
+  -> Validate Validated.WhileInfo
 validateWhileStatement WhileInfo {..} = do
   validatedExpr <- try $ validateFunctionExpression _whileExpr
   validatedBody <- try $ validateBlock pass _whileBody
   ensure $ liftA2 WhileInfo validatedExpr validatedBody
 
 validateCondition
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
-  -> ValidateT m (Typed Validated.Expression)
+  :: WithLocation Resolved.Expression
+  -> Validate (Typed Validated.Expression)
 validateCondition conditionExpr = do
   validatedExpr <- validateFunctionExpression conditionExpr
   expectType BoolType $ _typeInfo validatedExpr
   pure validatedExpr
 
 validateForStatement
-  :: MonadDiagnosis m
-  => Resolved.ForInfo
-  -> ValidateT m Validated.ForInfo
+  :: Resolved.ForInfo
+  -> Validate Validated.ForInfo
 validateForStatement Resolved.ForInfo {..} = do
   (validatedRangeType, validatedRangeExpression) <- validateRangeExpression _forRangeExpr
   let setForVariable = currentVariables %= M.insert _forVariableName validatedRangeType
