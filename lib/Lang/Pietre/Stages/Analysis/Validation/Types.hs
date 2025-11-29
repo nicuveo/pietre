@@ -22,16 +22,14 @@ import Lang.Pietre.Stages.Analysis.Validation.Monad
 
 
 validateConcreteType
-  :: forall m
-   . MonadDiagnosis m
-  => Resolved.PathInfo
-  -> ValidateT m ConcreteType
+  :: Resolved.PathInfo
+  -> Validate ConcreteType
 validateConcreteType = go M.empty
   where
     go
       :: HashMap (BaseName, Identifier) ConcreteType
       -> Resolved.PathInfo
-      -> ValidateT m ConcreteType
+      -> Validate ConcreteType
     go localMappings PathInfo {..} = do
       params <- traverse (go localMappings) _pathParams
       case _pathBase of
@@ -52,25 +50,21 @@ validateConcreteType = go M.empty
 
 
 validateNonEmptyPartialType
-  :: forall m
-   . MonadDiagnosis m
-  => Resolved.PathInfo
-  -> ValidateT m (TypeNode PartialFunctor)
+  :: Resolved.PathInfo
+  -> Validate (TypeNode PartialFunctor)
 validateNonEmptyPartialType path =
   validatePartialType path `onNothingM`
     fatal (ErrorPlaceholder "placeholder at root")
 
 validatePartialType
-  :: forall m
-   . MonadDiagnosis m
-  => Resolved.PathInfo
-  -> ValidateT m PartialType
+  :: Resolved.PathInfo
+  -> Validate PartialType
 validatePartialType = go M.empty
   where
     go
       :: HashMap (BaseName, Identifier) PartialType
       -> Resolved.PathInfo
-      -> ValidateT m PartialType
+      -> Validate PartialType
     go localMappings PathInfo {..} = do
       params <- traverse (go localMappings) _pathParams
       case _pathBase of
@@ -91,16 +85,14 @@ validatePartialType = go M.empty
         }
 
 validateParameterizedType
-  :: forall m
-   . MonadDiagnosis m
-  => Resolved.PathInfo
-  -> ValidateT m ParameterizedType
+  :: Resolved.PathInfo
+  -> Validate ParameterizedType
 validateParameterizedType = go M.empty
   where
     go
       :: HashMap (BaseName, Identifier) ParameterizedType
       -> Resolved.PathInfo
-      -> ValidateT m ParameterizedType
+      -> Validate ParameterizedType
     go localMappings PathInfo {..} = do
       params <- traverse (go localMappings) _pathParams
       case _pathBase of
@@ -120,10 +112,10 @@ validateParameterizedType = go M.empty
         }
 
 validateBuiltinType
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => Name
   -> [TypeTree f]
-  -> ValidateT m (TypeNode f)
+  -> Validate (TypeNode f)
 validateBuiltinType name params = case name of
   IntName  -> validateNoParams $> IntType
   CharName -> validateNoParams $> CharType
@@ -140,22 +132,21 @@ validateBuiltinType name params = case name of
       validateParamsCount (_nameBase name) [] params
 
 validateEnumType
-  :: MonadDiagnosis m
-  => BaseName
+  :: BaseName
   -> [TypeTree f]
-  -> ValidateT m (TypeNode f)
+  -> Validate (TypeNode f)
 validateEnumType baseName params = do
   validateParamsCount baseName [] params
   values <- retrieveEnum baseName
   pure $ EnumType baseName values
 
 validateTypeAliasType
-  :: forall f m
-   . (Applicative f, MonadDiagnosis m, Show (TypeTree f))
+  :: forall f
+   . (Applicative f, Show (TypeTree f))
   => M.HashMap (BaseName, Identifier) (TypeTree f)
   -> BaseName
   -> [TypeTree f]
-  -> ValidateT m (TypeTree f)
+  -> Validate (TypeTree f)
 validateTypeAliasType localMappings baseName params = do
   Validated.TypeAliasInfo {..} <- retrieveTypeAlias baseName
   validateParamsCount baseName _aliasParams params
@@ -163,12 +154,12 @@ validateTypeAliasType localMappings baseName params = do
   pure $ reifyType @f (M.union newMappings localMappings) _aliasValue
 
 validateTypeParameterType
-  :: forall f m
-   . (Applicative f, MonadDiagnosis m)
+  :: forall f
+   . (Applicative f)
   => M.HashMap (BaseName, Identifier) (TypeTree f)
   -> BaseName
   -> Identifier
-  -> ValidateT m (TypeTree f)
+  -> Validate (TypeTree f)
 validateTypeParameterType localMappings baseName paramName =
   M.lookup (baseName, paramName) localMappings `onNothing`
     fmap adapt (retrieveTypeParameter baseName paramName)
@@ -177,10 +168,9 @@ validateTypeParameterType localMappings baseName paramName =
     adapt = hpure @f . abstract @f pure
 
 buildTypeParameterMap
-  :: MonadDiagnosis m
-  => ParameterizedType
+  :: ParameterizedType
   -> ConcreteType
-  -> ValidateT m [((BaseName, Identifier), ConcreteType)]
+  -> Validate [((BaseName, Identifier), ConcreteType)]
 buildTypeParameterMap expected actual =
   go expected actual
   where
@@ -212,10 +202,9 @@ buildTypeParameterMap expected actual =
         fatal errorMessage
 
 validateTypePattern
-  :: MonadDiagnosis m
-  => PartialType
+  :: PartialType
   -> ConcreteType
-  -> ValidateT m ()
+  -> Validate ()
 validateTypePattern expected actual =
   go expected actual
   where
@@ -238,21 +227,19 @@ validateTypePattern expected actual =
         fatal errorMessage
 
 validateParamsCount
-  :: MonadDiagnosis m
-  => BaseName
+  :: BaseName
   -> [Identifier]
   -> [t]
-  -> ValidateT m ()
+  -> Validate ()
 validateParamsCount =
   validateParamsCountWith (==)
 
 validateParamsCountWith
-  :: MonadDiagnosis m
-  => (Int -> Int -> Bool)
+  :: (Int -> Int -> Bool)
   -> BaseName
   -> [Identifier]
   -> [t]
-  -> ValidateT m ()
+  -> Validate ()
 validateParamsCountWith cmp baseName expectedParams actualParams = do
   let actual   = length actualParams
       expected = length expectedParams

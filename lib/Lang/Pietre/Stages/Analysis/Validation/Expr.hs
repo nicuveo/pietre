@@ -22,9 +22,8 @@ import Lang.Pietre.Stages.Analysis.Validation.Types
 
 
 validateConstExpression
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
-  -> ValidateT m (Typed ConstExpression)
+  :: WithLocation Resolved.Expression
+  -> Validate (Typed ConstExpression)
 validateConstExpression WithLocation {..} = do
   currentLocation .= _location
   case _located of
@@ -137,9 +136,8 @@ validateConstExpression WithLocation {..} = do
     validateLesserEqConstExpression       = validateBinaryCompareConstExpression (compareExpect (== LT))       True
 
 validateFunctionExpression
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
-  -> ValidateT m (Typed Validated.Expression)
+  :: WithLocation Resolved.Expression
+  -> Validate (Typed Validated.Expression)
 validateFunctionExpression WithLocation {..} = do
   currentLocation .= _location
   case _located of
@@ -240,9 +238,8 @@ validateFunctionExpression WithLocation {..} = do
     validateLesserEqFunctionExpression       = validateBinaryCompareFunctionExpression (<=) Validated.LesserEqExpr
 
 validateLValueExpression
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
-  -> ValidateT m (Typed Validated.LValueExpression)
+  :: WithLocation Resolved.Expression
+  -> Validate (Typed Validated.LValueExpression)
 validateLValueExpression WithLocation {..} = do
   currentLocation .= _location
   case _located of
@@ -257,13 +254,12 @@ validateLValueExpression WithLocation {..} = do
 
 validateRangeExpression
   :: WithLocation Resolved.Expression
-  -> ValidateT m (ConcreteType, RangeExpression)
+  -> Validate (ConcreteType, RangeExpression)
 validateRangeExpression _ = unimplemented
 
 validateConstPathExpression
-  :: MonadDiagnosis m
-  => Resolved.PathInfo
-  -> ValidateT m (Typed ConstExpression)
+  :: Resolved.PathInfo
+  -> Validate (Typed ConstExpression)
 validateConstPathExpression PathInfo {..} = do
   case _pathBase of
     Constant name -> validateOtherConstValue name
@@ -274,9 +270,8 @@ validateConstPathExpression PathInfo {..} = do
       retrieveConstant baseName
 
 validateFunctionPathExpression
-  :: MonadDiagnosis m
-  => Resolved.PathInfo
-  -> ValidateT m (Typed Validated.Expression)
+  :: Resolved.PathInfo
+  -> Validate (Typed Validated.Expression)
 validateFunctionPathExpression PathInfo {..} = do
   case _pathBase of
     BuiltinFunction _baseName        -> unimplemented
@@ -341,9 +336,8 @@ validateFunctionPathExpression PathInfo {..} = do
       pure $ Typed (Validated.FunctionType validatedFunctionInfo) $ FunctionNameExpr name validatedFunctionInfo
 
 validateFunctionPathLValueExpression
-  :: MonadDiagnosis m
-  => Resolved.PathInfo
-  -> ValidateT m (Typed Validated.LValueExpression)
+  :: Resolved.PathInfo
+  -> Validate (Typed Validated.LValueExpression)
 validateFunctionPathLValueExpression PathInfo {..} = do
   case _pathBase of
     FunctionArgument argName argType -> validateArgPath argName argType
@@ -363,10 +357,10 @@ validateFunctionPathLValueExpression PathInfo {..} = do
         pure $ Typed argType $ LocalVariableLExpr argName
 
 validateConstCastExpression
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => Typed ConstExpression
   -> ConcreteType
-  -> ValidateT m (Typed ConstExpression)
+  -> Validate (Typed ConstExpression)
 validateConstCastExpression validatedExpr targetType =
   validateCastExpression validatedExpr targetType intResult charResult boolResult enumResult
   where
@@ -388,10 +382,9 @@ validateConstCastExpression validatedExpr targetType =
       else pure $ IntLiteralConstExpr intValue
 
 validateFunctionCastExpression
-  :: MonadDiagnosis m
-  => Typed Validated.Expression
+  :: Typed Validated.Expression
   -> ConcreteType
-  -> ValidateT m (Typed Validated.Expression)
+  -> Validate (Typed Validated.Expression)
 validateFunctionCastExpression validatedExpr targetType =
   validateCastExpression validatedExpr targetType intResult charResult boolResult enumResult
   where
@@ -414,14 +407,13 @@ validateFunctionCastExpression validatedExpr targetType =
         else pure $ Validated.IntLiteralExpr v
 
 validateCastExpression
-  :: MonadDiagnosis m
-  => Typed expr
+  :: Typed expr
   -> ConcreteType
-  -> ValidateT m expr
-  -> ValidateT m expr
-  -> ValidateT m expr
-  -> (BaseName -> [Identifier] -> ValidateT m expr)
-  -> ValidateT m (Typed expr)
+  -> Validate expr
+  -> Validate expr
+  -> Validate expr
+  -> (BaseName -> [Identifier] -> Validate expr)
+  -> Validate (Typed expr)
 validateCastExpression validatedExpr targetType intResult charResult boolResult enumResult = do
   innerValue <-
     case (_typeInfo validatedExpr, targetType) of
@@ -450,10 +442,9 @@ validateCastExpression validatedExpr targetType intResult charResult boolResult 
   pure $ Typed targetType innerValue
 
 validateConstFieldAccessExpression
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
+  :: WithLocation Resolved.Expression
   -> Identifier
-  -> ValidateT m (Typed ConstExpression)
+  -> Validate (Typed ConstExpression)
 validateConstFieldAccessExpression expr fieldName = do
   validatedExpr <- validateConstExpression expr
   case _typedValue validatedExpr of
@@ -465,29 +456,26 @@ validateConstFieldAccessExpression expr fieldName = do
     _ -> fatal $ ErrorFieldAccessNotAStruct (_typeInfo validatedExpr)
 
 validateFunctionFieldAccessExpression
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
+  :: WithLocation Resolved.Expression
   -> Identifier
-  -> ValidateT m (Typed Validated.Expression)
+  -> Validate (Typed Validated.Expression)
 validateFunctionFieldAccessExpression expr fieldName = do
   validatedExpr <- validateFunctionExpression expr
   validateFunctionFieldAccess Validated.FieldAccessExpr validatedExpr fieldName
 
 validateFunctionFieldAccessLValueExpression
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
+  :: WithLocation Resolved.Expression
   -> Identifier
-  -> ValidateT m (Typed Validated.LValueExpression)
+  -> Validate (Typed Validated.LValueExpression)
 validateFunctionFieldAccessLValueExpression expr fieldName = do
   validatedExpr <- validateLValueExpression expr
   validateFunctionFieldAccess Validated.FieldAccessLExpr validatedExpr fieldName
 
 validateFunctionFieldAccess
-  :: MonadDiagnosis m
-  => (Validated.StructInfo ConcreteFunctor -> Typed e -> Identifier -> e)
+  :: (Validated.StructInfo ConcreteFunctor -> Typed e -> Identifier -> e)
   -> Typed e
   -> Identifier
-  -> ValidateT m (Typed e)
+  -> Validate (Typed e)
 validateFunctionFieldAccess cons validatedExpr fieldName = do
   case _typeInfo validatedExpr of
     StructType StructTypeInfo {..} -> do
@@ -504,11 +492,9 @@ validateFunctionFieldAccess cons validatedExpr fieldName = do
       fatal $ ErrorNotAStruct $ concreteToPartial wrongType
 
 validateFunctionCallExpression
-  :: forall m
-   . MonadDiagnosis m
-  => Resolved.PathInfo
+  :: Resolved.PathInfo
   -> [WithLocation Resolved.Expression]
-  -> ValidateT m (Typed Validated.Expression)
+  -> Validate (Typed Validated.Expression)
 validateFunctionCallExpression PathInfo {..} functionArgs =
   case _pathBase of
     BuiltinFunction _baseName ->
@@ -602,7 +588,7 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
     validateFunctionCallArgument
       :: (Identifier, Validated.FunctionArgType f)
       -> WithLocation Resolved.Expression
-      -> ValidateT m (TypeTree f, Typed Validated.Expression)
+      -> Validate (TypeTree f, Typed Validated.Expression)
     validateFunctionCallArgument (argName, argType) argExpression =
       case argType of
         Validated.ByValue actualType ->
@@ -619,7 +605,7 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
       :: HashMap (BaseName, Identifier) [ConcreteType]
       -> BaseName
       -> (Identifier, PartialType)
-      -> ValidateT m ((BaseName, Identifier), ConcreteType)
+      -> Validate ((BaseName, Identifier), ConcreteType)
     validateParam typeMap baseName (paramName, partialType) = do
       ((baseName, paramName), ) <$>
         case fold $ M.lookup (baseName, paramName) typeMap of
@@ -638,32 +624,28 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
       _ -> True
 
 validateStructConstExpression
-  :: MonadDiagnosis m
-  => Resolved.PathInfo
+  :: Resolved.PathInfo
   -> NonEmpty (Identifier, WithLocation Resolved.Expression)
-  -> ValidateT m (Typed ConstExpression)
+  -> Validate (Typed ConstExpression)
 validateStructConstExpression =
   validateStructExpression validateConstExpression StructConstExpr
 
 validateStructFunctionExpression
-  :: MonadDiagnosis m
-  => Resolved.PathInfo
+  :: Resolved.PathInfo
   -> NonEmpty (Identifier, WithLocation Resolved.Expression)
-  -> ValidateT m (Typed Validated.Expression)
+  -> Validate (Typed Validated.Expression)
 validateStructFunctionExpression =
   validateStructExpression validateFunctionExpression Validated.StructExpr
 
 validateStructExpression
-  :: forall e m
-   . MonadDiagnosis m
-  => (WithLocation Resolved.Expression -> ValidateT m (Typed e))
+  :: (WithLocation Resolved.Expression -> Validate (Typed e))
   -> (    Validated.StructInfo ConcreteFunctor
        -> (NonEmpty (Identifier, Typed e))
        -> e
      )
   -> Resolved.PathInfo
   -> NonEmpty (Identifier, WithLocation Resolved.Expression)
-  -> ValidateT m (Typed e)
+  -> Validate (Typed e)
 validateStructExpression fieldValidationCallback resultConstructor structPath fields = do
   attemptedType <- try validateStructType
   validatedFields <- ensureNested $ traverse2 (tryNested . fieldValidationCallback) fields
@@ -721,7 +703,7 @@ validateStructExpression fieldValidationCallback resultConstructor structPath fi
       :: BaseName
       -> HashMap (BaseName, Identifier) [ConcreteType]
       -> (Identifier, PartialType)
-      -> ValidateT m ConcreteType
+      -> Validate ConcreteType
     validateParam baseName typeMap (paramName, partialType) = do
       case fold $ M.lookup (baseName, paramName) typeMap of
         [] -> do
@@ -739,17 +721,15 @@ validateStructExpression fieldValidationCallback resultConstructor structPath fi
       _ -> True
 
 validateBoolNegationConstExpression
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
-  -> ValidateT m (Typed ConstExpression)
+  :: WithLocation Resolved.Expression
+  -> Validate (Typed ConstExpression)
 validateBoolNegationConstExpression expr = do
   value <- expectConstBool =<< validateConstExpression expr
   pure $ Typed BoolType $ BoolLiteralConstExpr (not value)
 
 validateBoolNegationFunctionExpression
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
-  -> ValidateT m (Typed Validated.Expression)
+  :: WithLocation Resolved.Expression
+  -> Validate (Typed Validated.Expression)
 validateBoolNegationFunctionExpression expr = do
   validatedExpr <- validateFunctionExpression expr
   expectType BoolType $ _typeInfo validatedExpr
@@ -758,17 +738,15 @@ validateBoolNegationFunctionExpression expr = do
     _                           -> Validated.BoolNegationExpr validatedExpr
 
 validateIntNegationConstExpression
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
-  -> ValidateT m (Typed ConstExpression)
+  :: WithLocation Resolved.Expression
+  -> Validate (Typed ConstExpression)
 validateIntNegationConstExpression expr = do
   value <- expectConstInt =<< validateConstExpression expr
   pure $ Typed IntType $ IntLiteralConstExpr (-value)
 
 validateIntNegationFunctionExpression
-  :: MonadDiagnosis m
-  => WithLocation Resolved.Expression
-  -> ValidateT m (Typed Validated.Expression)
+  :: WithLocation Resolved.Expression
+  -> Validate (Typed Validated.Expression)
 validateIntNegationFunctionExpression expr = do
   validatedExpr <- validateFunctionExpression expr
   expectType IntType $ _typeInfo validatedExpr
@@ -777,23 +755,21 @@ validateIntNegationFunctionExpression expr = do
     _                          -> Validated.IntNegationExpr validatedExpr
 
 validateBinaryIntConstExpression
-  :: MonadDiagnosis m
-  => (Int -> Int -> ValidateT m Int)
+  :: (Int -> Int -> Validate Int)
   -> Typed ConstExpression
   -> Typed ConstExpression
-  -> ValidateT m (Typed ConstExpression)
+  -> Validate (Typed ConstExpression)
 validateBinaryIntConstExpression f lhs rhs = do
   lhsValue <- expectConstInt lhs
   rhsValue <- expectConstInt rhs
   Typed IntType . IntLiteralConstExpr <$> f lhsValue rhsValue
 
 validateBinaryIntFunctionExpression
-  :: MonadDiagnosis m
-  => (Int -> Int -> ValidateT m Int)
+  :: (Int -> Int -> Validate Int)
   -> (Typed Validated.Expression -> Typed Validated.Expression -> Validated.Expression)
   -> Typed Validated.Expression
   -> Typed Validated.Expression
-  -> ValidateT m (Typed Validated.Expression)
+  -> Validate (Typed Validated.Expression)
 validateBinaryIntFunctionExpression f c lhs rhs = do
   expectType IntType $ _typeInfo lhs
   expectType IntType $ _typeInfo rhs
@@ -804,23 +780,21 @@ validateBinaryIntFunctionExpression f c lhs rhs = do
       pure $ c lhs rhs
 
 validateBinaryBoolConstExpression
-  :: MonadDiagnosis m
-  => (Bool -> Bool -> Bool)
+  :: (Bool -> Bool -> Bool)
   -> Typed ConstExpression
   -> Typed ConstExpression
-  -> ValidateT m (Typed ConstExpression)
+  -> Validate (Typed ConstExpression)
 validateBinaryBoolConstExpression f lhs rhs = do
   lhsValue <- expectConstBool lhs
   rhsValue <- expectConstBool rhs
   pure $ Typed BoolType $ BoolLiteralConstExpr $ f lhsValue rhsValue
 
 validateBinaryBoolFunctionExpression
-  :: MonadDiagnosis m
-  => (Bool -> Bool -> Bool)
+  :: (Bool -> Bool -> Bool)
   -> (Typed Validated.Expression -> Typed Validated.Expression -> Validated.Expression)
   -> Typed Validated.Expression
   -> Typed Validated.Expression
-  -> ValidateT m (Typed Validated.Expression)
+  -> Validate (Typed Validated.Expression)
 validateBinaryBoolFunctionExpression f c lhs rhs = do
   expectType BoolType $ _typeInfo lhs
   expectType BoolType $ _typeInfo rhs
@@ -831,12 +805,11 @@ validateBinaryBoolFunctionExpression f c lhs rhs = do
       c lhs rhs
 
 validateBinaryCompareConstExpression
-  :: MonadDiagnosis m
-  => (forall a. Ord a => a -> a -> Maybe Bool)
+  :: (forall a. Ord a => a -> a -> Maybe Bool)
   -> Bool
   -> Typed ConstExpression
   -> Typed ConstExpression
-  -> ValidateT m (Typed ConstExpression)
+  -> Validate (Typed ConstExpression)
 validateBinaryCompareConstExpression f defaultValue lhs rhs = do
   expectType (_typeInfo lhs) (_typeInfo rhs)
   result <- go (_typedValue lhs) (_typedValue rhs) `onNothingM`
@@ -874,12 +847,11 @@ validateBinaryCompareConstExpression f defaultValue lhs rhs = do
           ]
 
 validateBinaryCompareFunctionExpression
-  :: MonadDiagnosis m
-  => (forall a. Ord a => a -> a -> Bool)
+  :: (forall a. Ord a => a -> a -> Bool)
   -> (Typed Validated.Expression -> Typed Validated.Expression -> Validated.Expression)
   -> Typed Validated.Expression
   -> Typed Validated.Expression
-  -> ValidateT m (Typed Validated.Expression)
+  -> Validate (Typed Validated.Expression)
 validateBinaryCompareFunctionExpression f c lhs rhs = do
   expectType (_typeInfo lhs) (_typeInfo rhs)
   pure $ Typed BoolType $ case (_typedValue lhs, _typedValue rhs) of
@@ -893,10 +865,9 @@ validateBinaryCompareFunctionExpression f c lhs rhs = do
       c lhs rhs
 
 validateAdditionConstExpression
-  :: MonadDiagnosis m
-  => Typed ConstExpression
+  :: Typed ConstExpression
   -> Typed ConstExpression
-  -> ValidateT m (Typed ConstExpression)
+  -> Validate (Typed ConstExpression)
 validateAdditionConstExpression lhs rhs = do
   case _typeInfo lhs of
     IntType -> do
@@ -906,10 +877,9 @@ validateAdditionConstExpression lhs rhs = do
       fatal $ ErrorWrongType [IntType] (_typeInfo lhs)
 
 validateAdditionFunctionExpression
-  :: MonadDiagnosis m
-  => Typed Validated.Expression
+  :: Typed Validated.Expression
   -> Typed Validated.Expression
-  -> ValidateT m (Typed Validated.Expression)
+  -> Validate (Typed Validated.Expression)
 validateAdditionFunctionExpression lhs rhs = do
   case _typeInfo lhs of
     IntType -> do
@@ -923,12 +893,11 @@ validateAdditionFunctionExpression lhs rhs = do
       fatal $ ErrorWrongType [IntType] (_typeInfo lhs)
 
 validateAssignmentExpression
-  :: MonadDiagnosis m
-  => (Typed LValueExpression -> Typed Validated.Expression -> Validated.Expression)
-  -> (ConcreteType -> ValidateT m ())
+  :: (Typed LValueExpression -> Typed Validated.Expression -> Validated.Expression)
+  -> (ConcreteType -> Validate ())
   -> WithLocation Resolved.Expression
   -> WithLocation Resolved.Expression
-  -> ValidateT m (Typed Validated.Expression)
+  -> Validate (Typed Validated.Expression)
 validateAssignmentExpression cons typeValidationCallback lhs rhs = do
   attemptedLHS <- try $ validateLValueExpression lhs
   attemptedRHS <- try $ validateFunctionExpression rhs
@@ -940,19 +909,17 @@ validateAssignmentExpression cons typeValidationCallback lhs rhs = do
 
 
 safeDivMod
-  :: MonadDiagnosis m
-  => Int
+  :: Int
   -> Int
-  -> ValidateT m (Int, Int)
+  -> Validate (Int, Int)
 safeDivMod x y = do
   when (y == 0) $ fatal ErrorDivideByZero
   pure $ x `divMod` y
 
 safeExp
-  :: MonadDiagnosis m
-  => Int
+  :: Int
   -> Int
-  -> ValidateT m Int
+  -> Validate Int
 safeExp x y = do
   when (y < 0) $ fatal ErrorNegativeExponent
   pure $ x ^ y

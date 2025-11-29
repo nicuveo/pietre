@@ -46,7 +46,7 @@ validate definitionCache functionCache symbolCache localDefinitions = do
         , _viSymbols          = symbolCache
         , _viLocalDefinitions = localDefinitions
         }
-  (ValidateState {..}, symbols) <- runValidateT validateInfo do
+  (ValidateState {..}, symbols) <- runValidate validateInfo do
     void $ ensureNested $
       M.forWithKey localDefinitions \declarationName resolvedDeclaration ->
         tryNested $
@@ -55,10 +55,9 @@ validate definitionCache functionCache symbolCache localDefinitions = do
   pure (_vsDefinitions, _vsFunctions, symbols)
 
 validateDefinition
-  :: MonadDiagnosis m
-  => BaseName
+  :: BaseName
   -> WithLocation Resolved.Definition
-  -> ValidateT m (Maybe Validated.Definition)
+  -> Validate (Maybe Validated.Definition)
 validateDefinition baseName WithLocation {..} = do
   alreadyValidated <- uses vsValidated $ S.member baseName
   if alreadyValidated
@@ -97,17 +96,15 @@ validateDefinition baseName WithLocation {..} = do
 -- Implementation
 
 validateTypeAlias
-  :: MonadDiagnosis m
-  => Resolved.TypeAliasInfo
-  -> ValidateT m Validated.TypeAliasInfo
+  :: Resolved.TypeAliasInfo
+  -> Validate Validated.TypeAliasInfo
 validateTypeAlias Resolved.TypeAliasInfo {..} = do
   validatedValue <- validateParameterizedType _aliasValue
   pure $ Validated.TypeAliasInfo _aliasParams validatedValue
 
 validateConst
-  :: MonadDiagnosis m
-  => Resolved.ConstInfo
-  -> ValidateT m (Typed Validated.ConstExpression)
+  :: Resolved.ConstInfo
+  -> Validate (Typed Validated.ConstExpression)
 validateConst Resolved.ConstInfo {..} = do
   attemptedType <- try $ validateConcreteType _constType
   attemptedExpr <- try $ validateConstExpression _constExpr
@@ -117,17 +114,15 @@ validateConst Resolved.ConstInfo {..} = do
   pure validatedExpr
 
 validateStruct
-  :: MonadDiagnosis m
-  => Resolved.StructInfo
-  -> ValidateT m (Validated.StructInfo ParameterizedFunctor)
+  :: Resolved.StructInfo
+  -> Validate (Validated.StructInfo ParameterizedFunctor)
 validateStruct Resolved.StructInfo {..} = do
   fields <- traverse2 validateParameterizedType _structValues
   pure $ Validated.StructInfo _structParams fields
 
 validateFunctionType
-  :: MonadDiagnosis m
-  => Resolved.FunctionInfo
-  -> ValidateT m (Validated.FunctionTypeInfo ParameterizedFunctor)
+  :: Resolved.FunctionInfo
+  -> Validate (Validated.FunctionTypeInfo ParameterizedFunctor)
 validateFunctionType info = do
   let Resolved.FunctionType {..} = Resolved._funType info
   baseName <- use currentName

@@ -14,10 +14,10 @@ import Lang.Pietre.Stages.Analysis.Validation.Monad
 
 
 assertConstant
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => BaseName
   -> Definition
-  -> ValidateT m (Typed ConstExpression)
+  -> Validate (Typed ConstExpression)
 assertConstant baseName = \case
   ConstDef constInfo -> pure constInfo
   -- TODO: explain why this is needed
@@ -38,9 +38,9 @@ assertConstant baseName = \case
     ["definition: " ++ show definition]
 
 assertTypeAlias
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => Definition
-  -> ValidateT m TypeAliasInfo
+  -> Validate TypeAliasInfo
 assertTypeAlias = \case
   TypeAliasDef typeAliasInfo -> pure typeAliasInfo
   definition -> reportICE
@@ -49,9 +49,9 @@ assertTypeAlias = \case
     ["definition: " ++ show definition]
 
 assertEnum
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => Definition
-  -> ValidateT m [Identifier]
+  -> Validate [Identifier]
 assertEnum = \case
   EnumDef enumInfo -> pure $ _enumValues enumInfo
   definition -> reportICE
@@ -60,9 +60,9 @@ assertEnum = \case
     ["definition: " ++ show definition]
 
 assertStruct
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => Definition
-  -> ValidateT m (StructInfo ParameterizedFunctor)
+  -> Validate (StructInfo ParameterizedFunctor)
 assertStruct = \case
   StructDef structInfo -> pure structInfo
   definition -> reportICE
@@ -71,9 +71,9 @@ assertStruct = \case
     ["definition: " ++ show definition]
 
 assertStructDefinition
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => Resolved.Definition
-  -> ValidateT m Resolved.StructInfo
+  -> Validate Resolved.StructInfo
 assertStructDefinition = \case
   Resolved.StructDef structInfo -> pure structInfo
   definition -> reportICE
@@ -82,9 +82,9 @@ assertStructDefinition = \case
     ["definition: " ++ show definition]
 
 assertFunctionType
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => Definition
-  -> ValidateT m (FunctionTypeInfo ParameterizedFunctor)
+  -> Validate (FunctionTypeInfo ParameterizedFunctor)
 assertFunctionType = \case
   FunctionDef functionType -> pure functionType
   definition -> reportICE
@@ -93,27 +93,25 @@ assertFunctionType = \case
     ["definition: " ++ show definition]
 
 expectType
-  :: MonadDiagnosis m
-  => ConcreteType
+  :: ConcreteType
   -> ConcreteType
-  -> ValidateT m ()
+  -> Validate ()
 expectType expected actual =
   unless (expected `typeMatches` actual) $
     fatal $ ErrorWrongType [expected] actual
 
 expectTypeOneOf
-  :: MonadDiagnosis m
-  => [ConcreteType]
+  :: [ConcreteType]
   -> ConcreteType
-  -> ValidateT m ()
+  -> Validate ()
 expectTypeOneOf expected actual =
   unless (any (`typeMatches` actual) expected) $
     fatal $ ErrorWrongType expected actual
 
 expectConstInt
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => Typed ConstExpression
-  -> ValidateT m Int
+  -> Validate Int
 expectConstInt Typed {..} = do
   expectType IntType _typeInfo
   case _typedValue of
@@ -121,9 +119,9 @@ expectConstInt Typed {..} = do
     _ -> reportICE "const expr validation" "not a literal int value" ["value: " ++ show _typedValue]
 
 expectConstBool
-  :: (HasCallStack, MonadDiagnosis m)
+  :: HasCallStack
   => Typed ConstExpression
-  -> ValidateT m Bool
+  -> Validate Bool
 expectConstBool Typed {..} = do
   expectType BoolType _typeInfo
   case _typedValue of
