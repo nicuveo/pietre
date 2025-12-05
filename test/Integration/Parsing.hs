@@ -7,16 +7,19 @@ module Integration.Parsing
 
 import "this" Prelude
 
-import Data.Text.IO            qualified as T
-import Data.Text.Lazy          qualified as T
-import Data.Text.Lazy.Encoding qualified as T
-import Lang.Pietre
+import Data.Text.IO                                 qualified as T
+import Data.Text.Lazy                               qualified as T
+import Data.Text.Lazy.Encoding                      qualified as T
 import System.FilePath
 import Test.Tasty.Golden
 import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
-import Arbitrary               ()
+import Lang.Pietre.Export.PrettyPrinting.AST.Parsed
+import Lang.Pietre.Representations.AST.Parsed
+import Lang.Pietre.Stages.Parsing
+
+import Arbitrary                                    ()
 import Locate
 
 
@@ -32,10 +35,10 @@ test_batch = do
     pure
       $ T.encodeUtf8
       $ T.fromStrict
-      $ prettyPrint ast
+      $ prettyPrintText ast
 
 test_prop :: Module -> Property
 test_prop "round-trip" m =
-  let print1 = prettyPrint m
-      print2 = prettyPrint <$> parseModule "" print1
+  let print1 = prettyPrintText m
+      print2 = prettyPrintText <$> parseModule "" print1
   in  Right print1 === print2
