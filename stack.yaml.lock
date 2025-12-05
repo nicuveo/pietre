@@ -5,13 +5,6 @@
 
 packages:
 - completed:
-    hackage: graphwiz-1.0.0@sha256:04efe58def5fe1004c237dd26671006fe1ea81e989c024c14a743659bf5fe976,3297
-    pantry-tree:
-      sha256: ee1153cfa7b9f67a7cc9f8a411ec550129e5ea26da6b4c20c754645d9a993e09
-      size: 968
-  original:
-    hackage: graphwiz-1.0.0
-- completed:
     hackage: alex-3.5.3.0@sha256:f6fde8ff59e7e38f9e95eca8f5154fb611c9789d1d9538aa9745c6c3cd9495b4,4502
     pantry-tree:
       sha256: bb26eb1163ec8e99df57b4fe8036d10fa474390274e8395d543daadfaad25d48
@@ -19,12 +12,26 @@ packages:
   original:
     hackage: alex-3.5.3.0
 - completed:
+    hackage: graphwiz-1.0.0@sha256:04efe58def5fe1004c237dd26671006fe1ea81e989c024c14a743659bf5fe976,3297
+    pantry-tree:
+      sha256: ee1153cfa7b9f67a7cc9f8a411ec550129e5ea26da6b4c20c754645d9a993e09
+      size: 968
+  original:
+    hackage: graphwiz-1.0.0
+- completed:
     hackage: hip-1.5.6.0@sha256:296c55622f62485422c0a593c7306af1a5abf8ba9f866dcdffc281b01eba65d7,6988
     pantry-tree:
       sha256: d79395e6ec9caf1132a7e001f6fe9b8ebada31e0e52087a4a1a971e3f295a7f4
       size: 7456
   original:
     hackage: hip-1.5.6.0
+- completed:
+    hackage: prettyprinter-lucid-0.2.0.1@sha256:41072eaa4853c1709798bff36193e29bf47a717f9d1efd30c36b163ada6caeb4,1613
+    pantry-tree:
+      sha256: 298a6e7c9a194d4b81f564d6558400e208c4f38f3f47ed75b1c2bb47eb4afd5d
+      size: 340
+  original:
+    hackage: prettyprinter-lucid-0.2.0.1
 - completed:
     hackage: repa-3.4.2.0@sha256:7fc52911966c64cc1676843f5fee1777931d0161e2e55581bf925feac4ac30c2,3694
     pantry-tree:

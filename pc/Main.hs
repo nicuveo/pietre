@@ -1,11 +1,12 @@
 module Main where
 
-import "this" Prelude                         hiding (readFile)
+import "this" Prelude                                  hiding (readFile)
 
-import Data.HashMap.Strict.Extra              qualified as M
-import Data.List.NonEmpty                     qualified as NE
-import Data.Text                              qualified as T
-import Data.Text.IO                           (readFile)
+import Data.HashMap.Strict.Extra                       qualified as M
+import Data.List.NonEmpty                              qualified as NE
+import Data.Text                                       qualified as T
+import Data.Text.IO                                    qualified as T
+import Lucid
 import System.Environment
 import System.Exit
 import System.FilePath
@@ -15,6 +16,9 @@ import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Interface
 -- import Lang.Pietre.Representations.IR         as IR
+import Lang.Pietre.Export.HTML
+import Lang.Pietre.Export.PrettyPrinting.AST.Parsed    as PPP
+import Lang.Pietre.Export.PrettyPrinting.AST.Validated as VPP
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 
@@ -54,7 +58,7 @@ main = do
         for filenames \filename -> do
           (interfaces, definitions, symbols, functions) <- get
           let moduleName = pure $ Identifier $ T.pack $ takeBaseName filename
-          source    <- liftIO $ readFile filename
+          source    <- liftIO $ T.readFile filename
           parsedAST <- parseModule filename source `onLeft` (error . show)
           interface@Interface {..} <- simplifyModule <$>
             analyzeModule
@@ -64,6 +68,12 @@ main = do
               symbols
               moduleName
               parsedAST
+          let debugFilename = takeBaseName filename ++ "-ast.html"
+          liftIO $ T.writeFile debugFilename $ renderHTML do
+            h2_ "Parsed AST"
+            PPP.prettyPrintHTML parsedAST
+            h2_ "Validated AST"
+            VPP.prettyPrintHTML interface
           put ( M.insert moduleName interface interfaces
               , definitions <> _interfaceDefinitions
               , symbols     <> _interfaceSymbols

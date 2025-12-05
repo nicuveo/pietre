@@ -28,7 +28,6 @@ ghc-options:
   - -fhide-source-paths
   - -foptimal-applicative-do
   - -funbox-small-strict-fields
-  - -fwrite-ide-info
 
 default-extensions:
   - AllowAmbiguousTypes
@@ -63,11 +62,13 @@ dependencies:
   - hashable
   - hip
   - lens
+  - lucid
   - monad-control
   - monad-loops
   - mtl
   - ordered-containers
   - prettyprinter
+  - prettyprinter-lucid
   - template-haskell
   - text
   - text-builder
