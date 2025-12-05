@@ -222,7 +222,9 @@ resolveExpression expr = do
     FieldAccessExpr lhs rhs ->
       liftA2 FieldAccessExpr (resolveExpression lhs) (pure rhs)
     CallExpr lhs args -> do
-      liftA2 CallExpr (resolvePath lhs) (traverse resolveExpression args)
+      resolvedPath <- try $ resolvePath lhs
+      resolvedArgs <- getCompose $ traverse (tryNested . resolveExpression) args
+      ensure $ liftA2 CallExpr resolvedPath resolvedArgs
     ArrayExpr exprs ->
       ArrayExpr <$> traverse resolveExpression exprs
     IndexExpr lhs rhs ->
