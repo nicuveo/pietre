@@ -7,13 +7,13 @@ module Integration.Simplification
 
 import "this" Prelude
 
-import Data.HashMap.Strict                   qualified as M
-import Data.HashSet                          qualified as S
-import Data.Text.IO                          qualified as T
+import Data.HashMap.Strict                       qualified as M
+import Data.HashSet                              qualified as S
+import Data.Text.IO                              qualified as T
 import System.FilePath
 import Test.Tasty.HUnit
 
-import Lang.Pietre
+import Lang.Pietre.Representations.AST.Validated
 import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Location
 
@@ -21,18 +21,15 @@ import Compile
 import Locate
 
 
-expressions :: Definition Resolved -> [TypedExpression]
-expressions = \case
-  ConstDef    ConstInfo    {..} -> pure _constExpr
-  FunctionDef FunctionInfo {..} -> fromBlock _funBody
-  _ -> []
+expressions :: FunctionInfo -> [Typed Expression]
+expressions = fromBlock . _funBody
   where
-    fromBlock = concatMap fromStatement
+    fromBlock = concatMap (fromStatement . _located)
     fromStatement = \case
       IfStmt         ifInfo    -> fromIf ifInfo
       ForStmt        forInfo   -> fromFor forInfo
       WhileStmt      whileInfo -> fromWhile whileInfo
-      LetStmt        letInfo   -> pure $ _letExpr letInfo
+      LetStmt        letInfo   -> pure $ _letValue letInfo
       ReturnStmt     expr      -> maybeToList expr
       ExpressionStmt expr      -> pure expr
       _ -> []
@@ -42,9 +39,13 @@ expressions = \case
       ElseIf ifInfo   -> fromIf ifInfo
       ElseBlock block -> fromBlock block
     fromFor ForInfo {..} =
-      _forRangeExpr : fromBlock _forBody
+      fromRangeExpression _forRangeExpr ++ fromBlock _forBody
     fromWhile WhileInfo {..} =
       _whileExpr : fromBlock _whileBody
+    fromRangeExpression = \case
+      RangeInclusiveExpr lhs rhs -> [lhs, rhs]
+      RangeExclusiveExpr lhs rhs -> [lhs, rhs]
+
 
 
 test_batch = do
@@ -60,10 +61,10 @@ test_batch = do
       `onLeftM` assertFailure
     testValue  <- runTestCompiler fakeFilename (parse source     >>= analyze >>= simplify)
       `onLeftM` assertFailure
-    let testDefinitions = _interfaceDefinitions testValue
-        refDefinitions  = _interfaceDefinitions reference
-        allNames        = S.union (M.keysSet testDefinitions) (M.keysSet refDefinitions)
+    let testSymbols = _interfaceSymbols testValue
+        refSymbols  = _interfaceSymbols reference
+        allNames    = S.union (M.keysSet testSymbols) (M.keysSet refSymbols)
     for_ allNames \name -> do
-      let refExprs  = expressions $ _located $ refDefinitions  M.! name
-          testExprs = expressions $ _located $ testDefinitions M.! name
-      zipWithM (@?=) testExprs refExprs
+      let refExprs  = expressions $ refSymbols  M.! name
+          testExprs = expressions $ testSymbols M.! name
+      zipWithM ((@?=) `on` show) testExprs refExprs

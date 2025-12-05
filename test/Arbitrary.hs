@@ -4,11 +4,10 @@ module Arbitrary where
 
 import "this" Prelude
 
-import Control.Applicative                    (liftA3)
 import Data.Char                              (isAsciiLower, isLetter)
 import Data.List.NonEmpty                     qualified as NE
 import Data.Text                              qualified as T
-import Lang.Pietre
+import Lang.Pietre.Representations.AST.Parsed as Parsed
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
 import Test.Tasty.QuickCheck
@@ -59,7 +58,7 @@ instance Arbitrary ImportType where
     Specific  ids -> Specific  <$> shrink ids
     Exhaustive    -> []
 
-instance Arbitrary (Definition Parsed) where
+instance Arbitrary Parsed.Definition where
   arbitrary = oneof
     [ TypeAliasDef <$> arbitrary
     , EnumDef      <$> arbitrary
@@ -74,7 +73,7 @@ instance Arbitrary (Definition Parsed) where
     ConstDef     info -> ConstDef     <$> shrink info
     FunctionDef  info -> FunctionDef  <$> shrink info
 
-instance Arbitrary (TypeAliasInfo Parsed) where
+instance Arbitrary Parsed.TypeAliasInfo where
   arbitrary = liftA3 TypeAliasInfo arbitrary arbitrary arbitrary
   shrink (TypeAliasInfo name params value) = concat
     [ [TypeAliasInfo x    params value | x <- shrink name  ]
@@ -82,7 +81,7 @@ instance Arbitrary (TypeAliasInfo Parsed) where
     , [TypeAliasInfo name params x     | x <- shrink value ]
     ]
 
-instance Arbitrary (EnumInfo Parsed) where
+instance Arbitrary Parsed.EnumInfo where
   arbitrary = liftA2 EnumInfo arbitrary arbitrary
   shrink (EnumInfo name values) = concat
     [ EnumInfo
@@ -93,7 +92,7 @@ instance Arbitrary (EnumInfo Parsed) where
       <*> shrink values
     ]
 
-instance Arbitrary (StructInfo Parsed) where
+instance Arbitrary Parsed.StructInfo where
   arbitrary = liftA3 StructInfo arbitrary arbitrary arbitrary
   shrink (StructInfo name params values) = concat
     [ [StructInfo x    params values | x <- shrink name  ]
@@ -101,7 +100,7 @@ instance Arbitrary (StructInfo Parsed) where
     , [StructInfo name params x      | x <- shrink values]
     ]
 
-instance Arbitrary (ConstInfo Parsed) where
+instance Arbitrary Parsed.ConstInfo where
   arbitrary = liftA3 ConstInfo arbitrary arbitrary arbitrary
   shrink (ConstInfo name ctype expr) = concat
     [ [ConstInfo x    ctype expr | x <- shrink name ]
@@ -109,7 +108,7 @@ instance Arbitrary (ConstInfo Parsed) where
     , [ConstInfo name ctype x    | x <- shrink expr ]
     ]
 
-instance Arbitrary (FunctionInfo Parsed) where
+instance Arbitrary Parsed.FunctionInfo where
   arbitrary = FunctionInfo
     <$> arbitrary
     <*> arbitrary
@@ -120,7 +119,7 @@ instance Arbitrary (FunctionInfo Parsed) where
     , [FunctionInfo name ftype x    | x <- shrink body  ]
     ]
 
-instance Arbitrary (FunctionType Parsed) where
+instance Arbitrary Parsed.FunctionType where
   arbitrary = FunctionType
     <$> arbitrary
     <*> arbitrary
@@ -131,7 +130,7 @@ instance Arbitrary (FunctionType Parsed) where
     , [FunctionType params args x     | x <- shrink rtype ]
     ]
 
-instance Arbitrary (FunctionArgType Parsed) where
+instance Arbitrary Parsed.FunctionArgType where
   arbitrary = oneof
     [ ByValue     <$> arbitrary
     , ByReference <$> arbitrary
@@ -140,7 +139,7 @@ instance Arbitrary (FunctionArgType Parsed) where
     ByValue     te -> ByValue     <$> shrink te
     ByReference te -> ByReference <$> shrink te
 
-instance Arbitrary (Statement Parsed) where
+instance Arbitrary Parsed.Statement where
   arbitrary = sized stmt
     where
       stmt 0 = pure BreakStmt
@@ -163,7 +162,7 @@ instance Arbitrary (Statement Parsed) where
     ExpressionStmt info -> ExpressionStmt <$> shrink info
     _ -> []
 
-instance Arbitrary (IfInfo Parsed) where
+instance Arbitrary Parsed.IfInfo where
   arbitrary = liftA3 IfInfo arbitrary arbitrary arbitrary
   shrink (IfInfo iexpr ibody ielse) = concat
     [ [IfInfo x     ibody ielse | x <- shrink iexpr]
@@ -171,7 +170,7 @@ instance Arbitrary (IfInfo Parsed) where
     , [IfInfo iexpr ibody x     | x <- shrink ielse]
     ]
 
-instance Arbitrary (ElseInfo Parsed) where
+instance Arbitrary Parsed.ElseInfo where
   arbitrary = scale (`div` 2) $ oneof
     [ ElseIf    <$> arbitrary
     , ElseBlock <$> arbitrary
@@ -180,7 +179,7 @@ instance Arbitrary (ElseInfo Parsed) where
     ElseIf    ii    -> ElseIf    <$> shrink ii
     ElseBlock stmts -> ElseBlock <$> shrink stmts
 
-instance Arbitrary (ForInfo Parsed) where
+instance Arbitrary Parsed.ForInfo where
   arbitrary = liftA3 ForInfo arbitrary arbitrary arbitrary
   shrink (ForInfo name expr body) = concat
     [ [ForInfo x    expr body | x <- shrink name]
@@ -188,14 +187,14 @@ instance Arbitrary (ForInfo Parsed) where
     , [ForInfo name expr x    | x <- shrink body]
     ]
 
-instance Arbitrary (WhileInfo Parsed) where
+instance Arbitrary Parsed.WhileInfo where
   arbitrary = liftA2 WhileInfo arbitrary arbitrary
   shrink (WhileInfo expr body) = concat
     [ [WhileInfo x    body | x <- shrink expr]
     , [WhileInfo expr x    | x <- shrink body]
     ]
 
-instance Arbitrary (LetInfo Parsed) where
+instance Arbitrary Parsed.LetInfo where
   arbitrary = liftA3 LetInfo arbitrary arbitrary arbitrary
   shrink (LetInfo name ltype expr) = concat
     [ [LetInfo x    ltype expr | x <- shrink name ]
@@ -203,7 +202,7 @@ instance Arbitrary (LetInfo Parsed) where
     , [LetInfo name ltype x    | x <- shrink expr ]
     ]
 
-instance Arbitrary (Expression Parsed) where
+instance Arbitrary Parsed.Expression where
   arbitrary = sized expr
     where
       expr 0 = oneof
@@ -347,7 +346,7 @@ instance Arbitrary (Expression Parsed) where
        [ExponentiationAssignmentExpr x e2 | x <- shrink e1] <>
        [ExponentiationAssignmentExpr e1 x | x <- shrink e2]
 
-instance Arbitrary (PathInfo Parsed) where
+instance Arbitrary Parsed.PathInfo where
   arbitrary = sized path
     where
       path 0 =

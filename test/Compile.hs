@@ -11,16 +11,23 @@ import Data.HashMap.Strict                    qualified as M
 import Data.Text                              qualified as T
 import System.FilePath
 
-import Lang.Pietre
+import Lang.Pietre.Internal.Diagnosis
+import Lang.Pietre.Representations.AST.Parsed
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Name
+import Lang.Pietre.Stages.Analysis
+import Lang.Pietre.Stages.Parsing
+import Lang.Pietre.Stages.Simplification
 
 
 --------------------------------------------------------------------------------
 -- Public API
 
-type TestCompiler m = (MonadReader FilePath m, MonadError String m)
+type TestCompiler m =
+  ( MonadReader FilePath m
+  , MonadError String m
+  )
 
 parse :: TestCompiler m => Text -> m Module
 parse source = do
@@ -30,7 +37,14 @@ parse source = do
 analyze :: TestCompiler m => Module -> m Interface
 analyze parsedModule = do
   name <- moduleName
-  let (diagnostics, result) = analyzeModule M.empty M.empty M.empty M.empty name parsedModule
+  (diagnostics, result) <- runDiagnosisT $
+    analyzeModule
+      M.empty
+      M.empty
+      M.empty
+      M.empty
+      name
+      parsedModule
   result `onNothing` throwError (show diagnostics)
 
 simplify :: TestCompiler m => Interface -> m Interface
