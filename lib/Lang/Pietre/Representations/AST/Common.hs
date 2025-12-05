@@ -96,12 +96,6 @@ data CommonFunctionType p = FunctionType
   , _funReturn :: Maybe (CommonPathInfo p)
   } deriving Generic
 
-{-
-deriving instance Eq  (FunctionType Resolved)
-deriving instance Ord (FunctionType Resolved)
-instance Hashable (FunctionType Resolved)
--}
-
 deriving instance ShowConstraints p => Show (CommonFunctionType p)
 
 
@@ -109,12 +103,6 @@ data CommonFunctionArgType p
   = ByValue     (CommonPathInfo p)
   | ByReference (CommonPathInfo p)
   deriving Generic
-
-{-
-deriving instance Eq  (FunctionArgType Resolved)
-deriving instance Ord (FunctionArgType Resolved)
-instance Hashable (FunctionArgType Resolved)
--}
 
 functionArgType :: CommonFunctionArgType p -> CommonPathInfo p
 functionArgType = \case
@@ -229,11 +217,7 @@ data CommonPathInfo p = PathInfo
   } deriving (Generic)
 
 deriving instance ShowConstraints p => Show (CommonPathInfo p)
-{-
-deriving instance Eq  (PathInfo Resolved)
-deriving instance Ord (PathInfo Resolved)
-instance Hashable (PathInfo Resolved)
--}
+
 
 --------------------------------------------------------------------------------
 -- Lenses
@@ -254,42 +238,3 @@ makePrisms ''CommonElseInfo
 makePrisms ''CommonExpression
 makePrisms ''CommonFunctionArgType
 makePrisms ''CommonStatement
-
-{-
-
-instance Plated (Expression p) where
-  plate f = \case
-    FieldAccessExpr              e i   -> liftA2 FieldAccessExpr              (within f e) (pure i)
-    CallExpr                     p es  -> liftA2 CallExpr                     (pure p) (traverse (within f) es)
-    ArrayExpr                    es    -> fmap   ArrayExpr                    (traverse (within f) es)
-    IndexExpr                    e1 e2 -> liftA2 IndexExpr                    (within f e1) (within f e2)
-    StructExpr                   p fs  -> liftA2 StructExpr                   (pure p) (traverse (traverse (within f)) fs)
-    IntNegationExpr              e     -> fmap   IntNegationExpr              (within f e)
-    BoolNegationExpr             e     -> fmap   BoolNegationExpr             (within f e)
-    CastExpr                     e t   -> liftA2 CastExpr                     (within f e) (pure t)
-    AdditionExpr                 e1 e2 -> liftA2 AdditionExpr                 (within f e1) (within f e2)
-    SubtractionExpr              e1 e2 -> liftA2 SubtractionExpr              (within f e1) (within f e2)
-    MultiplicationExpr           e1 e2 -> liftA2 MultiplicationExpr           (within f e1) (within f e2)
-    DivisionExpr                 e1 e2 -> liftA2 DivisionExpr                 (within f e1) (within f e2)
-    ModuloExpr                   e1 e2 -> liftA2 ModuloExpr                   (within f e1) (within f e2)
-    ExponentiationExpr           e1 e2 -> liftA2 ExponentiationExpr           (within f e1) (within f e2)
-    EqualityExpr                 e1 e2 -> liftA2 EqualityExpr                 (within f e1) (within f e2)
-    DifferenceExpr               e1 e2 -> liftA2 DifferenceExpr               (within f e1) (within f e2)
-    GreaterExpr                  e1 e2 -> liftA2 GreaterExpr                  (within f e1) (within f e2)
-    LesserExpr                   e1 e2 -> liftA2 LesserExpr                   (within f e1) (within f e2)
-    GreaterEqExpr                e1 e2 -> liftA2 GreaterEqExpr                (within f e1) (within f e2)
-    LesserEqExpr                 e1 e2 -> liftA2 LesserEqExpr                 (within f e1) (within f e2)
-    BoolAndExpr                  e1 e2 -> liftA2 BoolAndExpr                  (within f e1) (within f e2)
-    BoolOrExpr                   e1 e2 -> liftA2 BoolOrExpr                   (within f e1) (within f e2)
-    RangeInclusiveExpr           e1 e2 -> liftA2 RangeInclusiveExpr           (within f e1) (within f e2)
-    RangeExclusiveExpr           e1 e2 -> liftA2 RangeExclusiveExpr           (within f e1) (within f e2)
-    AssignmentExpr               e1 e2 -> liftA2 AssignmentExpr               (within f e1) (within f e2)
-    AdditionAssignmentExpr       e1 e2 -> liftA2 AdditionAssignmentExpr       (within f e1) (within f e2)
-    SubtractionAssignmentExpr    e1 e2 -> liftA2 SubtractionAssignmentExpr    (within f e1) (within f e2)
-    MultiplicationAssignmentExpr e1 e2 -> liftA2 MultiplicationAssignmentExpr (within f e1) (within f e2)
-    DivisionAssignmentExpr       e1 e2 -> liftA2 DivisionAssignmentExpr       (within f e1) (within f e2)
-    ModuloAssignmentExpr         e1 e2 -> liftA2 ModuloAssignmentExpr         (within f e1) (within f e2)
-    ExponentiationAssignmentExpr e1 e2 -> liftA2 ExponentiationAssignmentExpr (within f e1) (within f e2)
-    e                                  -> pure e
-
--}
