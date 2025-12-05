@@ -23,3 +23,6 @@ grammar:
 	dot -Tsvg docs/grammar.dot -o docs/grammar.svg
 
 .PHONY: help build test grammar
+
+debug:
+	stack run -- Example.pi
