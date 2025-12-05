@@ -99,8 +99,8 @@ resolveFunctionType
   :: Parsed.FunctionType
   -> Resolve Resolved.FunctionType
 resolveFunctionType FunctionType {..} = do
-  resolvedArgs   <- getCompose $ traverse2 (Compose . try . resolveFunctionArg) _funArgs
-  resolvedReturn <- getCompose $ traverse  (Compose . try . resolvePath)        _funReturn
+  resolvedArgs   <- getCompose $ traverse2 (tryNested . resolveFunctionArg) _funArgs
+  resolvedReturn <- getCompose $ traverse  (tryNested . resolvePath)        _funReturn
   ensure $ liftA2 (FunctionType _funParams) resolvedArgs resolvedReturn
 
 resolveFunctionArg
@@ -213,9 +213,15 @@ resolveExpression expr = do
     ArrayExpr exprs ->
       ArrayExpr <$> traverse resolveExpression exprs
     IndexExpr lhs rhs ->
-      liftA2 IndexExpr (resolveExpression lhs) (resolveExpression rhs)
-    StructExpr path fields ->
-      liftA2 StructExpr (resolvePath path) (traverse2 resolveExpression fields)
+      binaryExpr IndexExpr lhs rhs
+    StructExpr path fields -> do
+      resolvedPath <- try $ resolvePath path
+      resolvedFields <- getCompose $ traverse2 (tryNested . resolveExpression) fields
+      ensure $ liftA2 StructExpr resolvedPath resolvedFields
+    CastExpr e castType -> do
+      resolvedExpr <- try $ resolveExpression e
+      resolvedType <- try $ resolvePath castType
+      ensure $ liftA2 CastExpr resolvedExpr resolvedType
     BoolLiteralExpr b ->
       pure $ BoolLiteralExpr b
     IntLiteralExpr i ->
@@ -231,54 +237,57 @@ resolveExpression expr = do
     BoolNegationExpr e ->
       BoolNegationExpr <$> resolveExpression e
     AdditionExpr lhs rhs ->
-      liftA2 AdditionExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr AdditionExpr lhs rhs
     SubtractionExpr lhs rhs ->
-      liftA2 SubtractionExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr SubtractionExpr lhs rhs
     MultiplicationExpr lhs rhs ->
-      liftA2 MultiplicationExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr MultiplicationExpr lhs rhs
     DivisionExpr lhs rhs ->
-      liftA2 DivisionExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr DivisionExpr lhs rhs
     ModuloExpr lhs rhs ->
-      liftA2 ModuloExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr ModuloExpr lhs rhs
     ExponentiationExpr lhs rhs ->
-      liftA2 ExponentiationExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr ExponentiationExpr lhs rhs
     EqualityExpr lhs rhs ->
-      liftA2 EqualityExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr EqualityExpr lhs rhs
     DifferenceExpr lhs rhs ->
-      liftA2 DifferenceExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr DifferenceExpr lhs rhs
     GreaterExpr lhs rhs ->
-      liftA2 GreaterExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr GreaterExpr lhs rhs
     LesserExpr lhs rhs ->
-      liftA2 LesserExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr LesserExpr lhs rhs
     GreaterEqExpr lhs rhs ->
-      liftA2 GreaterEqExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr GreaterEqExpr lhs rhs
     LesserEqExpr lhs rhs ->
-      liftA2 LesserEqExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr LesserEqExpr lhs rhs
     BoolAndExpr lhs rhs ->
-      liftA2 BoolAndExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr BoolAndExpr lhs rhs
     BoolOrExpr lhs rhs ->
-      liftA2 BoolOrExpr (resolveExpression lhs) (resolveExpression rhs)
-    CastExpr e castType ->
-      liftA2 CastExpr (resolveExpression e) (resolvePath castType)
+      binaryExpr BoolOrExpr lhs rhs
     RangeInclusiveExpr lhs rhs ->
-      liftA2 RangeInclusiveExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr RangeInclusiveExpr lhs rhs
     RangeExclusiveExpr lhs rhs ->
-      liftA2 RangeExclusiveExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr RangeExclusiveExpr lhs rhs
     AssignmentExpr lhs rhs ->
-      liftA2 AssignmentExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr AssignmentExpr lhs rhs
     AdditionAssignmentExpr lhs rhs ->
-      liftA2 AdditionAssignmentExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr AdditionAssignmentExpr lhs rhs
     SubtractionAssignmentExpr lhs rhs ->
-      liftA2 SubtractionAssignmentExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr SubtractionAssignmentExpr lhs rhs
     MultiplicationAssignmentExpr lhs rhs ->
-      liftA2 MultiplicationAssignmentExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr MultiplicationAssignmentExpr lhs rhs
     DivisionAssignmentExpr lhs rhs ->
-      liftA2 DivisionAssignmentExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr DivisionAssignmentExpr lhs rhs
     ModuloAssignmentExpr lhs rhs ->
-      liftA2 ModuloAssignmentExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr ModuloAssignmentExpr lhs rhs
     ExponentiationAssignmentExpr lhs rhs ->
-      liftA2 ExponentiationAssignmentExpr (resolveExpression lhs) (resolveExpression rhs)
+      binaryExpr ExponentiationAssignmentExpr lhs rhs
   pure $ result <$ expr
+  where
+    binaryExpr con lhs rhs = do
+      resolvedLHS <- try $ resolveExpression lhs
+      resolvedRHS <- try $ resolveExpression rhs
+      ensure $ liftA2 con resolvedLHS resolvedRHS
 
 resolvePath
   :: Parsed.PathInfo
