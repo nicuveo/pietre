@@ -52,10 +52,12 @@ instance Manglable Identifier where
   mangle = rawIdentifier
 
 instance Manglable BaseName where
-  mangle BaseName {..} = T.intercalate "_" $ map mangle $ toList _nameModule <> [_nameIdent]
+  mangle BaseName {..} =
+    T.replace "%" "" $ T.intercalate "_" $ map mangle $ toList _nameModule <> [_nameIdent]
 
 instance Manglable Name where
-  mangle Name {..} = T.intercalate "_" (mangle _nameBase : map mangle _nameParams)
+  mangle Name {..} =
+    T.intercalate "_" (mangle _nameBase : map mangle _nameParams)
 
 
 --------------------------------------------------------------------------------
@@ -153,8 +155,8 @@ prettyTypeWith go = \case
     pure $ "(" <> sepByCommas prettifiedArgs <> ")" <+> "->" <+> prettifiedReturn
 
 prettyFunctionName :: Prettifier Name
-prettyFunctionName Name {..} = do
-  funID <- retrieve $ mangle _nameBase
+prettyFunctionName name@Name {..} = do
+  funID <- retrieve $ mangle name
   let fBaseName = annotate (FunctionAnn funID) $ prettyBaseName _nameBase
   fTypeArgs <- traverse prettyTypeName _nameParams
   pure $
