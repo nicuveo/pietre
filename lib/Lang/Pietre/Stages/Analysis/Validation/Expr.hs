@@ -595,9 +595,12 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
           (actualType,) <$> validateFunctionExpression argExpression
         Validated.ByReference actualType ->
           case _located argExpression of
-            ReferenceExpr _subExpr -> do
-              -- TODO: check it's a local variable
-              pure (actualType, undefined)
+            ReferenceExpr subExpr -> do
+              validatedSubExpr <- validateFunctionPathExpression subExpr
+              case _typedValue validatedSubExpr of
+                LocalVariableExpr     _ -> pure (actualType, validatedSubExpr)
+                ReferenceArgumentExpr _ -> pure (actualType, validatedSubExpr)
+                invalidExpr -> fatal $ ErrorReferenceNotLocalVariable invalidExpr
             _ ->
               fatal $ ErrorFunctionCallArgExpectingReference argName
 
