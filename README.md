@@ -56,9 +56,15 @@ Binary releases will be provided from 1.0 onwards.
 
 ## Contributing
 
-Until 1.0 is reached, this project will remain a one-person effort and will not
-accept external code contributions. There is no guarantee this policy will
-change past 1.0: this is a hobby project first and foremost. :)
+Unless otherwise explicitly stated, this project does not accept external code
+contributions. This policy *might* change after the 1.0 release, in which case a
+code of conduct and a contributing guide will be added.
+
+<br />
+
+## Acknowledgements
+
+Thank you to [@rond](https://github.com/rondDev) for fixing my clumsy attempt at JavaScript!
 
 <br />
 
