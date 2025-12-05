@@ -64,7 +64,7 @@ data Message
   | ErrorFunctionCallWrongNumberOfArguments BaseName Int Int
   | ErrorDivideByZero
   | ErrorNegativeExponent
-  | ErrorReferenceNotLocalVariable Resolved.Expression
+  | ErrorReferenceNotLocalVariable Validated.Expression
   | ErrorFunctionCallArgExpectingReference Identifier
   | ErrorRValueAssignment Resolved.Expression
   | ErrorTypeParametersToTypeParameter Identifier
