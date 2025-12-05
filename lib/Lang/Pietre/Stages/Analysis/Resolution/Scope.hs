@@ -144,9 +144,8 @@ declarationTopLevelBindings moduleName = \case
 -- Scope manipulation
 
 expandScopeWithTypeParameters
-  :: MonadDiagnosis m
-  => [Identifier]
-  -> ResolveT m ()
+  :: [Identifier]
+  -> Resolve ()
 expandScopeWithTypeParameters parameters = do
   declName <- view riDeclarationName
   ensureNested $ traverse
@@ -160,9 +159,8 @@ expandScopeWithTypeParameters parameters = do
   rcScope %= M.union (M.fromList bindings)
 
 expandScopeWithFunctionArguments
-  :: MonadDiagnosis m
-  => [(Identifier, Resolved.FunctionArgType)]
-  -> ResolveT m ()
+  :: [(Identifier, Resolved.FunctionArgType)]
+  -> Resolve ()
 expandScopeWithFunctionArguments arguments = do
   ensureNested $ traverse
     (tryNested . fatal . ErrorFunctionDuplicatedArg)
@@ -175,9 +173,8 @@ expandScopeWithFunctionArguments arguments = do
   rcScope %= M.union (M.fromList bindings)
 
 expandScopeWithVariable
-  :: MonadDiagnosis m
-  => Identifier
-  -> ResolveT m ()
+  :: Identifier
+  -> Resolve ()
 expandScopeWithVariable varName = do
   let role = LetVariable varName
   validateBinding varName role

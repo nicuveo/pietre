@@ -28,10 +28,9 @@ findDuplicates =
         Nothing
 
 validateBinding
-  :: MonadDiagnosis m
-  => Identifier
+  :: Identifier
   -> Role
-  -> ResolveT m ()
+  -> Resolve ()
 validateBinding identifier role = do
   when (isReserved identifier) $
     fatal $ ErrorReservedIdentifier identifier

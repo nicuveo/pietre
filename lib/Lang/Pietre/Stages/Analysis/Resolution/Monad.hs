@@ -13,10 +13,7 @@ import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 
 
---------------------------------------------------------------------------------
--- Monad
-
-type ResolveT m = ReaderT ResolveInfo (StateT ResolveContext m)
+type Resolve = DiagnosisT (ReaderT ResolveInfo (State ResolveContext))
 
 type Scope = HashMap Path (NonEmpty Role)
 
@@ -29,37 +26,36 @@ data ResolveContext = ResolveContext
   , _rcLocation :: Location
   }
 
-runResolveT
-  :: Monad m
+runResolve
+  :: MonadDiagnosis m
   => BaseName
   -> Scope
   -> Location
-  -> ResolveT m a
+  -> Resolve a
   -> m a
-runResolveT declarationName topLevelScope declarationLocation action =
+runResolve declarationName topLevelScope declarationLocation action =
   action
+    & runDiagnosisT
     & flip runReaderT (ResolveInfo declarationName)
-    & flip evalStateT (ResolveContext topLevelScope declarationLocation)
+    & flip evalState (ResolveContext topLevelScope declarationLocation)
+    & subsume
 
 
 makeLenses ''ResolveInfo
 makeLenses ''ResolveContext
 
 
-lookupName
-  :: Monad m
-  => Path
-  -> ResolveT m (Maybe (NonEmpty Role))
+lookupName :: Path -> Resolve (Maybe (NonEmpty Role))
 lookupName = uses rcScope . M.lookup
 
 
-fatal :: MonadDiagnosis m => Message -> ResolveT m a
+fatal :: Message -> Resolve a
 fatal message = do
   declName <- view riDeclarationName
   declLocation <- use rcLocation
   reportError $ Diagnostic (Just declName) declLocation message
 
-warn :: MonadDiagnosis m => Message -> ResolveT m ()
+warn :: Message -> Resolve ()
 warn message = do
   declName <- view riDeclarationName
   declLocation <- use rcLocation
