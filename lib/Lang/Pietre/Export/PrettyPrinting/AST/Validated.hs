@@ -15,6 +15,7 @@ import Prettyprinter.Lucid
 import Prettyprinter.Render.Text
 import Prettyprinter.Render.Util.SimpleDocTree
 
+import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Export.PrettyPrinting.AST.Common
 import Lang.Pietre.Export.PrettyPrinting.AST.Validated.Monad
 import Lang.Pietre.Representations.AST.Validated
@@ -53,11 +54,15 @@ instance Manglable Identifier where
 
 instance Manglable BaseName where
   mangle BaseName {..} =
-    T.replace "%" "" $ T.intercalate "_" $ map mangle $ toList _nameModule <> [_nameIdent]
+    T.intercalate "_" $ map mangle $ toList _nameModule <> [_nameIdent]
 
 instance Manglable Name where
-  mangle Name {..} =
-    T.intercalate "_" (mangle _nameBase : map mangle _nameParams)
+  mangle IntName   = "int"
+  mangle CharName  = "bool"
+  mangle BoolName  = "char"
+  mangle UnitName  = "unit"
+  mangle VoidName  = "void"
+  mangle Name {..} = T.intercalate "_" (mangle _nameBase : map mangle _nameParams)
 
 
 --------------------------------------------------------------------------------
@@ -105,6 +110,11 @@ prettyBaseName BaseName {..} =
   sepByColons $ map prettyIdentifier $ NE.toList _nameModule ++ [_nameIdent]
 
 prettyTypeName :: Prettifier Name
+prettyTypeName IntName   = pure $ annotate KeywordAnn "int"
+prettyTypeName CharName  = pure $ annotate KeywordAnn "bool"
+prettyTypeName BoolName  = pure $ annotate KeywordAnn "char"
+prettyTypeName UnitName  = pure $ annotate KeywordAnn "()"
+prettyTypeName VoidName  = pure $ annotate KeywordAnn "!void"
 prettyTypeName Name {..} = do
   typeID <- retrieve $ mangle _nameBase
   let tBaseName = annotate (TypeAnn typeID) $ prettyBaseName _nameBase
