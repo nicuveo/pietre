@@ -303,16 +303,6 @@ validateFunctionPathExpression PathInfo {..} = do
       -> ConcreteType
     reifyConcreteType = reifyType @ConcreteFunctor
 
-    reifyArg
-      :: HashMap (BaseName, Identifier) ConcreteType
-      -> Validated.FunctionArgType ParameterizedFunctor
-      -> Validated.FunctionArgType ConcreteFunctor
-    reifyArg mapping = \case
-          Validated.ByReference t ->
-            Validated.ByReference $ reifyConcreteType mapping t
-          Validated.ByValue t ->
-            Validated.ByValue $ reifyConcreteType mapping t
-
     validateFunctionPath baseName = do
       FunctionTypeInfo {..} <- retrieveFunctionType baseName
       validatedParams <- ensureNested $
@@ -320,7 +310,7 @@ validateFunctionPathExpression PathInfo {..} = do
       validateParamsCount baseName _funParams validatedParams
       let
         paramMapping = M.fromList $ zip (map (baseName, ) _funParams) validatedParams
-        validatedArguments = fmap2 (reifyArg paramMapping) _funArgs
+        validatedArguments = fmap3 (reifyConcreteType paramMapping) _funArgs
         validatedReturnType = reifyConcreteType paramMapping _funReturn
         validatedFunctionInfo = FunctionTypeInfo _funParams validatedArguments validatedReturnType
         name = Name baseName $ map assertName validatedParams
@@ -525,7 +515,7 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
       validatedArgs <-
         ensureNested $ for (zip _funArgs functionArgs) \((argName, argType), argExpression) ->
           tryNested do
-            (actualType, validatedArg) <- validateFunctionCallArgument (argName, argType) argExpression
+            (actualType, validatedArg) <- validateFunctionCallArgument @ConcreteFunctor (argName, argType) argExpression
             expectType actualType $ _typeInfo validatedArg
             pure validatedArg
 
@@ -541,14 +531,14 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
 
       -- validate arguments
       validatedFunctionArgs <- ensureNested $ fmap2 snd $ zipWithM
-        (tryNested ... validateFunctionCallArgument)
+        (tryNested ... validateFunctionCallArgument @ParameterizedFunctor)
         _funArgs
         functionArgs
 
       -- collect parameter maps
       parameterMaps <- ensureNested $ zipWithM
         (tryNested ... buildTypeParameterMap)
-        (functionArgInnerType . snd <$> _funArgs)
+        (functionArgType . snd <$> _funArgs)
         (_typeInfo <$> validatedFunctionArgs)
       let parametersMap = unionsWith (<>) $ fmap2 pure $ map M.fromList parameterMaps
 
@@ -563,7 +553,7 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
       -- register function for instantiation
       let concreteFunctionTypeInfo = FunctionTypeInfo
             { _funParams = _funParams
-            , _funArgs = fmap2 (reifyArgType finalMapping) _funArgs
+            , _funArgs = fmap3 (reifyType @ConcreteFunctor finalMapping) _funArgs
             , _funReturn = validatedReturnType
             }
       unless (null _funParams) do
@@ -579,14 +569,8 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
       let functionName = Name functionBaseName $ map assertName functionTypeParams
       pure $ Typed validatedReturnType $ FunctionCallExpr functionName concreteFunctionTypeInfo validatedFunctionArgs
 
-    reifyArgType mapping = \case
-      Validated.ByReference t ->
-        Validated.ByReference $ reifyType @ConcreteFunctor mapping t
-      Validated.ByValue t ->
-        Validated.ByValue $ reifyType @ConcreteFunctor mapping t
-
     validateFunctionCallArgument
-      :: (Identifier, Validated.FunctionArgType f)
+      :: (Identifier, FunctionArgType (TypeTree f))
       -> WithLocation Resolved.Expression
       -> Validate (TypeTree f, Typed Validated.Expression)
     validateFunctionCallArgument (argName, argType) argExpression =

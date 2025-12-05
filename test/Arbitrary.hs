@@ -130,7 +130,7 @@ instance Arbitrary Parsed.FunctionType where
     , [FunctionType params args x     | x <- shrink rtype ]
     ]
 
-instance Arbitrary Parsed.FunctionArgType where
+instance Arbitrary (FunctionArgType Parsed.PathInfo) where
   arbitrary = oneof
     [ ByValue     <$> arbitrary
     , ByReference <$> arbitrary

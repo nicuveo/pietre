@@ -159,7 +159,7 @@ expandScopeWithTypeParameters parameters = do
   rcScope %= M.union (M.fromList bindings)
 
 expandScopeWithFunctionArguments
-  :: [(Identifier, Resolved.FunctionArgType)]
+  :: [(Identifier, FunctionArgType Resolved.PathInfo)]
   -> Resolve ()
 expandScopeWithFunctionArguments arguments = do
   ensureNested $ traverse

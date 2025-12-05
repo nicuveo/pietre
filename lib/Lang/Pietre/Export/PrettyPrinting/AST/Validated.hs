@@ -399,7 +399,7 @@ prettyBlock block = do
 
 prettyArg
   :: Identifier
-  -> FunctionArgType ConcreteFunctor
+  -> FunctionArgType ConcreteType
   -> Printer (Doc Annotation)
 prettyArg argName argType = do
   varID <- register $ mangle argName

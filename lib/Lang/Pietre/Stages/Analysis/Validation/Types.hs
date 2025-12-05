@@ -284,13 +284,9 @@ concretizeType = go
         FunctionType <$> concretizeFunctionType functionInfo
 
     concretizeFunctionType FunctionTypeInfo {..} = do
-      concreteArgs   <- traverse2 concretizeFunctionArg _funArgs
+      concreteArgs   <- traverse3 go _funArgs
       concreteReturn <- go _funReturn
       pure $ FunctionTypeInfo _funParams concreteArgs concreteReturn
-
-    concretizeFunctionArg = \case
-      Validated.ByValue     t -> Validated.ByValue     <$> go t
-      Validated.ByReference t -> Validated.ByReference <$> go t
 
     concretizeStructType StructTypeInfo {..} = do
       concreteTypeParams <- traverse go _structTypeParams
@@ -328,13 +324,9 @@ reifyType mappings = \case
 
     reifyFunctionType FunctionTypeInfo {..} = FunctionTypeInfo
       { _funParams = []
-      , _funArgs   = fmap2 reifyFunctionArg _funArgs
+      , _funArgs   = fmap3 (reifyType @f mappings) _funArgs
       , _funReturn = reifyType @f mappings _funReturn
       }
-
-    reifyFunctionArg = \case
-      Validated.ByValue     t -> Validated.ByValue     $ reifyType @f mappings t
-      Validated.ByReference t -> Validated.ByReference $ reifyType @f mappings t
 
     reifyStructType =
       structTypeParams %~ fmap (reifyType @f mappings)

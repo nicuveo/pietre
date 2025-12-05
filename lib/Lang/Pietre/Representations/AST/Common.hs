@@ -92,24 +92,22 @@ isGeneric = not . null . _funParams . _funType
 
 data CommonFunctionType p = FunctionType
   { _funParams :: [Identifier]
-  , _funArgs   :: [(Identifier, CommonFunctionArgType p)]
+  , _funArgs   :: [(Identifier, FunctionArgType (CommonPathInfo p))]
   , _funReturn :: Maybe (CommonPathInfo p)
-  } deriving Generic
+  }
 
 deriving instance ShowConstraints p => Show (CommonFunctionType p)
 
 
-data CommonFunctionArgType p
-  = ByValue     (CommonPathInfo p)
-  | ByReference (CommonPathInfo p)
-  deriving Generic
+data FunctionArgType a
+  = ByValue     a
+  | ByReference a
+  deriving (Show, Functor, Foldable, Traversable)
 
-functionArgType :: CommonFunctionArgType p -> CommonPathInfo p
+functionArgType :: FunctionArgType a -> a
 functionArgType = \case
   ByValue     p -> p
   ByReference p -> p
-
-deriving instance ShowConstraints p => Show (CommonFunctionArgType p)
 
 
 data CommonStatement p
@@ -236,5 +234,5 @@ makeLenses ''EnumInfo
 makePrisms ''CommonDefinition
 makePrisms ''CommonElseInfo
 makePrisms ''CommonExpression
-makePrisms ''CommonFunctionArgType
 makePrisms ''CommonStatement
+makePrisms ''FunctionArgType

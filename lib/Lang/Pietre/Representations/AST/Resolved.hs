@@ -38,8 +38,7 @@ data Role
   | TypeAlias BaseName
   | TypeParameter BaseName Identifier
   | Placeholder
-  -- | FunctionPointer (Common.FunctionType Resolved)
-  | FunctionArgument Identifier FunctionArgType
+  | FunctionArgument Identifier (FunctionArgType PathInfo)
   | LetVariable Identifier
 
 deriving instance ShowConstraints Resolved => Show Role
@@ -54,7 +53,6 @@ type Definition      = CommonDefinition      Resolved
 type ElseInfo        = CommonElseInfo        Resolved
 type Expression      = CommonExpression      Resolved
 type ForInfo         = CommonForInfo         Resolved
-type FunctionArgType = CommonFunctionArgType Resolved
 type FunctionInfo    = CommonFunctionInfo    Resolved
 type FunctionType    = CommonFunctionType    Resolved
 type IfInfo          = CommonIfInfo          Resolved

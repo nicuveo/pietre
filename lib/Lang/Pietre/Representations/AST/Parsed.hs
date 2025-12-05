@@ -66,7 +66,6 @@ type Definition      = CommonDefinition      Parsed
 type ElseInfo        = CommonElseInfo        Parsed
 type Expression      = CommonExpression      Parsed
 type ForInfo         = CommonForInfo         Parsed
-type FunctionArgType = CommonFunctionArgType Parsed
 type FunctionInfo    = CommonFunctionInfo    Parsed
 type FunctionType    = CommonFunctionType    Parsed
 type IfInfo          = CommonIfInfo          Parsed

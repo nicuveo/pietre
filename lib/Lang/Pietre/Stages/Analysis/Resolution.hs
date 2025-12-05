@@ -99,16 +99,9 @@ resolveFunctionType
   :: Parsed.FunctionType
   -> Resolve Resolved.FunctionType
 resolveFunctionType FunctionType {..} = do
-  resolvedArgs   <- getCompose $ traverse2 (tryNested . resolveFunctionArg) _funArgs
-  resolvedReturn <- getCompose $ traverse  (tryNested . resolvePath)        _funReturn
+  resolvedArgs   <- getCompose $ traverse3 (tryNested . resolvePath) _funArgs
+  resolvedReturn <- getCompose $ traverse  (tryNested . resolvePath) _funReturn
   ensure $ liftA2 (FunctionType _funParams) resolvedArgs resolvedReturn
-
-resolveFunctionArg
-  :: Parsed.FunctionArgType
-  -> Resolve Resolved.FunctionArgType
-resolveFunctionArg = \case
-  ByValue     path -> ByValue     <$> resolvePath path
-  ByReference path -> ByReference <$> resolvePath path
 
 resolveBlock
   :: Resolve ()

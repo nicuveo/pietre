@@ -127,7 +127,7 @@ validateFunctionType info = do
   baseName <- use currentName
   defLocation <- use currentLocation
   let originalDefinition = WithLocation defLocation info
-  attemptedArgs   <- getCompose $ traverse2 (tryNested . validateFunctionArg)       _funArgs
+  attemptedArgs   <- getCompose $ traverse3 (tryNested . validateParameterizedType) _funArgs
   attemptedReturn <- getCompose $ traverse  (tryNested . validateParameterizedType) _funReturn
   validatedArgs   <- ensure attemptedArgs
   validatedReturn <- fromMaybe (Right UnitType) <$> ensure attemptedReturn
@@ -142,9 +142,7 @@ validateFunctionType info = do
   else do
     let
       concreteReturn = reifyType @ConcreteFunctor M.empty validatedReturn
-      concreteArgs = flip fmap2 validatedArgs \case
-        Validated.ByReference innerType -> Validated.ByReference $ reifyType @ConcreteFunctor M.empty innerType
-        Validated.ByValue     innerType -> Validated.ByValue     $ reifyType @ConcreteFunctor M.empty innerType
+      concreteArgs = fmap3 (reifyType @ConcreteFunctor M.empty) validatedArgs
       concreteFunctionTypeInfo = FunctionTypeInfo
         { _funParams = _funParams
         , _funArgs   = concreteArgs
@@ -158,7 +156,3 @@ validateFunctionType info = do
           }
     vsInstanceRequests %= (:|> request)
   pure validatedFunctionTypeInfo
-  where
-    validateFunctionArg = \case
-      Resolved.ByReference path -> Validated.ByReference <$> validateParameterizedType path
-      Resolved.ByValue     path -> Validated.ByValue     <$> validateParameterizedType path

@@ -154,10 +154,10 @@ const_decl :: { WithLocation Definition }
 fun_decl :: { WithLocation Definition }
   : "fn" IDENTIFIER optional(generic_params) "(" optional(comma_list(fun_arg)) ")" optional(fun_return) block { WithLocation $1 (FunctionDef (FunctionInfo (getIdentifierLiteral $2) (FunctionType (fold $3) (fold $5) $7) $8)) }
 
-fun_arg :: { (Identifier, FunctionArgType) }
+fun_arg :: { (Identifier, FunctionArgType PathInfo) }
   : IDENTIFIER ":" fun_arg_type { (getIdentifierLiteral $1, $3) }
 
-fun_arg_type :: { FunctionArgType }
+fun_arg_type :: { FunctionArgType PathInfo }
   : type_expr { ByValue     $1 }
   | reference { ByReference $1 }
 

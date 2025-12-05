@@ -26,7 +26,8 @@ import Lang.Pietre.Representations.AST.Common as Common (ASTPhase (..),
                                                          CommonIfInfo (..),
                                                          CommonStatement (..),
                                                          CommonWhileInfo (..),
-                                                         EnumInfo (..))
+                                                         EnumInfo (..),
+                                                         FunctionArgType (..))
 
 
 --------------------------------------------------------------------------------
@@ -78,12 +79,8 @@ instance FFunctor TypeNode where
     FunctionType FunctionTypeInfo {..} ->
       FunctionType $ FunctionTypeInfo
         _funParams
-        (fmap2 ffmapFunArgs _funArgs)
+        (fmap3 (ffrecur @TypeNode f) _funArgs)
         (ffrecur @TypeNode f _funReturn)
-    where
-      ffmapFunArgs = \case
-        ByReference t -> ByReference $ ffrecur @TypeNode f t
-        ByValue     t -> ByValue     $ ffrecur @TypeNode f t
 
 data StructTypeInfo f = StructTypeInfo
   { _structBaseName   :: BaseName
@@ -154,22 +151,11 @@ data FunctionInfo = FunctionInfo
 
 data FunctionTypeInfo f = FunctionTypeInfo
   { _funParams :: [Identifier]
-  , _funArgs   :: [(Identifier, FunctionArgType f)]
+  , _funArgs   :: [(Identifier, FunctionArgType (TypeTree f))]
   , _funReturn :: TypeTree f
   }
 
 deriving instance Show (HKT f (TypeNode f)) => Show (FunctionTypeInfo f)
-
-data FunctionArgType f
-  = ByValue     (TypeTree f)
-  | ByReference (TypeTree f)
-
-deriving instance Show (HKT f (TypeNode f)) => Show (FunctionArgType f)
-
-functionArgInnerType :: FunctionArgType f -> TypeTree f
-functionArgInnerType = \case
-  ByValue     t -> t
-  ByReference t -> t
 
 data ForInfo = ForInfo
   { _forVariableName :: Identifier
@@ -296,7 +282,6 @@ makeLenses ''LetInfo
 makeLenses ''Typed
 
 makePrisms ''Definition
-makePrisms ''FunctionArgType
 makePrisms ''Expression
 makePrisms ''ConstExpression
 makePrisms ''LValueExpression
