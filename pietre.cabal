@@ -30,7 +30,11 @@ library
       Prelude
       Lang.Pietre
       Lang.Pietre.Batteries.BuiltIn
-      Lang.Pietre.Export.AST
+      Lang.Pietre.Export.HTML
+      Lang.Pietre.Export.PrettyPrinting.AST.Common
+      Lang.Pietre.Export.PrettyPrinting.AST.Parsed
+      Lang.Pietre.Export.PrettyPrinting.AST.Validated
+      Lang.Pietre.Export.PrettyPrinting.AST.Validated.Monad
       Lang.Pietre.Internal.Diagnosis
       Lang.Pietre.Internal.Encoding
       Lang.Pietre.Internal.HKT
@@ -100,7 +104,7 @@ library
       StrictData
       TypeFamilies
       ViewPatterns
-  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields
   build-tools:
       alex
     , happy
@@ -117,11 +121,13 @@ library
     , hashable
     , hip
     , lens
+    , lucid
     , monad-control
     , monad-loops
     , mtl
     , ordered-containers
     , prettyprinter
+    , prettyprinter-lucid
     , template-haskell
     , text
     , text-builder
@@ -160,7 +166,7 @@ executable gramviz
       StrictData
       TypeFamilies
       ViewPatterns
-  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       array
     , base
@@ -175,12 +181,14 @@ executable gramviz
     , hashable
     , hip
     , lens
+    , lucid
     , megaparsec
     , monad-control
     , monad-loops
     , mtl
     , ordered-containers
     , prettyprinter
+    , prettyprinter-lucid
     , template-haskell
     , text
     , text-builder
@@ -219,7 +227,7 @@ executable pc
       StrictData
       TypeFamilies
       ViewPatterns
-  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       array
     , base
@@ -233,12 +241,14 @@ executable pc
     , hashable
     , hip
     , lens
+    , lucid
     , monad-control
     , monad-loops
     , mtl
     , ordered-containers
     , pietre
     , prettyprinter
+    , prettyprinter-lucid
     , template-haskell
     , text
     , text-builder
@@ -284,7 +294,7 @@ test-suite tests
       StrictData
       TypeFamilies
       ViewPatterns
-  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -F -pgmF=tasty-autocollect
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -F -pgmF=tasty-autocollect
   build-tool-depends:
       tasty-autocollect:tasty-autocollect
   build-depends:
@@ -300,12 +310,14 @@ test-suite tests
     , hashable
     , hip
     , lens
+    , lucid
     , monad-control
     , monad-loops
     , mtl
     , ordered-containers
     , pietre
     , prettyprinter
+    , prettyprinter-lucid
     , tasty
     , tasty-autocollect
     , tasty-golden

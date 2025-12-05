@@ -1,0 +1,50 @@
+.syntax-parsed-int-literal {
+    color: slateblue
+}
+
+.syntax-parsed-string-literal {
+    color: sienna
+}
+
+.syntax-parsed-keyword {
+    font-weight: bold
+}
+
+.syntax-parsed-path {
+}
+
+.syntax-validated-int-literal {
+    color: slateblue
+}
+
+.syntax-validated-string-literal {
+    color: sienna
+}
+
+.syntax-validated-keyword {
+    font-weight: bold
+}
+
+.syntax-validated-variable {
+    color: rebeccapurple
+}
+
+.syntax-validated-reference {
+    color: maroon
+}
+
+.syntax-validated-type {
+    color: darkslategrey
+}
+
+.syntax-validated-function {
+    color: grey
+}
+
+.syntax-validated-parameter {
+    color: seagreen
+}
+
+span.syntax-hover-highlight {
+	background-color: aquamarine;
+}
