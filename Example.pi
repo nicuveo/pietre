@@ -1,0 +1,126 @@
+struct S<T> { s: T }
+
+// fn make_big_s() -> S<S<S<int>>> {
+//    return S@{ s: S@{ s: S@{ s: 0} } };
+// }
+
+fn test1<T>(x: T) -> int {
+   let y: S<_> = S@{ s: x };
+   return y.s as int;
+}
+
+const c: int = 1 ^ 2;
+
+fn foo(x: int, y: &int) -> int {
+  return (y + 1);
+}
+
+fn bar(x: int, y: int) -> int {
+  return foo(x, &x);
+}
+
+struct Pair { x: int, y: int }
+
+fn baz(x: int) -> int {
+  return 1 * 1 * (!!((1 < 2) && (1 < x))) as int + 0 + 0;
+}
+
+/*
+
+
+const pair1: Pair = Pair@{x: 5, y: 5};
+const pair2: Pair = Pair@{x: 5, y: 5};
+
+const testCompareEQ: bool = S3@{x: pair1, y: 'a'} == S3@{x: pair2, y: 'b'};
+const testCompareNE: bool = S3@{x: pair1, y: 'a'} != S3@{x: pair2, y: 'b'};
+const testCompareLT: bool = S3@{x: pair1, y: 'a'} <  S3@{x: pair2, y: 'b'};
+const testCompareGT: bool = S3@{x: pair1, y: 'a'} >  S3@{x: pair2, y: 'b'};
+const testCompareLE: bool = S3@{x: pair1, y: 'a'} <= S3@{x: pair2, y: 'b'};
+const testCompareGE: bool = S3@{x: pair1, y: 'a'} >= S3@{x: pair2, y: 'b'};
+
+type PairAlias = Pair;
+
+fn testReturnConstant() -> char {
+  return '*';
+}
+
+fn testReturnStruct(x: int) -> PairAlias {
+  return PairAlias@{x: x, y: testReturnConstant() as int};
+}
+
+fn testRuntimeStruct(x: int) -> int {
+  return testReturnStruct(-x).x;
+}
+
+struct S<T> { x: T }
+struct S3<T, U>   { x: T,   y: U   }
+
+const c: S::<int> = S@{ x: 0 };
+
+fn bar<T, U>(x: T) -> T {
+  return x;
+}
+
+
+const c1: int = S2::<_, int>@{ x: 0 }.x;
+
+// const ohnoes: int = 3 / 0;
+
+fn foo(p: S::<int>) -> int {
+  return bar::<_, int>(p).x;
+}
+
+*/
+
+/*
+
+enum Color {Red, Green, Blue}
+
+const asdh: int = 42;
+
+fn foo<T>(b: T) -> int {
+  return b;
+}
+
+struct S0      { x: int, y: int }
+
+
+struct S3<T> { x: T }
+
+const z: bool = S3@{x: S3::<S3::<_>>@{x: S3::<_>@{x: '*'}}}.x.x.x == S2@{ x: 0, y: '*'}.y;
+
+const s2_0: S2::<int, bool> = S2@{ x:0, y: true };
+const s2_1: S2::<int, bool> = S2::<int, _>@{ x:0, y: true };
+const s2_2: S2::<int, bool> = S2::<_, bool>@{ x:0, y: true };
+
+const s0: S0 = S0@{ x: 0, y: -1 };
+const s1_0: S1::<int> = S1@{ x: 0, y: 1 };
+const s1_1: S1::<S1::<int>> = S1::<S1::<_>>@
+  { x: S1@{ x: 0, y: 0 }
+  , y: S1@{ x: 0, y: 0}
+  };
+
+const s1_2: S1::<S2::<S1::<int>, S1::<bool>>> =
+  S1@
+    { x: S2@
+      { x: S1@
+        { x: 0
+        , y: 0
+        }
+      , y: S1@
+        { x: true
+        , y: false
+        }
+      }
+    , y: S2@
+      { x: S1@
+        { x: 0
+        , y: 0
+        }
+      , y: S1@
+        { x: true
+        , y: false
+        }
+      }
+    };
+*/
