@@ -1,6 +1,7 @@
 module Data.HashMap.Strict.Extra
   ( module P
   , catMaybes
+  , traverseWithKey_
   , forWithKey
   , forWithKey_
   ) where

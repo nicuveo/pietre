@@ -10,6 +10,14 @@ import Lang.Pietre.Representations.Name
 
 type IR = HashMap Name Function
 
+data Type
+  = IntType
+  | BoolType
+  | CharType
+  | EnumType Int
+  | StructType BaseName [Type]
+  | FunctionType [Type] (Maybe Type)
+
 data Function = Function
   { _funStart  :: Label
   , _funBlocks :: NonEmpty (Label, Block)
@@ -36,23 +44,13 @@ data Register = Register
 instance Show Register where
   show Register {..} =
     let typePrefix = case _registerType of
-          IntType       -> "i"
-          BoolType      -> "b"
-          CharType      -> "c"
-          EnumType _    -> "e"
-          StructType fs -> "s" ++ show (toList fs)
-          FunctionType args rt -> "f" ++ show (toList args) ++ show (maybeToList rt)
+          IntType          -> "i"
+          BoolType         -> "b"
+          CharType         -> "c"
+          EnumType _       -> "e"
+          StructType _ _   -> "s"
+          FunctionType _ _ -> "f"
     in typePrefix ++ show _registerIndex
-
-
-data Type
-  = IntType
-  | BoolType
-  | CharType
-  | EnumType Int
-  | StructType (NonEmpty Type)
-  | FunctionType [Type] (Maybe Type)
-  deriving (Show, Eq)
 
 data Terminator
   = Jump   Target
@@ -101,7 +99,6 @@ makeLenses ''Function
 makeLenses ''Block
 makeLenses ''Register
 makeLenses ''Target
-makePrisms ''Type
 makePrisms ''Terminator
 makePrisms ''Target
 makePrisms ''Instruction

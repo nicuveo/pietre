@@ -2,12 +2,14 @@
 
 module Lang.Pietre.Stages.Lowering.Monad
   ( -- * monad
-    LoweringM
+    Lowering
   , runLowering
     -- * state
+  , liInterface
   , lsRegisters
   , lsPlaceholders
   , lsBlocks
+  , lsLocation
   , startLabel
   , mkLabel
   , mkRegister
@@ -30,6 +32,9 @@ module Lang.Pietre.Stages.Lowering.Monad
   , isWithinBlock
   , currentBlock
   , blockInfo
+    -- * error reporting
+  , warn
+  , fatal
   ) where
 
 import "this" Prelude
@@ -39,13 +44,21 @@ import Data.HashMap.Strict                    qualified as M
 import Data.HashSet                           qualified as S
 import Data.List                              qualified as L
 
+import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.IR
+import Lang.Pietre.Representations.Location
+import Lang.Pietre.Representations.Name
 
 
-type LoweringM = ReaderT Interface (State LoweringState)
+type Lowering = DiagnosisT (ReaderT LoweringInfo (State LoweringState))
+
+data LoweringInfo = LoweringInfo
+  { _liInterface :: Interface
+  , _liDeclName  :: BaseName
+  }
 
 data LoweringState = LoweringState
   { _lsNextLabel    :: Int
@@ -56,6 +69,7 @@ data LoweringState = LoweringState
   , _lsBlocks       :: HashMap Label Block
   , _lsScope        :: [BlockScope]
   , _lsCurrent      :: Maybe Label
+  , _lsLocation     :: Maybe Location
   }
   deriving Show
 
@@ -67,13 +81,17 @@ data BlockScope = BlockScope
   deriving Show
 
 runLowering
-  :: Interface
-  -> LoweringM a
-  -> a
-runLowering interface action =
+  :: MonadDiagnosis m
+  => Interface
+  -> BaseName
+  -> Lowering a
+  -> m a
+runLowering interface declName action =
   action
-    & flip runReaderT interface
+    & runDiagnosisT
+    & flip runReaderT (LoweringInfo interface declName)
     & flip evalState initialState
+    & subsume
   where
     initialState = LoweringState
       { _lsNextLabel    = 1
@@ -84,70 +102,71 @@ runLowering interface action =
       , _lsBlocks       = M.empty
       , _lsScope        = []
       , _lsCurrent      = Nothing
+      , _lsLocation     = Nothing
       }
 
-
+makeLenses ''LoweringInfo
 makeLenses ''LoweringState
 
 
 startLabel :: Label
 startLabel = Label 0
 
-mkLabel :: LoweringM Label
+mkLabel :: Lowering Label
 mkLabel = do
   index <- use lsNextLabel
   lsNextLabel += 1
   pure $ Label index
 
-mkRegister :: Type -> LoweringM Register
+mkRegister :: Type -> Lowering Register
 mkRegister regType = do
   index <- use lsNextRegister
   lsNextRegister += 1
   pure $ Register index regType
 
 
-isSealed :: Label -> LoweringM Bool
+isSealed :: Label -> Lowering Bool
 isSealed label = uses lsSealed (S.member label)
 
-seal :: Label -> LoweringM ()
+seal :: Label -> Lowering ()
 seal label = lsSealed %= S.insert label
 
 
-isReachable :: LoweringM Bool
+isReachable :: Lowering Bool
 isReachable = currentBlock >>= \case
   Label 0 -> pure True
   label   -> not . null <$> parents label
 
 
-currentBlock :: LoweringM Label
+currentBlock :: Lowering Label
 currentBlock = use lsCurrent `onNothingM` reportICE
   "IR lowering"
   "tried to access non-existent current block"
   []
 
-isWithinBlock :: LoweringM Bool
+isWithinBlock :: Lowering Bool
 isWithinBlock = uses lsCurrent isJust
 
-currentScope :: LoweringM (Maybe BlockScope)
+currentScope :: Lowering (Maybe BlockScope)
 currentScope = uses lsScope listToMaybe
 
-currentResumeLabel :: LoweringM (Maybe Label)
+currentResumeLabel :: Lowering (Maybe Label)
 currentResumeLabel = do
   scope <- currentScope
   pure $ fmap bsResume scope
 
-currentContinueLabel :: LoweringM (Maybe Label)
+currentContinueLabel :: Lowering (Maybe Label)
 currentContinueLabel = do
   scope <- currentScope
   pure $ bsContinue =<< scope
 
-currentBreakLabel :: LoweringM (Maybe Label)
+currentBreakLabel :: Lowering (Maybe Label)
 currentBreakLabel = do
   scope <- currentScope
   pure $ bsBreak =<< scope
 
 
-withInnerScope :: Label -> LoweringM a -> LoweringM a
+withInnerScope :: Label -> Lowering a -> Lowering a
 withInnerScope resumeLabel action = do
   scope <- currentScope
   let newScope = BlockScope resumeLabel (bsContinue =<< scope) (bsBreak =<< scope)
@@ -156,7 +175,7 @@ withInnerScope resumeLabel action = do
   lsScope %= L.drop 1
   pure result
 
-withLoop :: Label -> Label -> LoweringM a -> LoweringM a
+withLoop :: Label -> Label -> Lowering a -> Lowering a
 withLoop continueLabel breakLabel action = do
   let newScope = BlockScope
         { bsResume   = continueLabel
@@ -180,25 +199,25 @@ blockInfo label = lsBlocks . at label . anon defaultBlock (const False)
       }
 
 
-parents :: Label -> LoweringM [Label]
+parents :: Label -> Lowering [Label]
 parents = fmap _blockParents . getBlockInfo
 
-currentParents :: LoweringM [Label]
+currentParents :: Lowering [Label]
 currentParents = currentBlock >>= parents
 
-registerParent :: Label -> Label -> LoweringM ()
+registerParent :: Label -> Label -> Lowering ()
 registerParent label parent =
   blockInfo label . blockParents %= (parent:)
 
-getBlockInfo :: Label -> LoweringM Block
+getBlockInfo :: Label -> Lowering Block
 getBlockInfo label = use (blockInfo label)
 
 {-
-currentBlockInfo :: LoweringM Block
+currentBlockInfo :: Lowering Block
 currentBlockInfo = currentBlock >>= getBlockInfo
 -}
 
-appendInstruction :: Instruction -> LoweringM (Maybe Register)
+appendInstruction :: Instruction -> Lowering (Maybe Register)
 appendInstruction inst = do
   label <- currentBlock
   blockInfo label . blockInstructions %= (<> [inst])
@@ -228,12 +247,12 @@ appendInstruction inst = do
     InvokeN  target _ _   -> target
     InvokeR  target _ _   -> target
 
-appendArgument :: Label -> Register -> LoweringM ()
+appendArgument :: Label -> Register -> Lowering ()
 appendArgument label reg =
   blockInfo label . blockArguments %= (<> [reg])
 
 
-startBlock :: Label -> LoweringM ()
+startBlock :: Label -> Lowering ()
 startBlock label =
   lsCurrent %= \case
     Nothing -> Just label
@@ -244,7 +263,7 @@ startBlock label =
       , "new  label: " ++ show label
       ]
 
-endBlock :: Terminator -> LoweringM ()
+endBlock :: Terminator -> Lowering ()
 endBlock term = do
   label <- currentBlock
   blockInfo label . blockTerminator .= term
@@ -257,3 +276,24 @@ endBlock term = do
     Return _ -> pass
     Panic -> pass
   lsCurrent .= Nothing
+
+
+currentLocation :: Lowering Location
+currentLocation = do
+  use lsLocation `onNothingM`
+    reportICE
+      "lowering error reporting"
+      "current location not found"
+      []
+
+fatal :: Message -> Lowering a
+fatal message = do
+  declName <- view liDeclName
+  declLocation <- currentLocation
+  reportError $ Diagnostic (Just declName) declLocation message
+
+warn :: Message -> Lowering ()
+warn message = do
+  declName <- view liDeclName
+  declLocation <- currentLocation
+  reportWarning $ Diagnostic (Just declName) declLocation message

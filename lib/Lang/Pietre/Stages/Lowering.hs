@@ -1,45 +1,43 @@
 module Lang.Pietre.Stages.Lowering (lowerModule) where
 
--- import "this" Prelude
---
--- import Control.Lens
--- import Control.Monad.Extra
--- import Data.HashMap.Strict                       qualified as M
--- import GHC.Stack
---
--- import Lang.Pietre.Batteries.BuiltIn
+import "this" Prelude
+
+import Control.Lens
+import Control.Monad.Extra
+import Data.HashMap.Strict                       qualified as M
+import GHC.Stack
+
+import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Internal.ICE
--- import Lang.Pietre.Representations.AST.Validated as AST
--- import Lang.Pietre.Representations.Identifier
--- import Lang.Pietre.Representations.Interface
--- import Lang.Pietre.Representations.IR        as IR
--- import Lang.Pietre.Representations.Location
--- import Lang.Pietre.Representations.Name
--- import Lang.Pietre.Stages.Lowering.Collection
--- import Lang.Pietre.Stages.Lowering.Monad
+import Lang.Pietre.Representations.AST.Validated as AST
+import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Interface
+import Lang.Pietre.Representations.IR            as IR
+import Lang.Pietre.Representations.Location
+import Lang.Pietre.Representations.Name
+import Lang.Pietre.Stages.Lowering.Collection
+import Lang.Pietre.Stages.Lowering.Monad
 
-lowerModule :: a
-lowerModule = unimplemented
-
-{-
 
 lowerModule
-  :: Interface
-  -> IR
-lowerModule moduleInteface@Interface {..} =
-  unimplemented
-  -- fmap (lowerFunction moduleInteface) _interfaceSymbols
+  :: MonadDiagnosis m
+  => Interface
+  -> m IR
+lowerModule moduleInterface@Interface {..} =
+  M.traverseWithKey (lowerFunction moduleInterface) _interfaceSymbols
 
 lowerFunction
-  :: Interface
+  :: MonadDiagnosis m
+  => Interface
+  -> Name
   -> AST.FunctionInfo
-  -> IR.Function
-lowerFunction interface FunctionInfo {..} =
-  runLowering interface do
+  -> m IR.Function
+lowerFunction interface Name {..} FunctionInfo {..} =
+  runLowering interface _nameBase do
     sealBlock startLabel
     startBlock startLabel
     for_ (_funArgs _funType) \(argName, argInfo) -> do
-      register <- mkRegister =<< forceType (functionArgType argInfo)
+      register <- mkRegister $ forceType $ functionArgType argInfo
       appendArgument startLabel register
       lsRegisters %= M.insert (startLabel, argName) register
     processBlock _funBody
@@ -49,7 +47,7 @@ lowerFunction interface FunctionInfo {..} =
 
 sealBlock
   :: Label
-  -> LoweringM ()
+  -> Lowering ()
 sealBlock label = do
   placeholderArgs <- uses lsPlaceholders (M.lookup label)
   void
@@ -59,8 +57,8 @@ sealBlock label = do
 
 -- ASSUMPTION: process block MUST be called while already in a block
 processBlock
-  :: AST.Block Resolved
-  -> LoweringM ()
+  :: AST.Block
+  -> Lowering ()
 processBlock = \case
   [] -> do
     currentResumeLabel >>= \case
@@ -89,68 +87,68 @@ processBlock = \case
           unimplemented
 
 processStatement
-  :: AST.Statement Resolved
-  -> LoweringM ()
-processStatement = \case
-  ContinueStmt -> do
-    nextLabel <- currentContinueLabel `onNothingM`
-      -- TODO: report error instead, remove analysis phase diagnostic
-      reportICE "IR lowering" "continue statement not in a loop" []
-    endBlock $ Jump $ mkTarget nextLabel
-  BreakStmt -> do
-    nextLabel <- currentBreakLabel `onNothingM`
-      -- TODO: report error instead, remove analysis phase diagnostic
-      reportICE "IR lowering" "continue statement not in a loop" []
-    endBlock $ Jump $ mkTarget nextLabel
-  ReturnStmt typedExpression -> do
-    -- when (not $ null stmts) $ emit warning: unreachable code
-    register <- traverse forceExpression typedExpression
-    endBlock $ Return register
-  ExpressionStmt expr -> do
-    void $ processExpression expr
-  LetStmt LetInfo {..} -> do
-    register <- forceExpression _letExpr
-    current <- currentBlock
-    lsRegisters %= M.insert (current, _letName) register
-  IfStmt ifInfo -> do
-    resumeLabel <- mkLabel
-    withInnerScope resumeLabel $
-      processIf resumeLabel ifInfo
-    seal resumeLabel
-    startBlock resumeLabel
-  WhileStmt WhileInfo {..} -> do
-    conditionLabel <- mkLabel
-    loopBlockLabel <- mkLabel
-    resumeLabel    <- mkLabel
+  :: WithLocation AST.Statement
+  -> Lowering ()
+processStatement WithLocation {..} = do
+  lsLocation .= Just _location
+  case _located of
+    ContinueStmt -> do
+      nextLabel <- currentContinueLabel `onNothingM`
+        fatal ErrorContinueNotInLoop
+      endBlock $ Jump $ mkTarget nextLabel
+    BreakStmt -> do
+      nextLabel <- currentBreakLabel `onNothingM`
+        fatal ErrorBreakNotInLoop
+      endBlock $ Jump $ mkTarget nextLabel
+    ReturnStmt typedExpression -> do
+      -- when (not $ null stmts) $ emit warning: unreachable code
+      register <- traverse forceExpression typedExpression
+      endBlock $ Return register
+    ExpressionStmt expr -> do
+      void $ processExpression expr
+    LetStmt LetInfo {..} -> do
+      register <- forceExpression _letValue
+      current <- currentBlock
+      lsRegisters %= M.insert (current, _letName) register
+    IfStmt ifInfo -> do
+      resumeLabel <- mkLabel
+      withInnerScope resumeLabel $
+        processIf resumeLabel ifInfo
+      seal resumeLabel
+      startBlock resumeLabel
+    WhileStmt WhileInfo {..} -> do
+      conditionLabel <- mkLabel
+      loopBlockLabel <- mkLabel
+      resumeLabel    <- mkLabel
 
-    -- finish pre-loop block
-    endBlock $ Jump $ mkTarget conditionLabel
+      -- finish pre-loop block
+      endBlock $ Jump $ mkTarget conditionLabel
 
-    -- condition block
-    startBlock conditionLabel
-    register <- forceExpression _whileExpr
-    endBlock $ Branch
-      (mkTarget loopBlockLabel)
-      (mkTarget resumeLabel)
-      register
+      -- condition block
+      startBlock conditionLabel
+      register <- forceExpression _whileExpr
+      endBlock $ Branch
+        (mkTarget loopBlockLabel)
+        (mkTarget resumeLabel)
+        register
 
-    -- loop body block
-    seal loopBlockLabel
-    withLoop conditionLabel resumeLabel do
-      startBlock loopBlockLabel
-      processBlock _whileBody
+      -- loop body block
+      seal loopBlockLabel
+      withLoop conditionLabel resumeLabel do
+        startBlock loopBlockLabel
+        processBlock _whileBody
 
-    -- start new outer block
-    seal conditionLabel
-    seal resumeLabel
-    startBlock resumeLabel
-  ForStmt _ ->
-    unimplemented
+      -- start new outer block
+      seal conditionLabel
+      seal resumeLabel
+      startBlock resumeLabel
+    ForStmt _ ->
+      unimplemented
 
 processIf
   :: Label
-  -> AST.IfInfo Resolved
-  -> LoweringM ()
+  -> AST.IfInfo
+  -> Lowering ()
 processIf resumeLabel IfInfo {..} = do
   register <- forceExpression _ifExpr
   ifBlockLabel <- mkLabel
@@ -175,8 +173,8 @@ processIf resumeLabel IfInfo {..} = do
 
 
 forceExpression
-  :: TypedExpression
-  -> LoweringM Register
+  :: Typed AST.Expression
+  -> Lowering Register
 forceExpression expr =
   processExpression expr `onNothingM` reportICE
     "IR lowering"
@@ -185,9 +183,9 @@ forceExpression expr =
 
 -- ASSUMPTION: always end within a block
 processExpression
-  :: TypedExpression
-  -> LoweringM (Maybe Register)
-processExpression TypedExpression {..} = case _exprValue of
+  :: Typed AST.Expression
+  -> Lowering (Maybe Register)
+processExpression Typed {..} = case _typedValue of
   BoolLiteralExpr b -> do
     target <- mkRegister IR.BoolType
     appendInstruction $ AssignB target b
@@ -266,7 +264,7 @@ processExpression TypedExpression {..} = case _exprValue of
     pure $ Just target
   CastExpr e t -> do
     previous <- forceExpression e
-    target <- mkRegister =<< forceType t
+    target <- mkRegister $ forceType t
     -- TODO: do we want to insert cast bound checks here?
     appendInstruction $ Cast target previous
   AssignmentExpr lhs rhs -> do
@@ -285,42 +283,48 @@ processExpression TypedExpression {..} = case _exprValue of
     compoundAssign Modulo IR.IntType lhs rhs
   ExponentiationAssignmentExpr lhs rhs ->
     compoundAssign Exponent IR.IntType lhs rhs
-  FieldAccessExpr structExpr fieldName -> do
+  FieldAccessExpr structInfo structExpr fieldName -> do
     structRegister <- forceExpression structExpr
-    (fieldIndex, fieldType) <- retrieveFieldInfo (AST._exprType structExpr) fieldName
-    target <- mkRegister =<< forceType fieldType
+    let (fieldIndex, fieldType) = retrieveFieldInfo structInfo fieldName
+    target <- mkRegister fieldType
     appendInstruction $ GetField target structRegister fieldIndex
-  ReferenceExpr _ ->
-    unimplemented
-  PathExpr path ->
-    Just <$> resolvePath path
-  CallExpr functionPath callArguments -> do
-    (functionType, functionValue) <- retrieveFunctionInfo functionPath
+  FunctionCallExpr functionName FunctionTypeInfo {..} callArguments -> do
     arguments <- traverse forceExpression callArguments
-    target <-
-      traverse mkRegister . join =<<
-      traverse translateType (_funReturn functionType)
-    appendInstruction $ case functionValue of
-      Left  reg  -> InvokeR target reg  arguments
-      Right name -> InvokeN target name arguments
-  StructExpr structType fields -> do
+    target <- traverse mkRegister $ translateType _funReturn
+    appendInstruction $ InvokeN target functionName arguments
+  VariableCallExpr varName functionTypeInfo callArguments -> do
+    arguments <- traverse forceExpression callArguments
+    target <- traverse mkRegister $ translateType $ _funReturn functionTypeInfo
+    let functionType = forceType $ AST.FunctionType functionTypeInfo
+    funRegister <- resolveName varName functionType
+    appendInstruction $ InvokeR target funRegister arguments
+  StructExpr _ fields -> do
     registers <- for fields \(_, e) -> forceExpression e
-    target <- mkRegister =<< forceType structType
+    target <- mkRegister $ forceType _typeInfo
     appendInstruction $ Combine target registers
+  LocalVariableExpr varName -> do
+    Just <$> resolveName varName (forceType _typeInfo)
+  ReferenceArgumentExpr varName -> do
+    Just <$> resolveName varName (forceType _typeInfo)
+  FunctionNameExpr funName _ -> do
+    target <- mkRegister $ forceType _typeInfo
+    appendInstruction $ AssignA target funName
   ArrayExpr _ ->
     unimplemented
   IndexExpr _ _ ->
     unimplemented
-  RangeInclusiveExpr _lhs _rhs ->
-    unimplemented
-  RangeExclusiveExpr _lhs _rhs ->
+  RangeExpr _ ->
     unimplemented
   where
     compoundAssign instruction regType lhs rhs = do
-      value <- basicBinaryOperation instruction regType lhs rhs `onNothingM` reportICE
-        "IR lowering"
-        "assignment rhs did not yield a valid register"
-        []
+      r1 <- processLValueExpression lhs
+      r2 <- forceExpression rhs
+      target <- mkRegister regType
+      value <- appendInstruction (instruction target r1 r2) `onNothingM`
+        reportICE
+          "IR lowering"
+          "assignment rhs did not yield a valid register"
+          []
       assignRegister lhs value
       pure Nothing
 
@@ -330,187 +334,70 @@ processExpression TypedExpression {..} = case _exprValue of
       target <- mkRegister regType
       appendInstruction $ instruction target r1 r2
 
-{-
+processLValueExpression
+  :: Typed AST.LValueExpression
+  -> Lowering Register
+processLValueExpression Typed {..} = case _typedValue of
+  LocalVariableLExpr     varName -> do
+    resolveName varName $ forceType _typeInfo
+  ReferenceArgumentLExpr varName -> do
+    resolveName varName $ forceType _typeInfo
+  _ -> unimplemented
 
-
-a.b.c.d = x;
-
-%0 <- %a
-%1 <- get %0 b
-%2 <- get %1 c
-%3 <- set %2 d %x
-%4 <- set %1 c %3
-%5 <- set %0 b %4
-
-
--}
 
 assignRegister
-  :: TypedExpression
+  :: Typed AST.LValueExpression
   -> Register
-  -> LoweringM ()
+  -> Lowering ()
 assignRegister lhs value = do
-  case _exprValue lhs of
-    PathExpr path -> do
-      let name = case _pathName path of
-            LetVariable      n _ -> n
-            FunctionArgument n _ -> n
-            _                    -> reportICE
-              "IR lowering"
-              "assignment to a path that is not a local value"
-              ["path: " ++ show path]
+  case _typedValue lhs of
+    LocalVariableLExpr varName -> do
       label <- currentBlock
-      lsRegisters %= M.insert (label, name) value
-    FieldAccessExpr _subExpr _field -> do
-      unimplemented
+      lsRegisters %= M.insert (label, varName) value
     _ -> unimplemented
 
 forceType
   :: HasCallStack
-  => PathInfo Resolved
-  -> LoweringM IR.Type
-forceType path = fromMaybe incorrectTypeError <$> translateType path
+  => AST.ConcreteType
+  -> IR.Type
+forceType concreteType = fromMaybe incorrectTypeError $ translateType concreteType
   where
     incorrectTypeError =
       reportICE
         "IR lowering"
         "encountered void or unit when looking for a register type"
-        ["type info: " ++ show path]
+        ["type info: " ++ show concreteType]
 
 translateType
-  :: HasCallStack
-  => PathInfo Resolved
-  -> LoweringM (Maybe IR.Type)
-translateType path@PathInfo {..} =
-  case _pathName of
-    TopLevelDeclaration name -> translateDeclaration name
-    FunctionPointer info     -> translateFunctionType info
-    BuiltinFunction _        -> unimplemented
-    BuiltinType IntName      -> pure $ Just IR.IntType
-    BuiltinType CharName     -> pure $ Just IR.CharType
-    BuiltinType BoolName     -> pure $ Just IR.BoolType
-    BuiltinType UnitName     -> pure Nothing
-    BuiltinType VoidName     -> pure Nothing
-    BuiltinType _            -> incorrectTypeError
-    TypeParameter _ _        -> incorrectTypeError
-    Placeholder              -> incorrectTypeError
-    FunctionArgument _ _     -> incorrectTypeError
-    LetVariable _ _          -> incorrectTypeError
-  where
-    translateDeclaration name = do
-      definition <- views interfaceDefinitions (M.lookup name)
-        `onNothingM` missingTypeDeclarationError name
-      case _located definition of
-        EnumDef      info -> translateEnumDef info
-        StructDef    info -> translateStructDef info
-        FunctionDef  info -> translateFunctionType (_funType info)
-        TypeAliasDef _    -> incorrectDefinitionError definition
-        ConstDef     _    -> incorrectDefinitionError definition
-
-    translateEnumDef EnumInfo {..} =
-      pure $ Just $ IR.EnumType $ length _enumValues
-
-    translateStructDef StructInfo {..} = do
-      let paramMapping = M.fromList $
-            zip _structParams _pathParams
-      Just . StructType <$> for _structValues \(_, fieldType) ->
-        forceType $ substituteTypes paramMapping fieldType
-
-    translateFunctionType AST.FunctionType {..} = do
-      arguments <- traverse (forceType . functionArgType . snd) _funArgs
-      result <- traverse translateType _funReturn
-      pure $ Just $ IR.FunctionType arguments (join result)
-
-    incorrectTypeError =
-      reportICE
-        "IR lowering"
-        "encountered an incorrect role while expecting a type"
-        ["type info: " ++ show path]
-
-    incorrectDefinitionError definition =
-      reportICE
-        "IR lowering"
-        "encountered an incorrect definition while translating a type"
-        ["definition: " ++ show definition]
-
-    missingTypeDeclarationError name =
-      reportICE
-        "IR lowering"
-        "could not find definition for top-level type"
-        ["type: " ++ show name]
-
-retrieveFunctionInfo
-  :: PathInfo Resolved
-  -> LoweringM (FunctionType Resolved, Either Register Name)
-retrieveFunctionInfo path@PathInfo {..} = do
-  case _pathName of
-    TopLevelDeclaration name -> handleDeclaration name
-    LetVariable name ft      -> handleVariable name ft
-    BuiltinFunction _        -> unimplemented
-    FunctionArgument _ _     -> unimplemented
-    FunctionPointer _        -> incorrectTypeError
-    BuiltinType _            -> incorrectTypeError
-    TypeParameter _ _        -> incorrectTypeError
-    Placeholder              -> incorrectTypeError
-  where
-    handleDeclaration name = do
-      definition <- views interfaceDefinitions (M.lookup name)
-        `onNothingM` missingFunctionDeclarationError name
-      case _located definition of
-        FunctionDef info -> pure (_funType info, Right name)
-        _                -> incorrectDefinitionError definition
-
-    handleVariable name varType@PathInfo {..} = do
-      case _pathName of
-        FunctionPointer ft -> do
-          regType <- forceType varType
-          register <- resolveName name regType
-          pure (ft, Left register)
-        _ -> incorrectTypeError
-
-    incorrectTypeError =
-      reportICE
-        "IR lowering"
-        "encountered an incorrect role when retrieving function info"
-        ["type info: " ++ show path]
-
-    incorrectDefinitionError definition =
-      reportICE
-        "IR lowering"
-        "encountered an incorrect definition while retrieving function info"
-        ["definition: " ++ show definition]
-
-    missingFunctionDeclarationError name =
-      reportICE
-        "IR lowering"
-        "could not find definition for top-level function"
-        ["type: " ++ show name]
-
+  :: AST.ConcreteType
+  -> Maybe IR.Type
+translateType = \case
+  AST.IntType  -> Just IR.IntType
+  AST.BoolType -> Just IR.BoolType
+  AST.CharType -> Just IR.CharType
+  AST.UnitType -> Nothing
+  AST.VoidType -> Nothing
+  AST.EnumType _ values -> Just $ IR.EnumType $ length values
+  AST.StructType StructTypeInfo {..} -> do
+    params <- traverse translateType _structTypeParams
+    pure $ IR.StructType _structBaseName params
+  AST.FunctionType FunctionTypeInfo {..} -> do
+    args <- traverse (translateType . AST.functionArgType . snd) _funArgs
+    pure $ IR.FunctionType args (translateType _funReturn)
 
 retrieveFieldInfo
-  :: PathInfo Resolved
+  :: AST.StructInfo ConcreteFunctor
   -> Identifier
-  -> LoweringM (Int, PathInfo Resolved)
-retrieveFieldInfo path@PathInfo {..} fieldName = do
-  structInfo <- case _pathName of
-    TopLevelDeclaration name -> do
-      definition <- views interfaceDefinitions (M.lookup name)
-        `onNothingM` missingStructDeclarationError name
-      case _located definition of
-        StructDef info -> pure info
-        _              -> incorrectDefinitionError definition
-    _ -> incorrectStructError
-  pure $ go structInfo 0 $ toList $ _structValues structInfo
+  -> (Int, IR.Type)
+retrieveFieldInfo structInfo@StructInfo {..} fieldName =
+  go 0 $ toList _structValues
   where
-    go structInfo _ [] = fieldNotFoundError structInfo
-    go structInfo !i ((fn, ft):sfs)
-      | fn == fieldName = (i, substituteTypes (getMapping structInfo) ft)
-      | otherwise       = go structInfo (i+1) sfs
+    go _ [] = fieldNotFoundError
+    go !i ((fn, ft):sfs)
+      | fn == fieldName = (i, forceType ft)
+      | otherwise       = go (i+1) sfs
 
-    getMapping StructInfo {..} =
-      M.fromList $ zip _structParams _pathParams
-
-    fieldNotFoundError structInfo =
+    fieldNotFoundError =
       reportICE
         "IR lowering"
         "struct field not found in struct definition"
@@ -518,54 +405,10 @@ retrieveFieldInfo path@PathInfo {..} fieldName = do
         , "struct info: " ++ show structInfo
         ]
 
-    incorrectStructError =
-      reportICE
-        "IR lowering"
-        "encountered an incorrect role when retrieving struct info"
-        ["type info: " ++ show path]
-
-    incorrectDefinitionError definition =
-      reportICE
-        "IR lowering"
-        "encountered an incorrect definition while retrieving a struct info"
-        ["definition: " ++ show definition]
-
-    missingStructDeclarationError name =
-      reportICE
-        "IR lowering"
-        "could not find definition for top-level type"
-        ["type: " ++ show name]
-
-
-resolvePath
-  :: PathInfo Resolved
-  -> LoweringM Register
-resolvePath path@PathInfo {..} =
-  case _pathName of
-    TopLevelDeclaration name   -> handleDeclaration name
-    LetVariable name varT      -> resolveName name =<< forceType varT
-    FunctionArgument name argT -> resolveName name =<< forceType (functionArgType argT)
-    BuiltinFunction _          -> unimplemented
-    FunctionPointer _          -> incorrectTypeError
-    BuiltinType _              -> incorrectTypeError
-    TypeParameter _ _          -> incorrectTypeError
-    Placeholder                -> incorrectTypeError
-  where
-    handleDeclaration name = do
-      target <- mkRegister =<< forceType path
-      void $ appendInstruction $ AssignA target name
-      pure target
-
-    incorrectTypeError =
-      reportICE
-        "IR lowering"
-        "encountered an incorrect role when resolving path"
-        ["type info: " ++ show path]
-
 resolveName
   :: Identifier
   -> IR.Type
-  -> LoweringM Register
+  -> Lowering Register
 resolveName name regType = do
   label <- currentBlock
   resolveNameIn label name regType
@@ -574,7 +417,7 @@ resolveNameIn
   :: Label
   -> Identifier
   -> IR.Type
-  -> LoweringM Register
+  -> Lowering Register
 resolveNameIn label name regType =
   uses lsRegisters (M.lookup (label, name)) `onNothingM` do
     ifM (isSealed label)
@@ -604,7 +447,7 @@ registerBlockArgument
   :: Label
   -> Identifier
   -> Register
-  -> LoweringM ()
+  -> Lowering ()
 registerBlockArgument label name blockArgument = do
   ps <- parents label
   appendArgument label blockArgument
@@ -624,5 +467,3 @@ registerBlockArgument label name blockArgument = do
         [ "parent terminator: " ++ show terminator
         , "child label: " ++ show label
         ]
-
--}

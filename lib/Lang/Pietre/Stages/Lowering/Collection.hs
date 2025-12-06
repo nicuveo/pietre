@@ -15,7 +15,7 @@ import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.IR
 
 
-type CollectM = ReaderT (HashMap Label Block) (State CollectState)
+type Collection = ReaderT (HashMap Label Block) (State CollectState)
 
 data CollectState = CollectState
   { _csQueue   :: Seq Label
@@ -28,7 +28,7 @@ makeLenses ''CollectState
 runCollect
   :: HashMap Label Block
   -> Label
-  -> CollectM a
+  -> Collection a
   -> a
 runCollect blocks start action = action
   & flip runReaderT blocks
@@ -36,7 +36,7 @@ runCollect blocks start action = action
 
 retrieveBlock
   :: Label
-  -> CollectM Block
+  -> Collection Block
 retrieveBlock label = do
   blocks <- ask
   M.lookup label blocks `onNothing` reportICE
@@ -46,7 +46,7 @@ retrieveBlock label = do
     , "missing block: " ++ show label
     ]
 
-visit :: Label -> CollectM (Label, Block)
+visit :: Label -> Collection (Label, Block)
 visit label = do
   csVisited %= S.insert label
   process =<< retrieveBlock label
@@ -76,7 +76,7 @@ visit label = do
       , _blockTerminator   = _blockTerminator   block2
       }
 
-step :: CollectM (Maybe (Label, Block))
+step :: Collection (Maybe (Label, Block))
 step =
   use csQueue >>= \case
     Empty            -> pure Nothing

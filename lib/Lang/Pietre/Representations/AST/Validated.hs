@@ -27,7 +27,8 @@ import Lang.Pietre.Representations.AST.Common as Common (ASTPhase (..),
                                                          CommonStatement (..),
                                                          CommonWhileInfo (..),
                                                          EnumInfo (..),
-                                                         FunctionArgType (..))
+                                                         FunctionArgType (..),
+                                                         functionArgType)
 
 
 --------------------------------------------------------------------------------
@@ -107,6 +108,10 @@ typeName = \case
     Name _structBaseName <$> traverse typeName _structTypeParams
   FunctionType _ ->
     Nothing
+
+structTypeName :: StructTypeInfo ConcreteFunctor -> Maybe Name
+structTypeName StructTypeInfo {..} =
+  Name _structBaseName <$> traverse typeName _structTypeParams
 
 assertName :: HasCallStack => ConcreteType -> Name
 assertName t = fromMaybe raiseError $ typeName t

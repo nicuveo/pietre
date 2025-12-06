@@ -6,19 +6,19 @@ import Data.HashMap.Strict.Extra                       qualified as M
 import Data.List.NonEmpty                              qualified as NE
 import Data.Text                                       qualified as T
 import Data.Text.IO                                    qualified as T
-import Lucid
+import Lucid                                           hiding (for_)
 import System.Environment
 import System.Exit
 import System.FilePath
 
 import Lang.Pietre
-import Lang.Pietre.Internal.Diagnosis
-import Lang.Pietre.Representations.Identifier
-import Lang.Pietre.Representations.Interface
--- import Lang.Pietre.Representations.IR         as IR
 import Lang.Pietre.Export.HTML
 import Lang.Pietre.Export.PrettyPrinting.AST.Parsed    as PPP
 import Lang.Pietre.Export.PrettyPrinting.AST.Validated as VPP
+import Lang.Pietre.Internal.Diagnosis
+import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Interface
+import Lang.Pietre.Representations.IR                  as IR
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 
@@ -54,9 +54,9 @@ main = do
   filenames <- getArgs
   (diagnostics, result) <-
     runDiagnosisT $
-      flip execStateT (M.empty, M.empty, M.empty, M.empty) $
+      flip execStateT (M.empty, M.empty, M.empty, M.empty, M.empty) $
         for filenames \filename -> do
-          (interfaces, definitions, symbols, functions) <- get
+          (interfaces, definitions, symbols, functions, irs) <- get
           let moduleName = pure $ Identifier $ T.pack $ takeBaseName filename
           source    <- liftIO $ T.readFile filename
           parsedAST <- parseModule filename source `onLeft` (error . show)
@@ -74,15 +74,17 @@ main = do
             PPP.prettyPrintHTML parsedAST
             h2_ "Validated AST"
             VPP.prettyPrintHTML interface
+          ir <- lowerModule interface
           put ( M.insert moduleName interface interfaces
               , definitions <> _interfaceDefinitions
               , symbols     <> _interfaceSymbols
               , functions   <> _interfaceFunctions
+              , irs         <> ir
               )
   traverse_ print diagnostics
   case result of
     Nothing -> error "aborting"
-    Just (_interfaces, definitions, symbols, functions) -> do
+    Just (_interfaces, definitions, symbols, functions, irs) -> do
       putStrLn "################################################################################"
       putStrLn "## Definitions"
       M.forWithKey_ definitions \baseName def -> do
@@ -98,8 +100,10 @@ main = do
       M.forWithKey_ symbols \name def -> do
         putStrLn $ T.unpack $ renderName name
         print def
+      putStrLn "################################################################################"
+      putStrLn "## IR"
+      M.traverseWithKey_ printFunction irs
 
-{-
 printFunction :: Name -> IR.Function -> IO ()
 printFunction name IR.Function {..} = do
   putStrLn $ "function " ++ T.unpack (renderName name) ++ " {"
@@ -112,4 +116,3 @@ printBlock label IR.Block {..} = do
   for_ _blockInstructions \inst ->
     putStrLn $ "    " ++ show inst
   putStrLn $ "    " ++ show _blockTerminator
--}
