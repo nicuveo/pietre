@@ -19,8 +19,7 @@ data Type
   | FunctionType [Type] (Maybe Type)
 
 data Function = Function
-  { _funStart  :: Label
-  , _funBlocks :: NonEmpty (Label, Block)
+  { _funBlocks :: NonEmpty (Label, Block)
   }
   deriving Show
 

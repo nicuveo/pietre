@@ -43,7 +43,7 @@ lowerFunction interface Name {..} FunctionInfo {..} =
     processBlock _funBody
     allBlocks <- use lsBlocks
     -- TODO: filter out unreachable blocks
-    pure $ Function startLabel $ collectBlocks allBlocks startLabel
+    pure $ Function $ collectBlocks allBlocks startLabel
 
 sealBlock
   :: Label
