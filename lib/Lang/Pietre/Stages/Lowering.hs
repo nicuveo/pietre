@@ -114,7 +114,7 @@ processStatement WithLocation {..} = do
       resumeLabel <- mkLabel
       withInnerScope resumeLabel $
         processIf resumeLabel ifInfo
-      seal resumeLabel
+      sealBlock resumeLabel
       startBlock resumeLabel
     WhileStmt WhileInfo {..} -> do
       conditionLabel <- mkLabel
@@ -133,14 +133,14 @@ processStatement WithLocation {..} = do
         register
 
       -- loop body block
-      seal loopBlockLabel
+      sealBlock loopBlockLabel
       withLoop conditionLabel resumeLabel do
         startBlock loopBlockLabel
         processBlock _whileBody
 
       -- start new outer block
-      seal conditionLabel
-      seal resumeLabel
+      sealBlock conditionLabel
+      sealBlock resumeLabel
       startBlock resumeLabel
     ForStmt _ ->
       unimplemented
@@ -158,13 +158,13 @@ processIf resumeLabel IfInfo {..} = do
     (mkTarget elseBlockLabel)
     register
 
-  seal ifBlockLabel
+  sealBlock ifBlockLabel
   startBlock ifBlockLabel
   processBlock _ifBody
 
   for_ _ifElse \case
     ElseBlock elseBody -> do
-      seal elseBlockLabel
+      sealBlock elseBlockLabel
       startBlock elseBlockLabel
       processBlock elseBody
     ElseIf ifInfo -> do
@@ -236,12 +236,12 @@ processExpression Typed {..} = case _typedValue of
     resumeLabel <- mkLabel
     endBlock $ Branch (mkTarget rhsLabel) (Target resumeLabel [lhsRegister]) lhsRegister
 
-    seal rhsLabel
+    sealBlock rhsLabel
     startBlock rhsLabel
     rhsRegister <- forceExpression rhs
     endBlock $ Jump $ Target resumeLabel [rhsRegister]
 
-    seal resumeLabel
+    sealBlock resumeLabel
     startBlock resumeLabel
     target <- mkRegister IR.BoolType
     appendArgument resumeLabel target
@@ -252,12 +252,12 @@ processExpression Typed {..} = case _typedValue of
     resumeLabel <- mkLabel
     endBlock $ Branch (Target resumeLabel [lhsRegister]) (mkTarget rhsLabel) lhsRegister
 
-    seal rhsLabel
+    sealBlock rhsLabel
     startBlock rhsLabel
     rhsRegister <- forceExpression rhs
     endBlock $ Jump $ Target resumeLabel [rhsRegister]
 
-    seal resumeLabel
+    sealBlock resumeLabel
     startBlock resumeLabel
     target <- mkRegister IR.BoolType
     appendArgument resumeLabel target
