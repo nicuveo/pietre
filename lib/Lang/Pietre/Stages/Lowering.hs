@@ -425,14 +425,9 @@ resolveNameIn label name regType =
       introduceTempRegister
   where
     searchRecursively = do
-      ps <- parents label
-      case ps of
-        [parent] ->
-          resolveNameIn parent name regType
-        _ -> do
-          blockArgument <- mkRegister regType
-          registerBlockArgument label name blockArgument
-          pure blockArgument
+      blockArgument <- mkRegister regType
+      registerBlockArgument label name blockArgument
+      pure blockArgument
 
     introduceTempRegister =
       uses lsPlaceholders (M.lookup label >=> M.lookup name) `onNothingM` do
