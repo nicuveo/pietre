@@ -130,7 +130,7 @@ prettyConcreteType =
 
 prettyParameterizedType :: Prettifier ParameterizedType
 prettyParameterizedType = \case
-  Left (_, paramName) -> do
+  Left paramName -> do
     paramID <- retrieve $ mangle paramName
     pure $ annotate (ParameterAnn paramID) $ prettyIdentifier paramName
   Right actualType ->

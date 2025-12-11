@@ -298,7 +298,7 @@ validateFunctionPathExpression PathInfo {..} = do
         pure $ Typed argType $ LocalVariableExpr argName
 
     reifyConcreteType
-      :: HashMap (BaseName, Identifier) ConcreteType
+      :: HashMap Identifier ConcreteType
       -> ParameterizedType
       -> ConcreteType
     reifyConcreteType = reifyType @ConcreteFunctor
@@ -309,7 +309,7 @@ validateFunctionPathExpression PathInfo {..} = do
         traverse (tryNested . validateConcreteType) _pathParams
       validateParamsCount baseName _funParams validatedParams
       let
-        paramMapping = M.fromList $ zip (map (baseName, ) _funParams) validatedParams
+        paramMapping = M.fromList $ zip _funParams validatedParams
         validatedArguments = fmap3 (reifyConcreteType paramMapping) _funArgs
         validatedReturnType = reifyConcreteType paramMapping _funReturn
         validatedFunctionInfo = FunctionTypeInfo _funParams validatedArguments validatedReturnType
@@ -471,7 +471,7 @@ validateFunctionFieldAccess cons validatedExpr fieldName = do
     StructType StructTypeInfo {..} -> do
       Validated.StructInfo {..} <- retrieveStruct _structBaseName
       let
-        paramMapping = M.fromList $ zip (map (_structBaseName,) _structParams) _structTypeParams
+        paramMapping = M.fromList $ zip _structParams _structTypeParams
         validatedFields = fmap2 (reifyType @ConcreteFunctor paramMapping) _structValues
       (_, fieldType) <-
         find ((fieldName ==) . fst) validatedFields `onNothing`
@@ -589,13 +589,13 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
               fatal $ ErrorFunctionCallArgExpectingReference argName
 
     validateParam
-      :: HashMap (BaseName, Identifier) [ConcreteType]
+      :: HashMap Identifier [ConcreteType]
       -> BaseName
       -> (Identifier, PartialType)
-      -> Validate ((BaseName, Identifier), ConcreteType)
+      -> Validate (Identifier, ConcreteType)
     validateParam typeMap baseName (paramName, partialType) = do
-      ((baseName, paramName), ) <$>
-        case fold $ M.lookup (baseName, paramName) typeMap of
+      (paramName, ) <$>
+        case fold $ M.lookup paramName typeMap of
           [] ->
             concretizeType partialType `onNothing`
               fatal (ErrorFunctionAmbiguousType baseName paramName)
@@ -660,7 +660,7 @@ validateStructExpression fieldValidationCallback resultConstructor structPath fi
     traverse (tryNested . validateParam _structBaseName parametersMap) paramTypes
 
   let
-    finalMapping = M.fromList $ zip ((_structBaseName,) <$> _structParams) validatedTypeParams
+    finalMapping = M.fromList $ zip _structParams validatedTypeParams
     validatedStructType = StructTypeInfo
       { _structBaseName   = _structBaseName
       , _structTypeParams = validatedTypeParams
@@ -688,11 +688,11 @@ validateStructExpression fieldValidationCallback resultConstructor structPath fi
 
     validateParam
       :: BaseName
-      -> HashMap (BaseName, Identifier) [ConcreteType]
+      -> HashMap Identifier [ConcreteType]
       -> (Identifier, PartialType)
       -> Validate ConcreteType
     validateParam baseName typeMap (paramName, partialType) = do
-      case fold $ M.lookup (baseName, paramName) typeMap of
+      case fold $ M.lookup paramName typeMap of
         [] -> do
           concretizeType partialType `onNothing`
             fatal (ErrorStructAmbiguousType baseName paramName)

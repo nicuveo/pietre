@@ -27,7 +27,7 @@ validateConcreteType
 validateConcreteType = go M.empty
   where
     go
-      :: HashMap (BaseName, Identifier) ConcreteType
+      :: HashMap Identifier ConcreteType
       -> Resolved.PathInfo
       -> Validate ConcreteType
     go localMappings PathInfo {..} = do
@@ -62,7 +62,7 @@ validatePartialType
 validatePartialType = go M.empty
   where
     go
-      :: HashMap (BaseName, Identifier) PartialType
+      :: HashMap Identifier PartialType
       -> Resolved.PathInfo
       -> Validate PartialType
     go localMappings PathInfo {..} = do
@@ -90,19 +90,26 @@ validateParameterizedType
 validateParameterizedType = go M.empty
   where
     go
-      :: HashMap (BaseName, Identifier) ParameterizedType
+      :: HashMap Identifier ParameterizedType
       -> Resolved.PathInfo
       -> Validate ParameterizedType
     go localMappings PathInfo {..} = do
       params <- traverse (go localMappings) _pathParams
       case _pathBase of
-        BuiltinType name                 -> Right <$> validateBuiltinType name params
-        Struct baseName                  -> validateStructType baseName params
-        Enum baseName                    -> Right <$> validateEnumType baseName params
-        TypeAlias baseName               -> validateTypeAliasType @ParameterizedFunctor localMappings baseName params
-        TypeParameter baseName paramName -> pure $ Left (baseName, paramName)
-        Placeholder                      -> fatal $ ErrorPlaceholder unimplemented
-        _                                -> fatal $ ErrorNotAType _pathBase
+        BuiltinType name ->
+          Right <$> validateBuiltinType name params
+        Struct baseName ->
+          validateStructType baseName params
+        Enum baseName ->
+          Right <$> validateEnumType baseName params
+        TypeAlias baseName ->
+          validateTypeAliasType @ParameterizedFunctor localMappings baseName params
+        TypeParameter _ paramName ->
+          pure $ Left paramName
+        Placeholder ->
+          fatal $ ErrorPlaceholder unimplemented
+        _ ->
+          fatal $ ErrorNotAType _pathBase
     validateStructType baseName actualParams = do
       expectedParams <- retrieveStructParams baseName
       validateParamsCount baseName expectedParams actualParams
@@ -143,25 +150,25 @@ validateEnumType baseName params = do
 validateTypeAliasType
   :: forall f
    . (Applicative f, Show (TypeTree f))
-  => M.HashMap (BaseName, Identifier) (TypeTree f)
+  => M.HashMap Identifier (TypeTree f)
   -> BaseName
   -> [TypeTree f]
   -> Validate (TypeTree f)
 validateTypeAliasType localMappings baseName params = do
   Validated.TypeAliasInfo {..} <- retrieveTypeAlias baseName
   validateParamsCount baseName _aliasParams params
-  let newMappings = M.fromList $ zip (map (baseName,) _aliasParams) params
+  let newMappings = M.fromList $ zip _aliasParams params
   pure $ reifyType @f (M.union newMappings localMappings) _aliasValue
 
 validateTypeParameterType
   :: forall f
    . (Applicative f)
-  => M.HashMap (BaseName, Identifier) (TypeTree f)
+  => M.HashMap Identifier (TypeTree f)
   -> BaseName
   -> Identifier
   -> Validate (TypeTree f)
 validateTypeParameterType localMappings baseName paramName =
-  M.lookup (baseName, paramName) localMappings `onNothing`
+  M.lookup paramName localMappings `onNothing`
     fmap adapt (retrieveTypeParameter baseName paramName)
   where
     adapt :: ConcreteType -> TypeTree f
@@ -170,7 +177,7 @@ validateTypeParameterType localMappings baseName paramName =
 buildTypeParameterMap
   :: ParameterizedType
   -> ConcreteType
-  -> Validate [((BaseName, Identifier), ConcreteType)]
+  -> Validate [(Identifier, ConcreteType)]
 buildTypeParameterMap expected actual =
   go expected actual
   where
@@ -295,7 +302,7 @@ concretizeType = go
 reifyType
   :: forall f
    . (HasCallStack, Applicative f, Show (TypeTree f))
-  => HashMap (BaseName, Identifier) (TypeTree f)
+  => HashMap Identifier (TypeTree f)
   -> ParameterizedType
   -> TypeTree f
 reifyType mappings = \case
@@ -331,7 +338,7 @@ reifyType mappings = \case
     reifyStructType =
       structTypeParams %~ fmap (reifyType @f mappings)
 
-    lookupParameter :: (BaseName, Identifier) -> TypeTree f
+    lookupParameter :: Identifier -> TypeTree f
     lookupParameter identifier =
       flip fromMaybe (M.lookup identifier mappings) $
         reportICE

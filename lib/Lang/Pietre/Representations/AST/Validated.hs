@@ -46,7 +46,7 @@ instance ASTRepresentation Validated where
 
 type ConcreteFunctor      = Identity
 type PartialFunctor       = Maybe
-type ParameterizedFunctor = Either (BaseName, Identifier)
+type ParameterizedFunctor = Either Identifier
 type ConcreteType         = TypeTree ConcreteFunctor
 type PartialType          = TypeTree PartialFunctor
 type ParameterizedType    = TypeTree ParameterizedFunctor
