@@ -2,7 +2,9 @@ module Lang.Pietre.Representations.Bytecode where
 
 import "this" Prelude
 
-import Data.Kind      (Type)
+import Data.Kind                        (Type)
+
+import Lang.Pietre.Representations.Name
 
 
 data LinkerPhase = Unresolved | Resolved
@@ -14,9 +16,11 @@ class
   type PushAddress     p :: Type
   type EntranceAddress p :: Type
 
+type Address = (Name, Int)
+
 instance PhaseTypes Unresolved where
-  type PushAddress     Unresolved = Text
-  type EntranceAddress Unresolved = Text
+  type PushAddress     Unresolved = Address
+  type EntranceAddress Unresolved = Address
 
 instance PhaseTypes Resolved where
   type PushAddress     Resolved = Void

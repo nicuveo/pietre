@@ -9,18 +9,19 @@ import Control.Monad.State.Lazy             qualified as S
 import Data.HashMap.Strict                  qualified as M
 
 import Lang.Pietre.Representations.Bytecode
+import Lang.Pietre.Representations.Name
 
 
 type LinkerM = S.State LinkerState
 
 data LinkerState = LinkerState
   { _lsCurrent       :: Int
-  , _lsAddresses     :: ~(HashMap Text Int)
-  , _lsRegister      :: [(Text, Int)]
+  , _lsAddresses     :: ~(HashMap Address Int)
+  , _lsRegister      :: [(Address, Int)]
   , _lsEntranceCount :: Int
   }
 
-initialState :: HashMap Text Int -> LinkerState
+initialState :: HashMap Address Int -> LinkerState
 initialState addresses = LinkerState 1 addresses [] 0
 
 makeLenses 'LinkerState
@@ -63,8 +64,8 @@ visit function = do
 
 
 link
-  :: HashMap Text [Instruction Unresolved]
-  -> Text
+  :: HashMap Name [Instruction Unresolved]
+  -> Name
   -> [(Int, [Instruction Resolved])]
 link functions main = result
   where
