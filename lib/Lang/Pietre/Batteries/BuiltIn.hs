@@ -4,21 +4,21 @@ module Lang.Pietre.Batteries.BuiltIn where
 
 import "this" Prelude
 
-import Data.HashSet                           qualified as S
-import Data.List.NonEmpty                     qualified as NE
+import Data.HashSet                             qualified as S
+import Data.List.NonEmpty                       qualified as NE
 
-import Lang.Pietre.Representations.AST
+import Lang.Pietre.Representations.AST.Resolved
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Name
 
 
 builtins :: [(Path, Role)]
 builtins =
-  [ (pure "int",   _pathName IntType)
-  , (pure "char",  _pathName CharType)
-  , (pure "bool",  _pathName BoolType)
-  , (pure "()",    _pathName UnitType)
-  , (pure "!void", _pathName VoidType)
+  [ (pure "int",   BuiltinType IntName)
+  , (pure "char",  BuiltinType CharName)
+  , (pure "bool",  BuiltinType BoolName)
+  , (pure "()",    BuiltinType UnitName)
+  , (pure "!void", BuiltinType VoidName)
   , (pure "_",     Placeholder)
   ]
 
@@ -29,32 +29,12 @@ isReserved :: Identifier -> Bool
 isReserved = flip S.member reserved
 
 pattern IntName  :: Name
-pattern IntName  = Name ("int"   :| []) []
+pattern IntName  = Name (BaseName ("%builtin%" :| []) "int")   []
 pattern CharName :: Name
-pattern CharName = Name ("char"  :| []) []
+pattern CharName = Name (BaseName ("%builtin%" :| []) "char")  []
 pattern BoolName :: Name
-pattern BoolName = Name ("bool"  :| []) []
+pattern BoolName = Name (BaseName ("%builtin%" :| []) "bool")  []
 pattern UnitName :: Name
-pattern UnitName = Name ("()"    :| []) []
+pattern UnitName = Name (BaseName ("%builtin%" :| []) "()")    []
 pattern VoidName :: Name
-pattern VoidName = Name ("!void" :| []) []
-
-pattern IntType  :: PathInfo Resolved
-pattern IntType  = PathInfo (BuiltinType IntName)  []
-pattern CharType :: PathInfo Resolved
-pattern CharType = PathInfo (BuiltinType CharName) []
-pattern BoolType :: PathInfo Resolved
-pattern BoolType = PathInfo (BuiltinType BoolName) []
-pattern UnitType :: PathInfo Resolved
-pattern UnitType = PathInfo (BuiltinType UnitName) []
-pattern VoidType :: PathInfo Resolved
-pattern VoidType = PathInfo (BuiltinType VoidName) []
-pattern PlaceholderType :: PathInfo Resolved
-pattern PlaceholderType = PathInfo Placeholder []
-
-pattern IntExpression :: Int -> TypedExpression
-pattern IntExpression x = RValueExpression Pure IntType (IntLiteralExpr x)
-pattern CharExpression :: Char -> TypedExpression
-pattern CharExpression x = RValueExpression Pure CharType (CharLiteralExpr x)
-pattern BoolExpression :: Bool -> TypedExpression
-pattern BoolExpression x = RValueExpression Pure BoolType (BoolLiteralExpr x)
+pattern VoidName = Name (BaseName ("%builtin%" :| []) "!void") []

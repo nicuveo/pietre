@@ -8,7 +8,7 @@ import Data.List.NonEmpty ((<|), singleton)
 import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
 import Lang.Pietre.Internal.ICE
-import Lang.Pietre.Representations.AST
+import Lang.Pietre.Representations.AST.Parsed
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Tokens
@@ -118,8 +118,8 @@ declaration :: { Module }
   | fun_decl    { Module [] [$1] }
 
 
-use_decl :: { Import }
-  : "use" use_tree ";" { $2 }
+use_decl :: { WithLocation Import }
+  : "use" use_tree ";" { WithLocation $1 $2 }
 
 use_tree :: { Import }
   : IDENTIFIER optional(use_alias)                 { Import (singleton $ getIdentifierLiteral $1) (Qualified $2) }
@@ -131,37 +131,37 @@ use_alias :: { Identifier }
   : "as" IDENTIFIER { getIdentifierLiteral $2 }
 
 
-alias_decl :: { WithLocation (Definition Parsed) }
+alias_decl :: { WithLocation Definition }
   : "type" IDENTIFIER optional(generic_params) "=" type_expr ";" { WithLocation $1 (TypeAliasDef (TypeAliasInfo (getIdentifierLiteral $2) (fold $3) $5)) }
 
-enum_decl :: { WithLocation (Definition Parsed) }
+enum_decl :: { WithLocation Definition }
   : "enum" IDENTIFIER "{" optional(comma_list(enum_item)) "}" { WithLocation $1 (EnumDef (EnumInfo (getIdentifierLiteral $2) (fold $4))) }
 
 enum_item :: { Identifier }
   : IDENTIFIER { getIdentifierLiteral $1 }
 
-struct_decl :: { WithLocation (Definition Parsed) }
+struct_decl :: { WithLocation Definition }
   : "struct" IDENTIFIER optional(generic_params) "{" comma_list(struct_field) "}" { WithLocation $1 (StructDef (StructInfo (getIdentifierLiteral $2) (fold $3) (NE.fromList $5))) }
 
-struct_field :: { (Identifier, PathInfo Parsed) }
+struct_field :: { (Identifier, PathInfo) }
   : IDENTIFIER ":" type_expr { (getIdentifierLiteral $1, $3) }
 
 
-const_decl :: { WithLocation (Definition Parsed) }
+const_decl :: { WithLocation Definition }
   : "const" IDENTIFIER ":" type_expr "=" expression ";" { WithLocation $1 (ConstDef (ConstInfo (getIdentifierLiteral $2) $4 $6)) }
 
 
-fun_decl :: { WithLocation (Definition Parsed) }
+fun_decl :: { WithLocation Definition }
   : "fn" IDENTIFIER optional(generic_params) "(" optional(comma_list(fun_arg)) ")" optional(fun_return) block { WithLocation $1 (FunctionDef (FunctionInfo (getIdentifierLiteral $2) (FunctionType (fold $3) (fold $5) $7) $8)) }
 
-fun_arg :: { (Identifier, FunctionArgType Parsed) }
+fun_arg :: { (Identifier, FunctionArgType) }
   : IDENTIFIER ":" fun_arg_type { (getIdentifierLiteral $1, $3) }
 
-fun_arg_type :: { FunctionArgType Parsed }
+fun_arg_type :: { FunctionArgType }
   : type_expr { ByValue     $1 }
   | reference { ByReference $1 }
 
-fun_return :: { PathInfo Parsed }
+fun_return :: { PathInfo }
   : "->" type_expr { $2 }
 
 
@@ -172,19 +172,19 @@ generic_param :: { Identifier }
   : IDENTIFIER { getIdentifierLiteral $1 }
 
 
-block :: { [WithLocation (Statement Parsed)] }
+block :: { [WithLocation Statement] }
   : "{" many(statement) "}" { $2 }
 
-statement :: { WithLocation (Statement Parsed) }
+statement :: { WithLocation Statement }
   : block_stmt      { $1 }
   | inline_stmt ";" { $1 }
 
-block_stmt :: { WithLocation (Statement Parsed) }
+block_stmt :: { WithLocation Statement }
   : if_stmt    { WithLocation (fst $1) (IfStmt (snd $1)) }
   | for_stmt   { $1 }
   | while_stmt { $1 }
 
-inline_stmt :: { WithLocation (Statement Parsed) }
+inline_stmt :: { WithLocation Statement }
   : let_stmt      { $1 }
   | return_stmt   { $1 }
   | continue_stmt { $1 }
@@ -192,43 +192,43 @@ inline_stmt :: { WithLocation (Statement Parsed) }
   | expr_stmt     { $1 }
 
 
-if_stmt :: { (Location, IfInfo Parsed) }
+if_stmt :: { (Location, IfInfo) }
   : "if" expression block optional(else_stmt) { ($1, IfInfo $2 $3 $4) }
 
-else_stmt  :: { ElseInfo Parsed }
+else_stmt  :: { ElseInfo }
   : "else" else_block { $2 }
 
-else_block :: { ElseInfo Parsed }
+else_block :: { ElseInfo }
  : if_stmt { ElseIf (snd $1) }
  | block   { ElseBlock $1 }
 
-while_stmt :: { WithLocation (Statement Parsed) }
+while_stmt :: { WithLocation Statement }
   : "while" expression block { WithLocation $1 (WhileStmt (WhileInfo $2 $3)) }
 
-for_stmt :: { WithLocation (Statement Parsed) }
+for_stmt :: { WithLocation Statement }
   : "for" IDENTIFIER "in" expression block { WithLocation $1 (ForStmt (ForInfo (getIdentifierLiteral $2) $4 $5)) }
 
 
-let_stmt :: { WithLocation (Statement Parsed) }
+let_stmt :: { WithLocation Statement }
   : "let" IDENTIFIER optional(let_type) "=" expression { WithLocation $1 (LetStmt (LetInfo (getIdentifierLiteral $2) $3 $5)) }
 
-let_type :: { PathInfo Parsed }
+let_type :: { PathInfo }
   : ":" type_expr { $2 }
 
-return_stmt :: { WithLocation (Statement Parsed) }
+return_stmt :: { WithLocation Statement }
   : "return" optional(expression) { WithLocation $1 (ReturnStmt $2) }
 
-continue_stmt :: { WithLocation (Statement Parsed) }
+continue_stmt :: { WithLocation Statement }
   : "continue" { WithLocation $1 ContinueStmt }
 
-break_stmt :: { WithLocation (Statement Parsed) }
+break_stmt :: { WithLocation Statement }
   : "break" { WithLocation $1 BreakStmt }
 
-expr_stmt :: { WithLocation (Statement Parsed) }
+expr_stmt :: { WithLocation Statement }
   : expression { WithLocation (_location $1) (ExpressionStmt $1) }
 
 
-expression :: { WithLocation (Expression Parsed) }
+expression :: { WithLocation Expression }
   : grouped_expr      { $1 }
   | path_expr         { WithLocation (fst $1) (PathExpr (snd $1)) }
   | field_access_expr { $1 }
@@ -239,46 +239,46 @@ expression :: { WithLocation (Expression Parsed) }
   | literal_expr      { $1 }
   | operator_expr     { $1 }
 
-grouped_expr :: { WithLocation (Expression Parsed) }
+grouped_expr :: { WithLocation Expression }
   : "(" expression ")" { $2 }
 
-path_expr :: { (Location, PathInfo Parsed) }
+path_expr :: { (Location, PathInfo) }
   : IDENTIFIER                   { (fst $1, PathInfo (pure $ getIdentifierLiteral $1) []) }
   | IDENTIFIER "::" generic_args { (fst $1, PathInfo (pure $ getIdentifierLiteral $1) $3) }
   | IDENTIFIER "::" path_expr    { (fst $1, prependPathInfo (getIdentifierLiteral $1) (snd $3)) }
 
-field_access_expr :: { WithLocation (Expression Parsed) }
+field_access_expr :: { WithLocation Expression }
   : expression "." IDENTIFIER { WithLocation (_location $1) (FieldAccessExpr $1 (getIdentifierLiteral $3)) }
 
-call_expr :: { WithLocation (Expression Parsed) }
+call_expr :: { WithLocation Expression }
   : path_expr "(" optional(comma_list(call_arg)) ")" { WithLocation (fst $1) (CallExpr (snd $1) (fold $3)) }
 
-call_arg :: { WithLocation (Expression Parsed) }
+call_arg :: { WithLocation Expression }
   : expression { $1 }
 
-array_expr :: { WithLocation (Expression Parsed) }
+array_expr :: { WithLocation Expression }
   : "[" optional(comma_list(array_element)) "]" { WithLocation $1 (ArrayExpr (fold $2)) }
 
-array_element :: { WithLocation (Expression Parsed) }
+array_element :: { WithLocation Expression }
   : expression { $1 }
 
-index_expr :: { WithLocation (Expression Parsed) }
+index_expr :: { WithLocation Expression }
   : expression "[" expression "]" { WithLocation (_location $1) (IndexExpr $1 $3) }
 
-struct_expr :: { WithLocation (Expression Parsed) }
+struct_expr :: { WithLocation Expression }
   : path_expr "@" "{" comma_list(field_expr) "}" { WithLocation (fst $1) (StructExpr (snd $1) (NE.fromList $4)) }
 
-field_expr :: { (Identifier, WithLocation (Expression Parsed)) }
+field_expr :: { (Identifier, WithLocation Expression) }
   : IDENTIFIER ":" expression { (getIdentifierLiteral $1, $3) }
 
-literal_expr :: { WithLocation (Expression Parsed) }
+literal_expr :: { WithLocation Expression }
   : INT     { WithLocation (fst $1) (IntLiteralExpr    (getIntLiteral    $1)) }
   | CHAR    { WithLocation (fst $1) (CharLiteralExpr   (getCharLiteral   $1)) }
   | STRING  { WithLocation (fst $1) (StringLiteralExpr (getStringLiteral $1)) }
   | "true"  { WithLocation $1 (BoolLiteralExpr True)  }
   | "false" { WithLocation $1 (BoolLiteralExpr False) }
 
-operator_expr :: { WithLocation (Expression Parsed) }
+operator_expr :: { WithLocation Expression }
    : reference_expr           { $1 }
    | negation_expr            { $1 }
    | arithmetic_expr          { $1 }
@@ -289,14 +289,14 @@ operator_expr :: { WithLocation (Expression Parsed) }
    | assignment_expr          { $1 }
    | compound_assignment_expr { $1 }
 
-reference_expr :: { WithLocation (Expression Parsed) }
+reference_expr :: { WithLocation Expression }
   : "&" path_expr %prec UNARY { WithLocation $1 (ReferenceExpr (snd $2)) }
 
-negation_expr :: { WithLocation (Expression Parsed) }
+negation_expr :: { WithLocation Expression }
   : "!" expression %prec UNARY { WithLocation $1 (BoolNegationExpr $2) }
   | "-" expression %prec UNARY { WithLocation $1 (IntNegationExpr  $2) }
 
-arithmetic_expr :: { WithLocation (Expression Parsed) }
+arithmetic_expr :: { WithLocation Expression }
   : expression "+" expression { binaryExpr AdditionExpr       $1 $3 }
   | expression "-" expression { binaryExpr SubtractionExpr    $1 $3 }
   | expression "*" expression { binaryExpr MultiplicationExpr $1 $3 }
@@ -304,7 +304,7 @@ arithmetic_expr :: { WithLocation (Expression Parsed) }
   | expression "%" expression { binaryExpr ModuloExpr         $1 $3 }
   | expression "^" expression { binaryExpr ExponentiationExpr $1 $3 }
 
-comparison_expr :: { WithLocation (Expression Parsed) }
+comparison_expr :: { WithLocation Expression }
   : expression "==" expression { binaryExpr EqualityExpr   $1 $3 }
   | expression "!=" expression { binaryExpr DifferenceExpr $1 $3 }
   | expression ">"  expression { binaryExpr GreaterExpr    $1 $3 }
@@ -312,21 +312,21 @@ comparison_expr :: { WithLocation (Expression Parsed) }
   | expression ">=" expression { binaryExpr GreaterEqExpr  $1 $3 }
   | expression "<=" expression { binaryExpr LesserEqExpr   $1 $3 }
 
-boolean_expr :: { WithLocation (Expression Parsed) }
+boolean_expr :: { WithLocation Expression }
   : expression "&&" expression { binaryExpr BoolAndExpr $1 $3 }
   | expression "||" expression { binaryExpr BoolOrExpr  $1 $3 }
 
-cast_expr :: { WithLocation (Expression Parsed) }
+cast_expr :: { WithLocation Expression }
   : expression "as" path_expr { WithLocation (_location $1) (CastExpr $1 (snd $3)) }
 
-range_expr :: { WithLocation (Expression Parsed) }
+range_expr :: { WithLocation Expression }
   : expression "..=" expression { binaryExpr RangeInclusiveExpr $1 $3 }
   | expression ".."  expression { binaryExpr RangeExclusiveExpr $1 $3 }
 
-assignment_expr :: { WithLocation (Expression Parsed) }
+assignment_expr :: { WithLocation Expression }
   : expression "=" expression { binaryExpr AssignmentExpr $1 $3 }
 
-compound_assignment_expr :: { WithLocation (Expression Parsed) }
+compound_assignment_expr :: { WithLocation Expression }
   : expression "+=" expression { binaryExpr AdditionAssignmentExpr       $1 $3 }
   | expression "-=" expression { binaryExpr SubtractionAssignmentExpr    $1 $3 }
   | expression "*=" expression { binaryExpr MultiplicationAssignmentExpr $1 $3 }
@@ -335,15 +335,15 @@ compound_assignment_expr :: { WithLocation (Expression Parsed) }
   | expression "^=" expression { binaryExpr ExponentiationAssignmentExpr $1 $3 }
 
 
-reference :: { PathInfo Parsed }
+reference :: { PathInfo }
   : "&" type_expr { $2 }
 
-type_expr :: { PathInfo Parsed }
+type_expr :: { PathInfo }
   : IDENTIFIER                { PathInfo (pure $ getIdentifierLiteral $1) [] }
   | IDENTIFIER generic_args   { PathInfo (pure $ getIdentifierLiteral $1) $2 }
   | IDENTIFIER "::" type_expr { prependPathInfo (getIdentifierLiteral $1) $3 }
 
-generic_args :: { [PathInfo Parsed] }
+generic_args :: { [PathInfo] }
   : "<" comma_list(type_expr) ">" { $2 }
 
 
@@ -387,17 +387,17 @@ getStringLiteral (_, tok) = case tok of
   TLiteralString i -> i
   _                -> reportICE "lexing" "string literal is not a string" ["token: " ++ show tok]
 
-prependPathInfo :: Identifier -> PathInfo Parsed -> PathInfo Parsed
-prependPathInfo prepend = over pathName (prepend <|)
+prependPathInfo :: Identifier -> PathInfo -> PathInfo
+prependPathInfo prepend = over pathBase (prepend <|)
 
 prependImport :: Identifier -> Import -> Import
 prependImport prepend = over importPath (prepend <|)
 
 binaryExpr
-  :: (WithLocation (Expression Parsed) -> WithLocation (Expression Parsed) -> Expression Parsed)
-  -> WithLocation (Expression Parsed)
-  -> WithLocation (Expression Parsed)
-  -> WithLocation (Expression Parsed)
+  :: (WithLocation Expression -> WithLocation Expression -> Expression)
+  -> WithLocation Expression
+  -> WithLocation Expression
+  -> WithLocation Expression
 binaryExpr cons exp1 exp2 = WithLocation (_location exp1) (cons exp1 exp2)
 
 }

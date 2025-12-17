@@ -19,6 +19,7 @@ ghc-options:
   - -Werror
   - -Wcompat
   - -Widentities
+  - -Wincomplete-record-updates
   - -Wincomplete-uni-patterns
   - -Wpartial-fields
   - -Wredundant-constraints
@@ -55,14 +56,17 @@ dependencies:
   - bytestring
   - containers
   - directory
+  - exceptions
   - extra
   - file-embed
   - filepath
   - hashable
   - hip
   - lens
+  - monad-control
   - monad-loops
   - mtl
+  - ordered-containers
   - prettyprinter
   - template-haskell
   - text

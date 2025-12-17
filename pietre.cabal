@@ -30,9 +30,15 @@ library
       Prelude
       Lang.Pietre
       Lang.Pietre.Batteries.BuiltIn
+      Lang.Pietre.Export.AST
+      Lang.Pietre.Internal.Diagnosis
       Lang.Pietre.Internal.Encoding
+      Lang.Pietre.Internal.HKT
       Lang.Pietre.Internal.ICE
-      Lang.Pietre.Representations.AST
+      Lang.Pietre.Representations.AST.Common
+      Lang.Pietre.Representations.AST.Parsed
+      Lang.Pietre.Representations.AST.Resolved
+      Lang.Pietre.Representations.AST.Validated
       Lang.Pietre.Representations.Bytecode
       Lang.Pietre.Representations.Identifier
       Lang.Pietre.Representations.Image
@@ -42,11 +48,17 @@ library
       Lang.Pietre.Representations.Name
       Lang.Pietre.Representations.Tokens
       Lang.Pietre.Stages.Analysis
-      Lang.Pietre.Stages.Analysis.Context
-      Lang.Pietre.Stages.Analysis.Core
-      Lang.Pietre.Stages.Analysis.Diagnostic
-      Lang.Pietre.Stages.Analysis.Instantiation
-      Lang.Pietre.Stages.Analysis.Monad
+      Lang.Pietre.Stages.Analysis.Resolution
+      Lang.Pietre.Stages.Analysis.Resolution.Monad
+      Lang.Pietre.Stages.Analysis.Resolution.NameValidation
+      Lang.Pietre.Stages.Analysis.Resolution.Scope
+      Lang.Pietre.Stages.Analysis.Validation
+      Lang.Pietre.Stages.Analysis.Validation.Context
+      Lang.Pietre.Stages.Analysis.Validation.Expect
+      Lang.Pietre.Stages.Analysis.Validation.Expr
+      Lang.Pietre.Stages.Analysis.Validation.Instantiation
+      Lang.Pietre.Stages.Analysis.Validation.Monad
+      Lang.Pietre.Stages.Analysis.Validation.Types
       Lang.Pietre.Stages.Assembly
       Lang.Pietre.Stages.Assembly.Color
       Lang.Pietre.Stages.Assembly.Templates
@@ -88,7 +100,7 @@ library
       StrictData
       TypeFamilies
       ViewPatterns
-  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info
   build-tools:
       alex
     , happy
@@ -98,14 +110,17 @@ library
     , bytestring
     , containers
     , directory
+    , exceptions
     , extra
     , file-embed
     , filepath
     , hashable
     , hip
     , lens
+    , monad-control
     , monad-loops
     , mtl
+    , ordered-containers
     , prettyprinter
     , template-haskell
     , text
@@ -145,13 +160,14 @@ executable gramviz
       StrictData
       TypeFamilies
       ViewPatterns
-  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       array
     , base
     , bytestring
     , containers
     , directory
+    , exceptions
     , extra
     , file-embed
     , filepath
@@ -160,8 +176,10 @@ executable gramviz
     , hip
     , lens
     , megaparsec
+    , monad-control
     , monad-loops
     , mtl
+    , ordered-containers
     , prettyprinter
     , template-haskell
     , text
@@ -201,21 +219,24 @@ executable pc
       StrictData
       TypeFamilies
       ViewPatterns
-  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       array
     , base
     , bytestring
     , containers
     , directory
+    , exceptions
     , extra
     , file-embed
     , filepath
     , hashable
     , hip
     , lens
+    , monad-control
     , monad-loops
     , mtl
+    , ordered-containers
     , pietre
     , prettyprinter
     , template-haskell
@@ -263,7 +284,7 @@ test-suite tests
       StrictData
       TypeFamilies
       ViewPatterns
-  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -F -pgmF=tasty-autocollect
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -fwrite-ide-info -F -pgmF=tasty-autocollect
   build-tool-depends:
       tasty-autocollect:tasty-autocollect
   build-depends:
@@ -272,14 +293,17 @@ test-suite tests
     , bytestring
     , containers
     , directory
+    , exceptions
     , extra
     , file-embed
     , filepath
     , hashable
     , hip
     , lens
+    , monad-control
     , monad-loops
     , mtl
+    , ordered-containers
     , pietre
     , prettyprinter
     , tasty
