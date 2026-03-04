@@ -31,8 +31,14 @@ data Block = Block
   , _blockTerminator   :: Terminator
   } deriving Show
 
-newtype Label = Label Int
-  deriving (Show, Eq, Hashable)
+data Label = Label
+  { _labelBlock :: Int
+  , _labelInner :: Int
+  }
+  deriving (Show, Eq)
+
+instance Hashable Label where
+  hashWithSalt s (Label b i) = s `hashWithSalt` b `hashWithSalt` i
 
 data Register = Register
   { _registerIndex :: Int

@@ -110,13 +110,13 @@ makeLenses ''LoweringState
 
 
 startLabel :: Label
-startLabel = Label 0
+startLabel = Label 0 0
 
 mkLabel :: Lowering Label
 mkLabel = do
   index <- use lsNextLabel
   lsNextLabel += 1
-  pure $ Label index
+  pure $ Label index 0
 
 mkRegister :: Type -> Lowering Register
 mkRegister regType = do
@@ -134,8 +134,8 @@ seal label = lsSealed %= S.insert label
 
 isReachable :: Lowering Bool
 isReachable = currentBlock >>= \case
-  Label 0 -> pure True
-  label   -> not . null <$> parents label
+  Label 0 _ -> pure True
+  label     -> not . null <$> parents label
 
 
 currentBlock :: Lowering Label

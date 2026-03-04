@@ -4,8 +4,10 @@ module Lang.Pietre.Stages.Generation where
 
 import "this" Prelude
 
+import Data.HashMap.Strict                  qualified as M
 import Data.HashSet                         qualified as S
 import Data.List                            qualified as L
+import Data.Sequence                        ((|>))
 import Data.Sequence                        qualified as Seq
 import Data.Tuple
 
@@ -14,26 +16,13 @@ import Lang.Pietre.Representations.Bytecode as BC
 import Lang.Pietre.Representations.IR       as IR
 import Lang.Pietre.Representations.Name
 
-{-
-
-|    let a = 3;
-||   let b = a + 5;
-|||  let c = a - 1;
- ||
- ||  if c < 0 {
- |   }
- |   let d = 4;
- |
- |   print(b);
-
--}
 
 generateBytecode
   :: Name
   -> IR.Function
   -> Seq (BC.Instruction Unresolved)
 generateBytecode functionName IR.Function {..} =
-  flip foldMap _funBlocks \(Label label, block) ->
+  flip foldMap _funBlocks \(label, block) ->
     BC.Entrance (functionName, label) :<|
     generateBlockCode functionName block
 
@@ -55,13 +44,13 @@ generateBlockCode
   :: Name
   -> IR.Block
   -> Seq (BC.Instruction Unresolved)
-generateBlockCode _functionName Block {..} =
+generateBlockCode functionName Block {..} =
   let
     (finalStack, fold -> instructionsBytecode) =
       L.mapAccumL generateInstructionBytecode _blockArguments $
         annotateInstructions _blockTerminator _blockInstructions
     terminatorBytecode =
-      generateTerminatorBytecode finalStack _blockTerminator
+      generateTerminatorBytecode functionName finalStack _blockTerminator
   in
     instructionsBytecode <> terminatorBytecode
 
@@ -85,21 +74,45 @@ generateInstructionBytecode stack (instruction, outputRegisters) =
       generateOp target [arg] [BC.PushInt 0, BC.PushInt 2, BC.PushInt 1, BC.Roll, BC.Subtract]
     IR.NegateB target arg ->
       generateOp target [arg] [BC.Not]
+    IR.CmpGT target arg1 arg2 ->
+      generateOp target [arg2, arg1] [BC.Greater]
+    IR.CmpLT target arg1 arg2 ->
+      generateOp target [arg1, arg2] [BC.Greater]
+    IR.CmpEQ target arg1 arg2 ->
+      generateOp target [arg1, arg2, arg2, arg1] [BC.Greater, BC.PushInt 3, BC.PushInt 1, BC.Roll, BC.Greater, BC.Add, BC.Not]
+    IR.CmpNE target arg1 arg2 ->
+      generateOp target [arg1, arg2, arg2, arg1] [BC.Greater, BC.PushInt 3, BC.PushInt 1, BC.Roll, BC.Greater, BC.Add]
+    IR.CmpGE _target _arg1 _arg2 ->
+      unimplemented
     IR.AssignI target intLiteral -> do
       modify (target:)
       pure [BC.PushInt intLiteral]
     _ -> unimplemented
   where
     generateOp target args bc = do
-      argsBytecode <- traverse (uncurry rollArgument) (zip [1..] args)
-      opBytecode   <- applyOpN (length args) target bc
-      pure $ fold argsBytecode <> opBytecode
+      currentStack <- get
+      let desiredStack = args ++ filter (`S.member` outputRegisters) currentStack
+          instructions = rearrangeStack currentStack desiredStack
+      put desiredStack
+      opBytecode <- applyOpN (length args) target bc
+      pure $ instructions <> opBytecode
 
 generateTerminatorBytecode
-  :: Stack
+  :: Name
+  -> Stack
   -> IR.Terminator
   -> Seq (BC.Instruction Unresolved)
-generateTerminatorBytecode _stack = const [] -- TODO
+generateTerminatorBytecode functionName currentStack = \case
+  IR.Panic ->
+    [Terminate]
+  IR.Jump Target {..} ->
+    rearrangeStack currentStack _tgtArgs <> [PushAddr (functionName, _tgtLabel), BC.Return]
+  IR.Return Nothing ->
+    Seq.fromList (BC.Pop <$ currentStack) <> [BC.Return]
+  IR.Return (Just r) ->
+    rearrangeStack currentStack [r] <> [PushInt 2, PushInt 1, Roll, BC.Return]
+  IR.Branch _trueTarget _falseTarget _register ->
+    unimplemented
 
 applyOpN
   :: Int
@@ -111,49 +124,79 @@ applyOpN n target bytecode = do
   pure bytecode
 
 
-rollArgument
-  :: Int
-  -> Register
-  -> BytecodeGen (Seq (BC.Instruction Unresolved))
-rollArgument argIndex argRegister = do
-  stack <- get
-  let rollInstructions = computeRoll argRegister stack
-  put $ argRegister : L.delete argRegister stack
-  shouldDuplicate <- asks (S.member argRegister)
-  postRollInstructions <- if
-    | shouldDuplicate && argIndex == 1 -> do
-        modify \s -> take 1 s <> s
-        pure [BC.Duplicate]
-    | shouldDuplicate -> do
-        steps <- gets (sum . map registerSize . take argIndex)
-        let depth = registerSize argRegister + steps
-        modify \s -> take argIndex s ++ argRegister : drop argIndex s
-        pure [BC.Duplicate, BC.PushInt depth, BC.PushInt steps, BC.Roll]
-    | otherwise -> do
-        pure []
-  pure $ rollInstructions <> postRollInstructions
+rearrangeStack
+  :: Stack
+  -> Stack
+  -> Seq (BC.Instruction Unresolved)
+rearrangeStack startingStack desiredStack =
+  let
+    (cleaningInstructions, unsortedStack) = clean Seq.empty inputRegisters startingStack
+    rollInstructions = snd $ L.mapAccumR rollStackRegister unsortedStack $ zip [0..] desiredStack
+  in
+    cleaningInstructions <> fold (reverse rollInstructions)
+  where
+    inputRegisters  = M.fromListWith (+) $ map (,1) startingStack
+    outputRegisters = M.fromListWith (+) $ map (,1) desiredStack
 
-      {-
-          stack: [i4,i2,i1]
-          instruction: Add i5 i4 i1
-          outputRegisters: {i5, i2, i1}
+    clean
+      :: Seq (BC.Instruction Unresolved)
+      -> HashMap Register Int
+      -> Stack
+      -> (Seq (BC.Instruction Unresolved), Stack)
+    clean !instructions _ [] = (instructions, [])
+    clean !instructions registers stack@(r:_)
+      | registers == outputRegisters = (instructions, stack)
+      | otherwise =
+        let delta = (M.lookupDefault 0 r outputRegisters) - (registers M.! r)
+        in if
+          | delta == 0 ->
+              let (newStack, newInstructions) = rollStack (length stack) 1 stack
+              in clean (instructions <> newInstructions) registers newStack
+          | delta > 0 ->
+              let duplication = Seq.replicate delta BC.Duplicate
+                  (newStack, newInstructions) = rollStack (length stack+delta) (delta+1) $ replicate delta r <> stack
+              in clean (instructions <> duplication <> newInstructions) (M.adjust (+delta) r registers) newStack
+          | otherwise ->
+              clean (instructions |> BC.Pop) (M.update subtractOrDelete r registers) (drop 1 stack)
 
-          Push 3
-          Push 2
-          Roll
-          // [i2, i1, i4]
-          Push 2
-          Push 1
-          Roll
-          Duplicate
-          // [i2, i4, i1, i1]
-          Push 3
-          Push 1
-          Roll
-          // [i2, i1, i4, i1]
-          Add
+    subtractOrDelete 1 = Nothing
+    subtractOrDelete x = Just (x-1)
 
-        -}
+    rollStackRegister
+      :: Stack
+      -> (Int, Register)
+      -> (Stack, Seq (BC.Instruction Unresolved))
+    rollStackRegister stack (i, r)
+      | stack !! i == r = (stack, [])
+      | rIndex <- findRegister r stack =
+          rollStack (i+1) (rIndex+1) stack
+
+    rollStack :: Int -> Int -> Stack -> (Stack, Seq (BC.Instruction Unresolved))
+    rollStack depth steps stack =
+      let (splitAt steps -> (segment1, segment2), bottom) = splitAt depth stack
+      in ( segment2 <> segment1 <> bottom
+         , [PushInt depth, PushInt steps, Roll]
+         )
+
+    findRegister r stack = fromMaybe
+      (reportICE "rearrangeStack" "could not find register" ["register: " ++ show r, "stack: " ++ show stack])
+      (L.elemIndex r stack)
+{-
+
+source: [r1,r2,r3,r4]
+target: [r2,r3,r2]
+
+source: {r1: 1, r2: 1, ... }
+target: {r2: 2, r3: 1}
+
+POP        // [r2,r3,r4]
+DUPLICATE  // [r2,r2,r3,r4]
+ROLL 4 2   // [r3,r4,r2,r2]
+ROLL 4 1   // [r4,r2,r2,r3]
+POP        // [r2,r2,r3]
+ROLL 3 1   // [r2,r3,r2]
+
+-}
 
 
 
@@ -161,23 +204,6 @@ registerSize
   :: Register
   -> Int
 registerSize = const 1
-
-computeRoll
-  :: Register
-  -> [Register]
-  -> Seq (BC.Instruction Unresolved)
-computeRoll target stack =
-  let (depth, steps) = go 0 stack
-  in
-    if steps == 0
-    then []
-    else [PushInt depth, PushInt steps, Roll]
-  where
-    go _ [] =
-      reportICE "computeRoll" "could not find target register" ["target: " ++ show target, "stack: " ++ show stack]
-    go !depth (r:rs)
-      | r == target = (depth + registerSize r, depth)
-      | otherwise   = go (depth + registerSize r) rs
 
 annotateInstructions
   :: IR.Terminator
@@ -235,13 +261,3 @@ terminatorRegisters = \case
     S.empty
   where
     fromTarget = S.fromList . _tgtArgs
-
-
-{-
-generateTerminator
-  :: Name
-  -> [IR.Register]
-  -> IR.Terminator
-  -> Seq (BC.Instruction Unresolved)
-generateTerminator = undefined
--}

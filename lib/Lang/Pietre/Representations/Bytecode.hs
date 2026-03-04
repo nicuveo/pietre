@@ -4,6 +4,7 @@ import "this" Prelude
 
 import Data.Kind                        (Type)
 
+import Lang.Pietre.Representations.IR   qualified as IR
 import Lang.Pietre.Representations.Name
 
 
@@ -16,7 +17,7 @@ class
   type PushAddress     p :: Type
   type EntranceAddress p :: Type
 
-type Address = (Name, Int)
+type Address = (Name, IR.Label)
 
 instance PhaseTypes Unresolved where
   type PushAddress     Unresolved = Address
