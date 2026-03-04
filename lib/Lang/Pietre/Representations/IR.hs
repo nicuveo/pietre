@@ -5,6 +5,7 @@ module Lang.Pietre.Representations.IR where
 import "this" Prelude
 
 import Control.Lens.TH
+import Data.Hashable
 import Lang.Pietre.Representations.Name
 
 
@@ -36,7 +37,17 @@ newtype Label = Label Int
 data Register = Register
   { _registerIndex :: Int
   , _registerType  :: Type
-  } -- deriving Show
+  }
+
+instance Eq Register where
+  (==) = (==) `on` _registerIndex
+
+instance Ord Register where
+  compare = compare `on` _registerIndex
+
+instance Hashable Register where
+  hashWithSalt s Register{..} = hashWithSalt s _registerIndex
+
 
 -- TMP TMP TMP
 
@@ -73,7 +84,7 @@ data Instruction
   | Multiply Register Register Register
   | Divide   Register Register Register
   | Modulo   Register Register Register
-  | Exponent Register Register Register
+  | Exponent Register Register Register -- TODO: remove this
   | CmpEQ    Register Register Register
   | CmpNE    Register Register Register
   | CmpLT    Register Register Register

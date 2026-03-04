@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.37.0.
+-- This file has been generated from package.yaml by hpack version 0.39.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -105,9 +105,9 @@ library
       TypeFamilies
       ViewPatterns
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields
-  build-tools:
-      alex
-    , happy
+  build-tool-depends:
+      alex:alex
+    , happy:happy
   build-depends:
       array
     , base
