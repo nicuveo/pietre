@@ -68,6 +68,8 @@ library
       Lang.Pietre.Stages.Assembly.Templates
       Lang.Pietre.Stages.Assembly.Templates.Load
       Lang.Pietre.Stages.Generation
+      Lang.Pietre.Stages.Generation.Monad
+      Lang.Pietre.Stages.Generation.Stack
       Lang.Pietre.Stages.Linking
       Lang.Pietre.Stages.Lowering
       Lang.Pietre.Stages.Lowering.Collection

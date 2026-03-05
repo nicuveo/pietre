@@ -90,7 +90,7 @@ data Instruction
   | Multiply Register Register Register
   | Divide   Register Register Register
   | Modulo   Register Register Register
-  | Exponent Register Register Register -- TODO: remove this
+  | Exponent Register Register Register
   | CmpEQ    Register Register Register
   | CmpNE    Register Register Register
   | CmpLT    Register Register Register
