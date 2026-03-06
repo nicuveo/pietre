@@ -102,7 +102,7 @@ appendInstruction size instruction =
 resolvePush :: Instruction Resolved -> [Instruction Resolved]
 resolvePush = \case
   PushInt n
-    | n <= 0    -> unimplemented
+    | n <= 0    -> go 1 <> go (abs n + 1) <> [Subtract]
     | otherwise -> go n
   instruction -> pure instruction
   where
