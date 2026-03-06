@@ -19,8 +19,6 @@ import Lang.Pietre.Stages.Generation.Stack  qualified as Stack
 
 type Generate = ReaderT GenerationInfo (State GenerationContext)
 
-type InstructionBuffer = Seq (BC.Instruction Unresolved)
-
 data GenerationInfo = GenerationInfo
   { _giFunctionName :: Name
   }

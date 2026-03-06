@@ -51,3 +51,6 @@ data Instruction (phase :: LinkerPhase)
   | Terminate
 
 deriving instance PhaseTypes p => Show (Instruction p)
+
+
+type InstructionBuffer = Seq (Instruction Unresolved)

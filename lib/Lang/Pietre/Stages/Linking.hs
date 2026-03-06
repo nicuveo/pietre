@@ -1,45 +1,42 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 module Lang.Pietre.Stages.Linking (link) where
 
 import "this" Prelude
 
 import Control.Lens
-import Control.Monad.State.Lazy             qualified as S
 import Data.HashMap.Strict                  qualified as M
+import Data.Sequence                        qualified as Seq
 
-import Lang.Pietre.Representations.Bytecode
+import Lang.Pietre.Representations.Binary   as BI
+import Lang.Pietre.Representations.Bytecode as BC
 import Lang.Pietre.Representations.Name
+import Lang.Pietre.Stages.Linking.Monad
 
 
-type LinkerM = S.State LinkerState
-
-data LinkerState = LinkerState
-  { _lsCurrent       :: Int
-  , _lsAddresses     :: ~(HashMap Address Int)
-  , _lsRegister      :: [(Address, Int)]
-  , _lsEntranceCount :: Int
-  }
-
-initialState :: HashMap Address Int -> LinkerState
-initialState addresses = LinkerState 1 addresses [] 0
-
-makeLenses 'LinkerState
+link
+  :: HashMap Name InstructionBuffer
+  -> Name
+  -> Binary
+link functions main =
+  runLinker do
+    compiledFunctions <- traverse visit functions
+    let mainAddress = _fFunctionEntrance (compiledFunctions M.! main)
+    pure $ Binary mainAddress $ Seq.fromList $ M.elems compiledFunctions
 
 visit
-  :: [Instruction Unresolved]
-  -> LinkerM (Int, [Instruction Resolved])
-visit function = do
-  lsEntranceCount .= 0
-  result <- for function \case
+  :: InstructionBuffer
+  -> Link (Function (Seq (Instruction Resolved)))
+visit instructions = do
+  lcEntranceCount .= 0
+  functionEntrance <- use lcCurrent
+  result <- for instructions \case
     PushAddr name -> do
-      target <- uses lsAddresses (M.! name)
+      target <- views liAddresses (M.! name)
       pure $ PushInt target
     Entrance name -> do
-      address <- use lsCurrent
-      lsEntranceCount += 1
-      lsCurrent += 1
-      lsRegister %= ((name, address):)
+      address <- use lcCurrent
+      lcEntranceCount += 1
+      lcCurrent += 1
+      lcRegistry %= ((name, address):)
       pure $ Entrance ()
     PushInt x -> pure $ PushInt x
     Pop       -> pure Pop
@@ -59,22 +56,5 @@ visit function = do
     Return    -> pure Return
     Terminate -> pure Terminate
     Branch    -> pure Branch
-  totalCount <- use lsEntranceCount
-  pure (totalCount, result)
-
-
-link
-  :: HashMap Name [Instruction Unresolved]
-  -> Name
-  -> [(Int, [Instruction Resolved])]
-link functions main = result
-  where
-    (result, finalState) =
-      S.runState go $ initialState $ M.fromList $ _lsRegister finalState
-    go = do
-      start  <- visit (functions M.! main)
-      others <- sequence do
-        (name, instructions) <- M.toList functions
-        guard $ name /= main
-        pure $ visit instructions
-      pure $ start : others
+  totalCount <- use lcEntranceCount
+  pure $ Function result totalCount functionEntrance

@@ -110,7 +110,7 @@ main = do
       let mainFunction = findMain irs
       let allFunctions = M.mapWithKey generateBytecode irs
       traverse_ print allFunctions
-      I.writeImageExact I.PNG [] "program.png" $ assemble $ link (toList <$> allFunctions) mainFunction
+      I.writeImageExact I.PNG [] "program.png" $ assemble $ link allFunctions mainFunction
 
 
 

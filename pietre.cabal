@@ -43,9 +43,9 @@ library
       Lang.Pietre.Representations.AST.Parsed
       Lang.Pietre.Representations.AST.Resolved
       Lang.Pietre.Representations.AST.Validated
+      Lang.Pietre.Representations.Binary
       Lang.Pietre.Representations.Bytecode
       Lang.Pietre.Representations.Identifier
-      Lang.Pietre.Representations.Image
       Lang.Pietre.Representations.Interface
       Lang.Pietre.Representations.IR
       Lang.Pietre.Representations.Location
@@ -65,12 +65,14 @@ library
       Lang.Pietre.Stages.Analysis.Validation.Types
       Lang.Pietre.Stages.Assembly
       Lang.Pietre.Stages.Assembly.Color
+      Lang.Pietre.Stages.Assembly.Monad
       Lang.Pietre.Stages.Assembly.Templates
       Lang.Pietre.Stages.Assembly.Templates.Load
       Lang.Pietre.Stages.Generation
       Lang.Pietre.Stages.Generation.Monad
       Lang.Pietre.Stages.Generation.Stack
       Lang.Pietre.Stages.Linking
+      Lang.Pietre.Stages.Linking.Monad
       Lang.Pietre.Stages.Lowering
       Lang.Pietre.Stages.Lowering.Collection
       Lang.Pietre.Stages.Lowering.Monad

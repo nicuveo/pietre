@@ -1,43 +1,89 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedLists #-}
 
 module Lang.Pietre.Stages.Assembly where
 
 import "this" Prelude
 
-import Control.Lens
+import Control.Lens                          hiding ((<|), (|>))
 import Control.Monad.Extra                   (whenJustM)
 import Data.Monoid
+import Data.Sequence                         ((<|), (|>))
+import Data.Sequence                         qualified as Seq
 import Graphics.Image                        qualified as I
 
 import Lang.Pietre.Internal.ICE
+import Lang.Pietre.Representations.Binary
 import Lang.Pietre.Representations.Bytecode
 import Lang.Pietre.Stages.Assembly.Color
+import Lang.Pietre.Stages.Assembly.Monad
 import Lang.Pietre.Stages.Assembly.Templates
 
+import Debug.Trace
 
-data AssemblyState = AssemblyState
-  { _asCurrentColor :: Color
-  , _asCurrentImage :: Image
-  , _asLastEntrance :: Last Int
+
+assemble :: Binary -> Image
+assemble Binary {..} =
+  Seq.foldlWithIndex (addFunction stripHeight) initialImage images
+  where
+    startFunction = generateStartFunction _bMainAddress
+    images = fmap generateFunctionImage $ startFunction <| _bFunctions
+    stripHeight = maximum $ fmap _fEntranceCount images
+    maxHeight = maximum (fmap (I.rows . _fInstructions) images) + stripHeight + 2
+    maxWidth = 10 * (length _bFunctions + 1) + 4
+    initialImage = applyTemplate (0,0) (cornerTemplate Red)
+      $ I.makeImage (maxHeight, maxWidth)
+      $ const
+      $ I.PixelRGBA 0xFF 0xFF 0xFF 0xFF
+
+
+generateStartFunction
+  :: Int
+  -> Function (Seq (Instruction Resolved))
+generateStartFunction mainAddress = Function
+  { _fEntranceCount    = 2
+  , _fFunctionEntrance = 1
+  , _fInstructions =
+    [ Entrance ()
+    , PushInt 2
+    , PushInt mainAddress
+    , Return
+    , Entrance ()
+    , Terminate
+    ]
   }
 
-
-initialState :: Color -> Image -> AssemblyState
-initialState color image = AssemblyState color image mempty
-
-addFunction :: (Int, Image) -> (Int, (Int, Image)) -> (Int, Image)
-addFunction (stripHeight, baseImage) (fcount, (entrances, function)) =
-  (stripHeight, appEndo (mconcat allTransforms) baseImage)
+generateFunctionImage
+  :: Function (Seq (Instruction Resolved))
+  -> Function Image
+generateFunctionImage function@Function {..} =
+  let image = runAssembly Green do
+        traceShowM _fInstructions
+        let expandedInstructions = expandInstruction =<< _fInstructions
+        traceShowM expandedInstructions
+        sequence_ $ Seq.zipWith go expandedInstructions (Seq.drop 1 expandedInstructions |> Return)
+        use asCurrentImage
+  in function { _fInstructions = image }
   where
-    referenceColumn = 10 * fcount + 1
-    allTransforms = map Endo $
-      [ applyTemplate (stripHeight + 1, referenceColumn) function
-      , applyTemplate (1, referenceColumn + 4) (strip0Template Red)
-      ] ++ do
-        stripIndex <- [2..entrances]
-        pure $ applyTemplate (stripIndex, referenceColumn + 4) (strip1Template Red)
+    go instruction = \case
+      PushInt n -> appendInstruction (Just n) instruction
+      _         -> appendInstruction Nothing  instruction
 
-makeLenses 'AssemblyState
+expandInstruction
+  :: Instruction Resolved
+  -> Seq (Instruction Resolved)
+expandInstruction = \case
+  PushInt n
+    | n <= 0    -> go 1 <> go (abs n + 1) <> [Subtract]
+    | otherwise -> go n
+  instruction -> pure instruction
+  where
+    go 0 = []
+    go n
+      | n <= 16   = [PushInt n]
+      | n <= 32   = [PushInt 16, PushInt (n-16)]
+      | otherwise = let (d, r) = n `divMod` 16 in
+          go d <> [PushInt 16, Multiply] <>
+          if r > 0 then [PushInt r, Add] else []
 
 appendInstruction
   :: Maybe Int
@@ -66,8 +112,8 @@ appendInstruction size instruction =
     Entrance _ -> do
       whenJustM (uses asLastEntrance getLast) \prevEntrance -> do
         currentRow <- uses asCurrentImage I.rows
-        for_ [currentRow - 5 .. prevEntrance] $
-          const $ expand 0 blankTemplate
+        replicateM_ (prevEntrance + 6 - currentRow) $
+          expand 0 blankTemplate
       expand 2 entranceTemplate
       appendInstruction size Subtract
     Branch -> do
@@ -99,46 +145,19 @@ appendInstruction size instruction =
       asCurrentColor .= prevColor
       expand 0 push4Template
 
-resolvePush :: Instruction Resolved -> [Instruction Resolved]
-resolvePush = \case
-  PushInt n
-    | n <= 0    -> go 1 <> go (abs n + 1) <> [Subtract]
-    | otherwise -> go n
-  instruction -> pure instruction
+addFunction
+  :: Int
+  -> Image
+  -> Int
+  -> Function Image
+  -> Image
+addFunction stripHeight baseImage fcount Function {..} =
+  appEndo (mconcat allTransforms) baseImage
   where
-    go 0 = []
-    go n
-      | n <= 16   = [PushInt n]
-      | n <= 32   = [PushInt 16, PushInt (n-16)]
-      | otherwise = let (d, r) = n `divMod` 16 in
-          go d ++ [PushInt 16, Multiply] ++
-          if r > 0 then [PushInt r, Add] else []
-
-generateFunctionImage :: [Instruction Resolved] -> Image
-generateFunctionImage instructions = _asCurrentImage $
-  execState
-    (go $ concatMap resolvePush instructions)
-    (initialState Green $ functionTemplate Green)
-  where
-    go = \case
-      []      -> pure ()
-      [i]     -> appendInstruction Nothing i
-      (i:j:l) -> do
-        case j of
-          PushInt n -> appendInstruction (Just n) i
-          _         -> appendInstruction Nothing  i
-        go (j:l)
-
-assemble :: [(Int, [Instruction Resolved])] -> Image
-assemble functions = snd
-  $ foldl' addFunction (stripHeight, initialImage)
-  $ zip [0..] images
-  where
-    images = map (fmap generateFunctionImage) functions
-    stripHeight = maximum (map fst images)
-    maxHeight = maximum (map (I.rows . snd) images) + stripHeight + 2
-    maxWidth = 10 * length functions + 4
-    initialImage = applyTemplate (0,0) (cornerTemplate Red)
-      $ I.makeImage (maxHeight, maxWidth)
-      $ const
-      $ I.PixelRGBA 0xFF 0xFF 0xFF 0xFF
+    referenceColumn = 10 * fcount + 1
+    allTransforms = map Endo $
+      [ applyTemplate (stripHeight + 1, referenceColumn) _fInstructions
+      , applyTemplate (1, referenceColumn + 4) (strip0Template Red)
+      ] ++ do
+        stripIndex <- [2 .. _fEntranceCount]
+        pure $ applyTemplate (stripIndex, referenceColumn + 4) (strip1Template Red)
