@@ -6,6 +6,7 @@ import Data.HashMap.Strict.Extra                       qualified as M
 import Data.List.NonEmpty                              qualified as NE
 import Data.Text                                       qualified as T
 import Data.Text.IO                                    qualified as T
+import Graphics.Image                                  qualified as I
 import Lucid                                           hiding (for_)
 import System.Environment
 import System.Exit
@@ -21,6 +22,9 @@ import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.IR                  as IR
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
+import Lang.Pietre.Stages.Assembly
+import Lang.Pietre.Stages.Generation
+import Lang.Pietre.Stages.Linking
 
 
 help :: IO a
@@ -103,6 +107,21 @@ main = do
       putStrLn "################################################################################"
       putStrLn "## IR"
       M.traverseWithKey_ printFunction irs
+      let mainFunction = findMain irs
+      let allFunctions = M.mapWithKey generateBytecode irs
+      traverse_ print allFunctions
+      I.writeImageExact I.PNG [] "program.png" $ assemble $ link (toList <$> allFunctions) mainFunction
+
+
+
+findMain :: HashMap Name IR.Function -> Name
+findMain = go . map fst . M.toList
+  where
+    go [] = error "main not found"
+    go (n:ns) =
+      if _nameIdent (_nameBase n) == "main"
+      then n
+      else go ns
 
 printFunction :: Name -> IR.Function -> IO ()
 printFunction name IR.Function {..} = do
