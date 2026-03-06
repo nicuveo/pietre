@@ -43,15 +43,15 @@ generateInstructionBytecode
   -> Generate ()
 generateInstructionBytecode outputRegisters = \case
   IR.Add target arg1 arg2 ->
-    go target [arg1, arg2] [BC.Add]
+    go target [arg2, arg1] [BC.Add]
   IR.Subtract target arg1 arg2 -> do
-    go target [arg1, arg2] [BC.Subtract]
+    go target [arg2, arg1] [BC.Subtract]
   IR.Multiply target arg1 arg2 ->
-    go target [arg1, arg2] [BC.Multiply]
+    go target [arg2, arg1] [BC.Multiply]
   IR.Divide target arg1 arg2 ->
-    go target [arg1, arg2] [BC.Divide]
+    go target [arg2, arg1] [BC.Divide]
   IR.Modulo target arg1 arg2 ->
-    go target [arg1, arg2] [BC.Mod]
+    go target [arg2, arg1] [BC.Mod]
   IR.NegateI target arg ->
     go target [arg] [BC.PushInt 0, BC.PushInt 2, BC.PushInt 1, BC.Roll, BC.Subtract]
   IR.NegateB target arg ->
