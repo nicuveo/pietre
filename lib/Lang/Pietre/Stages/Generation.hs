@@ -31,7 +31,7 @@ generateBlockBytecode
   -> Generate InstructionBuffer
 generateBlockBytecode label Block {..} = do
   functionName <- view giFunctionName
-  generateWith _blockArguments do
+  generateWith label _blockArguments do
     appendInstructions [Entrance (functionName, label)]
     traverse_ (uncurry generateInstructionBytecode) $
       annotateInstructions _blockTerminator _blockInstructions
@@ -68,12 +68,61 @@ generateInstructionBytecode outputRegisters = \case
     go target [arg1, arg2, arg2, arg1] [BC.Greater, BC.PushInt 3, BC.PushInt 1, BC.Roll, BC.Greater, BC.Add, BC.Not]
   IR.CmpNE target arg1 arg2 ->
     go target [arg1, arg2, arg2, arg1] [BC.Greater, BC.PushInt 3, BC.PushInt 1, BC.Roll, BC.Greater, BC.Add]
-  IR.Exponent _target _arg1 _arg2 ->
-    unimplemented
-  IR.AssignI _target _intLiteral -> do
-    -- modify (target:)
-    -- pure [BC.PushInt intLiteral]
-    pass
+  IR.Exponent target arg1 arg2 -> do
+    (conditionLabel, conditionEntrance) <- generateAddress
+    (endLabel, endEntrance) <- generateAddress
+    branchEnd <- generateBranch endLabel
+    jumpCondition <- generateJump conditionLabel
+    let instructions = fold @[] @InstructionBuffer
+          [ [ BC.PushInt 1
+            , BC.PushInt 3
+            , BC.PushInt 1
+            , BC.Roll
+            ]
+          , conditionEntrance
+          , [ BC.Duplicate
+            ]
+          , branchEnd
+          , [ BC.PushInt 1
+            , BC.Subtract
+            , BC.PushInt 3
+            , BC.PushInt 1
+            , BC.Roll
+            , BC.Duplicate
+            , BC.PushInt 3
+            , BC.PushInt 1
+            , BC.Roll
+            , BC.Multiply
+            , BC.PushInt 3
+            , BC.PushInt 1
+            , BC.Roll
+            , BC.PushInt 2
+            , BC.PushInt 1
+            , BC.Roll
+            ]
+          , jumpCondition
+          , endEntrance
+          , [ BC.Pop
+            , BC.Pop
+            ]
+          ]
+    go target [arg2, arg1] instructions
+  IR.AssignI target intLiteral -> do
+    appendPush target [BC.PushInt intLiteral]
+  IR.InvokeN (Just target) otherFunctionName args -> do
+    (invokeReturnLabel, invokeReturnEntrance) <- generateAddress
+    thisFunctionName <- view giFunctionName
+    go target args $ fold @[] @InstructionBuffer
+      [ [ BC.PushAddr (thisFunctionName, invokeReturnLabel)
+        , BC.PushInt (length args + 1)
+        , BC.PushInt 1
+        , BC.Roll
+        , BC.PushAddr (otherFunctionName, Label 0 0)
+        , BC.Return
+        ]
+      , invokeReturnEntrance
+      ]
+
   _ ->
     unimplemented
   where
@@ -86,27 +135,35 @@ generateTerminatorBytecode = \case
   IR.Panic ->
     appendInstructions [Terminate]
   IR.Jump Target {..} -> do
-    functionName <- view giFunctionName
-    rearrangeStack _tgtArgs
-    appendInstructions [PushAddr (functionName, _tgtLabel), BC.Return]
+    appendRearrangeStack _tgtArgs
+    appendInstructions =<< generateJump _tgtLabel
   IR.Return Nothing -> do
-    rearrangeStack []
+    appendRearrangeStack []
     appendInstructions [BC.Return]
   IR.Return (Just r) -> do
-    rearrangeStack [r]
+    appendRearrangeStack [r]
     -- TODO: handle bigger registers
     appendRoll 2 1
     appendInstructions [BC.Return]
-  IR.Branch _trueTarget _falseTarget _register ->
-    unimplemented
+  IR.Branch trueTarget falseTarget condition -> do
+    let outputRegisters = S.fromList (_tgtArgs trueTarget) <> S.fromList (_tgtArgs falseTarget)
+    appendRearrangeArgs outputRegisters [condition]
+    stack <- L.drop 1 <$> currentStack
+    (falseTmpLabel, falseTmpEntrance) <- generateAddress
+    branchFalse <- generateBranch falseTmpLabel
+    jumpTrue    <- generateJump $ _tgtLabel trueTarget
+    jumpFalse   <- generateJump $ _tgtLabel falseTarget
+    trueStack   <- generateRearrangeStack stack (_tgtArgs trueTarget)
+    falseStack  <- generateRearrangeStack stack (_tgtArgs falseTarget)
+    appendInstructions $ fold @[]
+      [ branchFalse
+      , trueStack
+      , jumpTrue
+      , falseTmpEntrance
+      , falseStack
+      , jumpFalse
+      ]
 
-
-
-
-registerSize
-  :: Register
-  -> Int
-registerSize = const 1
 
 annotateInstructions
   :: IR.Terminator

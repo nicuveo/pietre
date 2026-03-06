@@ -26,9 +26,9 @@ data GenerationInfo = GenerationInfo
   }
 
 data GenerationContext = GenerationContext
-  { _gcInstructions  :: InstructionBuffer
-  , _gcStack         :: Stack
-  , _gcSublabelIndex :: Int
+  { _gcInstructions :: InstructionBuffer
+  , _gcStack        :: Stack
+  , _gcSubLabel     :: Label
   }
 
 makeLenses ''GenerationInfo
@@ -38,27 +38,42 @@ makeLenses ''GenerationContext
 runGeneration :: Name -> Generate a -> a
 runGeneration functionName action = action
   & flip runReaderT (GenerationInfo functionName)
-  & flip evalState  (GenerationContext [] [] 0)
+  & flip evalState  (GenerationContext [] [] (Label 0 0))
 
+
+currentStack :: Generate [Register]
+currentStack = uses gcStack Stack.toList
 
 stackSize :: Generate Int
 stackSize = uses gcStack Stack.size
 
-bumpInnerIndex :: Generate Int
-bumpInnerIndex = do
-  gcSublabelIndex += 1
-  use gcSublabelIndex
 
-
-generateWith :: [Register] -> Generate a -> Generate InstructionBuffer
-generateWith startingStack action = do
+generateWith :: Label -> [Register] -> Generate a -> Generate InstructionBuffer
+generateWith label startingStack action = do
   gcInstructions .= Seq.empty
   gcStack .= Stack.fromList startingStack
+  gcSubLabel .= label
   void action
   use gcInstructions
 
+withTempContext :: [Register] -> Generate a -> Generate a
+withTempContext startingStack action = do
+  stack  <- use gcStack
+  buffer <- use gcInstructions
+  gcInstructions .= Seq.empty
+  gcStack .= Stack.fromList startingStack
+  result <- action
+  gcInstructions .= buffer
+  gcStack .= stack
+  pure result
+
 appendInstructions :: InstructionBuffer -> Generate ()
 appendInstructions = (<>=) gcInstructions
+
+appendPush :: Register -> InstructionBuffer -> Generate ()
+appendPush register instructions = do
+  appendInstructions instructions
+  gcStack %= Stack.push register
 
 appendRoll :: Int -> Int -> Generate ()
 appendRoll depth steps
@@ -80,14 +95,21 @@ appendOperation
   -> InstructionBuffer
   -> Generate ()
 appendOperation outputRegisters target args bytecode = do
-  currentStack <- uses gcStack Stack.toList
-  rearrangeStack $ Stack.fromList $ args ++ filter (`S.member` outputRegisters) currentStack
+  appendRearrangeArgs outputRegisters args
   gcInstructions <>= bytecode
   replicateM_ (length args) $ gcStack %= Stack.pop
   gcStack %= Stack.push target
 
-rearrangeStack :: [Register] -> Generate ()
-rearrangeStack desiredStack = do
+appendRearrangeArgs
+  :: HashSet Register
+  -> [Register]
+  -> Generate ()
+appendRearrangeArgs outputRegisters args = do
+  stack <- currentStack
+  appendRearrangeStack $ Stack.fromList $ args ++ filter (`S.member` outputRegisters) stack
+
+appendRearrangeStack :: [Register] -> Generate ()
+appendRearrangeStack desiredStack = do
   stackContents <- uses gcStack Stack.contents
   let desiredContents = M.fromListWith (+) $ map (,1) desiredStack
   adjustStackContent desiredContents stackContents
@@ -133,6 +155,39 @@ rearrangeStack desiredStack = do
       else do
         firstIndex <- uses gcStack $ Stack.find r
         appendRoll (targetIndex+1) (firstIndex+1)
+
+
+generateRearrangeStack :: [Register] -> [Register] -> Generate InstructionBuffer
+generateRearrangeStack startingStack desiredStack = do
+  withTempContext startingStack do
+    appendRearrangeStack desiredStack
+    use gcInstructions
+
+generateAddress :: Generate (Label, InstructionBuffer)
+generateAddress = do
+  Label x y <- use gcSubLabel
+  let newLabel = Label x (y+1)
+  gcSubLabel .= newLabel
+  functionName <- view giFunctionName
+  pure (newLabel, [BC.Entrance (functionName, newLabel)])
+
+generateJump :: Label -> Generate InstructionBuffer
+generateJump target = do
+  functionName <- view giFunctionName
+  pure [BC.PushAddr (functionName, target), BC.Return]
+
+generateBranch :: Label -> Generate InstructionBuffer
+generateBranch target = do
+  functionName <- view giFunctionName
+  pure
+    [ BC.PushAddr (functionName, target)
+    , BC.PushInt 2
+    , BC.PushInt 1
+    , BC.Roll
+    , BC.Branch
+    , BC.Pop
+    ]
+
 
 {-
 lastNInstructions :: Int -> Generate [BC.Instruction Unresolved]
