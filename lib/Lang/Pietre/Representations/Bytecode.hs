@@ -54,3 +54,5 @@ deriving instance PhaseTypes p => Show (Instruction p)
 
 
 type InstructionBuffer = Seq (Instruction Unresolved)
+
+type Object = HashMap Name InstructionBuffer
