@@ -30,6 +30,7 @@ import Data.Char
 import Data.Text                            qualified as T
 import Data.Word                            (Word8)
 
+import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Internal.Encoding
 import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.Location
@@ -38,17 +39,22 @@ import Lang.Pietre.Representations.Tokens
 
 -- Parser monad
 
-newtype Parser a = Parser (ParserState -> Either ParseError (a, ParserState))
+newtype Parser a = Parser (ParserState -> Either Diagnostic (a, ParserState))
   deriving
     ( Functor
     , Applicative
     , Monad
     , MonadState ParserState
-    , MonadError ParseError
-    ) via (StateT ParserState (Except ParseError))
+    , MonadError Diagnostic
+    ) via (StateT ParserState (Except Diagnostic))
 
-runParser :: Parser a -> FilePath -> Text -> Either ParseError a
-runParser (Parser f) filename source = fmap fst $ f $ initialState filename source
+runParser
+  :: MonadDiagnosis m
+  => Parser a
+  -> FilePath
+  -> Text
+  -> m a
+runParser (Parser f) filename source = hoistEither $ fmap fst $ f $ initialState filename source
 
 
 -- internal state
@@ -67,11 +73,6 @@ initialState filename source = ParserState
   , _parserPrevChar  = '\n'
   , _parserBytes     = []
   }
-
-
--- error
-
-type ParseError = String
 
 
 -- lens generation
@@ -122,8 +123,12 @@ alexInputPrevChar = view parserPrevChar
 -- Aborts the current scan and report a 'ParseError'.
 alexError :: Parser a
 alexError = do
-  Location filename _ line column <- use parserLocation
-  throwError $ filename ++ ":" ++ show line ++ ":" ++ show column ++ ": lexical error"
+  currentLocation <- use parserLocation
+  throwError Diagnostic
+    { _diagnosticDeclaration = Nothing
+    , _diagnosticLocation    = currentLocation
+    , _diagnosticMessage     = ErrorLexing
+    }
 
 -- | Scan any character.
 --
@@ -222,5 +227,9 @@ alexReadIdentifierChar =
 -- happy functions
 
 happyError :: ((Location, Token), [String]) -> Parser a
-happyError ((Location filename _ line column, token), expected) = do
-  throwError $ filename ++ ":" ++ show line ++ ":" ++ show column ++ ": parser error: " ++ show token ++ "; expecting:" ++ unwords expected
+happyError ((currentLocation, token), expected) = do
+  throwError Diagnostic
+    { _diagnosticDeclaration = Nothing
+    , _diagnosticLocation    = currentLocation
+    , _diagnosticMessage     = ErrorParsing token expected
+    }

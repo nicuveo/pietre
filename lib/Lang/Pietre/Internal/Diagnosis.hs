@@ -18,6 +18,7 @@ import Lang.Pietre.Representations.AST.Validated as Validated
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
+import Lang.Pietre.Representations.Tokens
 
 
 data Diagnostic = Diagnostic
@@ -27,7 +28,11 @@ data Diagnostic = Diagnostic
   } deriving Show
 
 data Message
-  = ErrorImportPath ModuleName
+  = ErrorLexing
+  | ErrorParsing Token [String]
+  | ErrorCircularImport FilePath [FilePath]
+  | ErrorFileNotFound FilePath
+  | ErrorImportPath ModuleName
   | ErrorImportSymbol ModuleName Identifier
   | ErrorMultipleDeclaration Identifier (NonEmpty Location)
   | ErrorRoleNotFound Path
@@ -159,6 +164,9 @@ tryNested = Compose . try
 
 ensureNested :: MonadDiagnosis m => Compose m Maybe a -> m a
 ensureNested = getCompose >=> ensure
+
+hoistEither :: MonadDiagnosis m => Either Diagnostic a -> m a
+hoistEither = flip onLeft reportError
 
 bracket
   :: MonadDiagnosis m

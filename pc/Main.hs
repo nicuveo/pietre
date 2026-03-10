@@ -63,7 +63,7 @@ main = do
           (interfaces, definitions, symbols, functions, irs) <- get
           let moduleName = pure $ Identifier $ T.pack $ takeBaseName filename
           source    <- liftIO $ T.readFile filename
-          parsedAST <- parseModule filename source `onLeft` (error . show)
+          parsedAST <- parseModule filename source
           interface@Interface {..} <- simplifyModule <$>
             analyzeModule
               interfaces
