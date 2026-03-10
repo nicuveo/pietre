@@ -76,6 +76,7 @@ library
       Lang.Pietre.Stages.Lowering
       Lang.Pietre.Stages.Lowering.Collection
       Lang.Pietre.Stages.Lowering.Monad
+      Lang.Pietre.Stages.Minimization
       Lang.Pietre.Stages.Optimization
       Lang.Pietre.Stages.Parsing
       Lang.Pietre.Stages.Parsing.Lexer

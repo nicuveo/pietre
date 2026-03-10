@@ -17,6 +17,7 @@ import Lang.Pietre.Export.HTML
 import Lang.Pietre.Export.PrettyPrinting.AST.Parsed    as PPP
 import Lang.Pietre.Export.PrettyPrinting.AST.Validated as VPP
 import Lang.Pietre.Internal.Diagnosis
+import Lang.Pietre.Representations.Bytecode
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.IR                  as IR
@@ -25,6 +26,7 @@ import Lang.Pietre.Representations.Name
 import Lang.Pietre.Stages.Assembly
 import Lang.Pietre.Stages.Generation
 import Lang.Pietre.Stages.Linking
+import Lang.Pietre.Stages.Minimization
 
 
 help :: IO a
@@ -109,8 +111,14 @@ main = do
       M.traverseWithKey_ printFunction irs
       let mainFunction = findMain irs
       let allFunctions = M.mapWithKey generateBytecode irs
-      traverse_ print allFunctions
-      I.writeImageExact I.PNG [] "program.png" $ assemble $ link allFunctions mainFunction
+      putStrLn "################################################################################"
+      putStrLn "## Bytecode (raw)"
+      M.traverseWithKey_ printInstructions allFunctions
+      let minimizedFunctions = minimize <$> allFunctions
+      putStrLn "################################################################################"
+      putStrLn "## Bytecode (minimized)"
+      M.traverseWithKey_ printInstructions minimizedFunctions
+      I.writeImageExact I.PNG [] "program.png" $ assemble $ link minimizedFunctions mainFunction
 
 
 
@@ -128,6 +136,10 @@ printFunction name IR.Function {..} = do
   putStrLn $ "function " ++ T.unpack (renderName name) ++ " {"
   traverse_ (uncurry printBlock) _funBlocks
   putStrLn "}"
+
+printInstructions :: Name -> InstructionBuffer -> IO ()
+printInstructions name instructions = do
+  putStrLn $ "function " ++ T.unpack (renderName name) ++ ": " ++ show instructions
 
 printBlock :: IR.Label -> IR.Block -> IO ()
 printBlock label IR.Block {..} = do
