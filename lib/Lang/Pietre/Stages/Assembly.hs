@@ -18,8 +18,6 @@ import Lang.Pietre.Stages.Assembly.Color
 import Lang.Pietre.Stages.Assembly.Monad
 import Lang.Pietre.Stages.Assembly.Templates
 
-import Debug.Trace
-
 
 assemble :: Binary -> Image
 assemble Binary {..} =
@@ -57,9 +55,7 @@ generateFunctionImage
   -> Function Image
 generateFunctionImage function@Function {..} =
   let image = runAssembly Green do
-        traceShowM _fInstructions
         let expandedInstructions = expandInstruction =<< _fInstructions
-        traceShowM expandedInstructions
         sequence_ $ Seq.zipWith go expandedInstructions (Seq.drop 1 expandedInstructions |> Return)
         use asCurrentImage
   in function { _fInstructions = image }
