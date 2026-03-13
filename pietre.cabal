@@ -39,7 +39,9 @@ library
       Lang.Pietre.Internal.Encoding
       Lang.Pietre.Internal.HKT
       Lang.Pietre.Internal.ICE
-      Lang.Pietre.Pipeline.BuildGraph
+      Lang.Pietre.Pipeline.Compile
+      Lang.Pietre.Pipeline.Monad
+      Lang.Pietre.Pipeline.Options
       Lang.Pietre.Representations.AST.Common
       Lang.Pietre.Representations.AST.Parsed
       Lang.Pietre.Representations.AST.Resolved

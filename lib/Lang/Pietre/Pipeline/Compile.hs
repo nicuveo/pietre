@@ -1,0 +1,147 @@
+{-# LANGUAGE OverloadedLists #-}
+
+module Lang.Pietre.Pipeline.Compile (compileBinary) where
+
+import "this" Prelude
+
+import Control.Lens
+import Data.HashMap.Strict                    qualified as M
+import Data.List                              qualified as L
+import Data.Sequence                          qualified as Seq
+import Data.Text                              qualified as T
+import System.FilePath
+
+import Lang.Pietre.Internal.Diagnosis
+import Lang.Pietre.Internal.ICE
+import Lang.Pietre.Pipeline.Monad
+import Lang.Pietre.Pipeline.Options
+import Lang.Pietre.Representations.AST.Parsed
+import Lang.Pietre.Representations.Identifier
+import Lang.Pietre.Representations.Image
+import Lang.Pietre.Representations.Location
+import Lang.Pietre.Representations.Name
+import Lang.Pietre.Stages.Analysis
+import Lang.Pietre.Stages.Assembly
+import Lang.Pietre.Stages.Generation
+import Lang.Pietre.Stages.Linking
+import Lang.Pietre.Stages.Lowering
+import Lang.Pietre.Stages.Minimization
+import Lang.Pietre.Stages.Parsing
+import Lang.Pietre.Stages.Simplification
+
+
+compileBinary
+  :: (MonadFileSystem m, MonadDiagnosis m)
+  => CompilerOptions
+  -> CompilerFlags
+  -> FilePath
+  -> m Image
+compileBinary compilerOptions moduleFlags mainFile =
+  runCompile compilerOptions moduleFlags do
+    let
+      mainModuleName = pure "Main"
+      mainSymbolName = Name (BaseName mainModuleName "main") []
+    buildPlan <- createBuildPlan mainModuleName mainFile
+    traverse_ (uncurry compileModule) buildPlan
+    allObjects <- M.unions . M.elems <$> use ccObjects
+    binary <- link mainSymbolName allObjects
+    pure $ assemble binary
+
+compileModule
+  :: (MonadFileSystem m, MonadDiagnosis m)
+  => ModuleName
+  -> Module
+  -> Compile m ()
+compileModule moduleName moduleInfo = do
+  -- log: [1/20] Compiling moduleName
+  CompileContext {..} <- get
+
+  -- analysis
+  shouldSimplify <- view $ ciModuleFlags . cfSimplify
+  interface <-
+    maybeApply shouldSimplify simplifyModule <$>
+    analyzeModule
+      _ccInterfaces
+      _ccDefinitionCache
+      _ccFunctionCache
+      _ccSymbolCache
+      moduleName
+      moduleInfo
+  addInterface moduleName interface
+  -- add to interface cache
+
+  -- lowering
+  -- shouldOptimize <- view $ ciModuleFlags . cfOptimize
+  moduleIR <- lowerModule interface
+
+  -- code generation
+  shouldMinimize <- view $ ciModuleFlags . cfMinimize
+  let object =
+        maybeApply shouldMinimize (fmap minimize) $
+        M.mapWithKey generateBytecode moduleIR
+  ccObjects %= M.insert moduleName object
+  -- add to object cache
+
+createBuildPlan
+  :: forall m
+   . (MonadFileSystem m, MonadDiagnosis m)
+  => ModuleName
+  -> FilePath
+  -> Compile m (Seq (ModuleName, Module))
+createBuildPlan mainName mainPath = go Seq.empty impossibleLocation mainName mainPath
+  where
+    impossibleLocation = reportICE
+      "constructBuildGraph"
+      "circular import without import?"
+      ["file: " ++ mainPath]
+
+    go parents importLocation moduleName sourcePath = do
+      let
+        throwDiagnostic :: Message -> Compile m a
+        throwDiagnostic = reportError . Diagnostic Nothing (Just importLocation)
+      when (moduleName `L.elem` parents) $
+        throwDiagnostic $ ErrorCircularImport moduleName parents
+      uses ccModules (M.lookup moduleName) >>= \case
+        Just _ ->
+          pure Seq.empty
+        Nothing -> do
+          sourceCode <- readSourceFile sourcePath `onNothingM`
+            throwDiagnostic (ErrorFileNotFound sourcePath)
+          parsedModule <- parseModule sourcePath sourceCode
+          ccModules %= M.insert moduleName parsedModule
+          buildPlan <- for (_modImports parsedModule) \(WithLocation depLocation depImport) -> do
+            let depName = _importPath depImport
+            depPath <- locateSourceFile depLocation depName
+            go (parents |> moduleName) depLocation depName depPath
+          pure $ mconcat buildPlan |> (moduleName, parsedModule)
+
+locateSourceFile
+  :: (MonadFileSystem m, MonadDiagnosis m)
+  => Location
+  -> ModuleName
+  -> Compile m FilePath
+locateSourceFile importLocation moduleName = do
+  includePaths <- view $ ciCompilerOptions . coIncludePaths
+  traverse go includePaths >>= \allPaths -> case fold allPaths of
+    [filePath] ->
+      pure filePath
+    [] ->
+      throwDiagnostic $ ErrorModuleNotFound moduleName
+    filePaths ->
+      throwDiagnostic $ ErrorAmbiguousModule moduleName filePaths
+  where
+    throwDiagnostic = reportError . Diagnostic Nothing (Just importLocation)
+    relativeFilePath = joinPath $ toList $ fmap (T.unpack . rawIdentifier) moduleName
+    go folder = do
+      let targetFilePath = folder </> relativeFilePath
+      isFound <- doesFileExist targetFilePath
+      pure $ Seq.fromList [targetFilePath | isFound]
+
+
+maybeApply
+  :: Bool
+  -> (a -> a)
+  -> a
+  -> a
+maybeApply True  f x = f x
+maybeApply False _ x = x

@@ -6,6 +6,7 @@ import Control.Lens
 import Data.HashMap.Strict                  qualified as M
 import Data.Sequence                        qualified as Seq
 
+import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Representations.Binary   as BI
 import Lang.Pietre.Representations.Bytecode as BC
 import Lang.Pietre.Representations.Name
@@ -13,14 +14,17 @@ import Lang.Pietre.Stages.Linking.Monad
 
 
 link
-  :: HashMap Name InstructionBuffer
-  -> Name
-  -> Binary
-link functions main =
-  runLinker do
-    compiledFunctions <- traverse visit functions
-    let mainAddress = _fFunctionEntrance (compiledFunctions M.! main)
-    pure $ Binary mainAddress $ Seq.fromList $ M.elems compiledFunctions
+  :: MonadDiagnosis m
+  => Name
+  -> HashMap Name InstructionBuffer
+  -> m Binary
+link main functions = do
+  let compiledFunctions = runLinker $ traverse visit functions
+  compiledMain <- M.lookup main compiledFunctions `onNothing`
+    reportError (Diagnostic Nothing Nothing ErrorNoMainSymbol)
+  -- TODO: also check that main has the right type
+  let mainAddress = _fFunctionEntrance compiledMain
+  pure $ Binary mainAddress $ Seq.fromList $ M.elems compiledFunctions
 
 visit
   :: InstructionBuffer

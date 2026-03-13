@@ -1,6 +1,6 @@
 module Lang.Pietre (module P) where
 
-import Lang.Pietre.Stages.Analysis       as P
-import Lang.Pietre.Stages.Lowering       as P
-import Lang.Pietre.Stages.Parsing        as P
-import Lang.Pietre.Stages.Simplification as P
+import Lang.Pietre.Pipeline.Compile      as P
+import Lang.Pietre.Pipeline.Monad        as P
+import Lang.Pietre.Pipeline.Options      as P
+import Lang.Pietre.Representations.Image as P
