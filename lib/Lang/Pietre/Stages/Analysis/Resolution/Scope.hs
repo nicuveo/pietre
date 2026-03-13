@@ -36,7 +36,7 @@ createImportedScope moduleInterfaces imports = do
       let
         importLocation = _location importWithLocation
         Import {..} = _located importWithLocation
-        mkDiagnostic = Diagnostic Nothing importLocation
+        mkDiagnostic = Diagnostic Nothing (Just importLocation)
       exportedIdentifiers <-
         fmap _interfaceExported $
           M.lookup _importPath moduleInterfaces `onNothing`
@@ -97,7 +97,7 @@ parseLocalDeclarations moduleName definitions = do
       M.forWithKey topLevelBindings \identifier entries -> tryNested do
         let
           locations = _location . snd <$> entries
-          firstLocation = NE.head locations
+          firstLocation = Just $ NE.head locations
         when (NE.length locations > 1) $
           reportError $ Diagnostic Nothing firstLocation $ ErrorMultipleDeclaration identifier locations
         when (isReserved identifier) $

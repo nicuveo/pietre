@@ -126,7 +126,7 @@ alexError = do
   currentLocation <- use parserLocation
   throwError Diagnostic
     { _diagnosticDeclaration = Nothing
-    , _diagnosticLocation    = currentLocation
+    , _diagnosticLocation    = Just currentLocation
     , _diagnosticMessage     = ErrorLexing
     }
 
@@ -230,6 +230,6 @@ happyError :: ((Location, Token), [String]) -> Parser a
 happyError ((currentLocation, token), expected) = do
   throwError Diagnostic
     { _diagnosticDeclaration = Nothing
-    , _diagnosticLocation    = currentLocation
+    , _diagnosticLocation    = Just currentLocation
     , _diagnosticMessage     = ErrorParsing token expected
     }

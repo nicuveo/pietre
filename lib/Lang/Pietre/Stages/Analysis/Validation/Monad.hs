@@ -127,10 +127,10 @@ fatal :: Message -> Validate a
 fatal message = do
   declName <- use currentName
   declLocation <- use currentLocation
-  reportError $ Diagnostic (Just declName) declLocation message
+  reportError $ Diagnostic (Just declName) (Just declLocation) message
 
 warn :: Message -> Validate ()
 warn message = do
   declName <- use currentName
   declLocation <- use currentLocation
-  reportWarning $ Diagnostic (Just declName) declLocation message
+  reportWarning $ Diagnostic (Just declName) (Just declLocation) message

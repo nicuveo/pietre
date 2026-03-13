@@ -23,15 +23,18 @@ import Lang.Pietre.Representations.Tokens
 
 data Diagnostic = Diagnostic
   { _diagnosticDeclaration :: Maybe BaseName
-  , _diagnosticLocation    :: Location
+  , _diagnosticLocation    :: Maybe Location
   , _diagnosticMessage     :: Message
   } deriving Show
 
 data Message
-  = ErrorLexing
+  = ErrorNoMainProvided
+  | ErrorLexing
   | ErrorParsing Token [String]
-  | ErrorCircularImport FilePath [FilePath]
+  | ErrorCircularImport ModuleName (Seq ModuleName)
   | ErrorFileNotFound FilePath
+  | ErrorModuleNotFound ModuleName
+  | ErrorAmbiguousModule ModuleName (Seq FilePath)
   | ErrorImportPath ModuleName
   | ErrorImportSymbol ModuleName Identifier
   | ErrorMultipleDeclaration Identifier (NonEmpty Location)
@@ -73,6 +76,7 @@ data Message
   | ErrorFunctionCallArgExpectingReference Identifier
   | ErrorRValueAssignment Resolved.Expression
   | ErrorTypeParametersToTypeParameter Identifier
+  | ErrorNoMainSymbol
   | WarningNameShadow (NonEmpty Role) Identifier Role
   | WarningUnexpectedTopLevelExpression Validated.Expression
   deriving Show

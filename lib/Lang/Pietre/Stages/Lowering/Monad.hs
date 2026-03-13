@@ -290,10 +290,10 @@ fatal :: Message -> Lowering a
 fatal message = do
   declName <- view liDeclName
   declLocation <- currentLocation
-  reportError $ Diagnostic (Just declName) declLocation message
+  reportError $ Diagnostic (Just declName) (Just declLocation) message
 
 warn :: Message -> Lowering ()
 warn message = do
   declName <- view liDeclName
   declLocation <- currentLocation
-  reportWarning $ Diagnostic (Just declName) declLocation message
+  reportWarning $ Diagnostic (Just declName) (Just declLocation) message

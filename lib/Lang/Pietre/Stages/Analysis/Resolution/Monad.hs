@@ -53,10 +53,10 @@ fatal :: Message -> Resolve a
 fatal message = do
   declName <- view riDeclarationName
   declLocation <- use rcLocation
-  reportError $ Diagnostic (Just declName) declLocation message
+  reportError $ Diagnostic (Just declName) (Just declLocation) message
 
 warn :: Message -> Resolve ()
 warn message = do
   declName <- view riDeclarationName
   declLocation <- use rcLocation
-  reportWarning $ Diagnostic (Just declName) declLocation message
+  reportWarning $ Diagnostic (Just declName) (Just declLocation) message
