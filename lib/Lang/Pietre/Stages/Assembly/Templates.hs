@@ -8,14 +8,12 @@ import "this" Prelude
 import Data.ByteString.Char8                      (ByteString)
 import Data.ByteString.Char8                      qualified as B
 import Data.Vector                                qualified as V
-import Data.Word                                  (Word8)
 import Graphics.Image                             qualified as I
 
+import Lang.Pietre.Representations.Image
 import Lang.Pietre.Stages.Assembly.Color
 import Lang.Pietre.Stages.Assembly.Templates.Load
 
-
-type Image = I.Image I.VS I.RGBA Word8
 
 data Template = Template
   { templateRows    :: Int

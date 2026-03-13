@@ -14,6 +14,7 @@ import Graphics.Image                        qualified as I
 import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.Binary
 import Lang.Pietre.Representations.Bytecode
+import Lang.Pietre.Representations.Image
 import Lang.Pietre.Stages.Assembly.Color
 import Lang.Pietre.Stages.Assembly.Monad
 import Lang.Pietre.Stages.Assembly.Templates

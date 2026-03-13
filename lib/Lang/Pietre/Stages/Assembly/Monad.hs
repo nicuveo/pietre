@@ -7,6 +7,7 @@ import "this" Prelude
 import Control.Lens
 import Data.Monoid
 
+import Lang.Pietre.Representations.Image
 import Lang.Pietre.Stages.Assembly.Color
 import Lang.Pietre.Stages.Assembly.Templates
 
