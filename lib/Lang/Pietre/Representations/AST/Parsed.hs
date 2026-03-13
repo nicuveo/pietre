@@ -45,7 +45,7 @@ instance Monoid Module where
 
 
 data Import = Import
-  { _importPath :: NonEmpty Identifier
+  { _importPath :: ModuleName
   , _importType :: ImportType
   }
   deriving Show
