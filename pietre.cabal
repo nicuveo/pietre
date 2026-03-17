@@ -134,6 +134,7 @@ library
     , monad-control
     , monad-loops
     , mtl
+    , optparse-applicative
     , ordered-containers
     , prettyprinter
     , prettyprinter-lucid
@@ -195,6 +196,7 @@ executable gramviz
     , monad-control
     , monad-loops
     , mtl
+    , optparse-applicative
     , ordered-containers
     , prettyprinter
     , prettyprinter-lucid
@@ -254,6 +256,7 @@ executable pc
     , monad-control
     , monad-loops
     , mtl
+    , optparse-applicative
     , ordered-containers
     , pietre
     , prettyprinter
@@ -323,6 +326,7 @@ test-suite tests
     , monad-control
     , monad-loops
     , mtl
+    , optparse-applicative
     , ordered-containers
     , pietre
     , prettyprinter

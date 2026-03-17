@@ -66,6 +66,7 @@ dependencies:
   - monad-control
   - monad-loops
   - mtl
+  - optparse-applicative
   - ordered-containers
   - prettyprinter
   - prettyprinter-lucid

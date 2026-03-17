@@ -5,19 +5,16 @@ module Lang.Pietre.Pipeline.Options where
 import "this" Prelude
 
 import Control.Lens
+import Data.Sequence       qualified as Seq
+import Options.Applicative
 
-import Lang.Pietre.Internal.Diagnosis
-import Lang.Pietre.Internal.ICE
-
-
-data CompilerCommand
-  = Compile CompilerOptions CompilerFlags FilePath
-  | Help
-  deriving Show
 
 data CompilerOptions = CompilerOptions
   { _coVerbose      :: Bool
   , _coIncludePaths :: Seq FilePath
+  , _coExportAST    :: Maybe FilePath
+  , _coExportIR     :: Maybe FilePath
+  , _coOutput       :: Maybe FilePath
   } deriving Show
 
 data CompilerFlags = CompilerFlags
@@ -30,27 +27,42 @@ makeLenses ''CompilerOptions
 makeLenses ''CompilerFlags
 
 
-defaultOptions :: CompilerOptions
-defaultOptions = CompilerOptions
-  { _coVerbose      = False
-  , _coIncludePaths = pure "."
-  }
-
-defaultFlags :: CompilerFlags
-defaultFlags = CompilerFlags
-  { _cfSimplify = True
-  , _cfOptimize = False
-  , _cfMinimize = True
-  }
-
-
-parseCommand
-  :: MonadDiagnosis m
-  => [String]
-  -> m CompilerCommand
-parseCommand args = do
-  -- TODO
-  case args of
-    [fileName] -> pure $ Compile defaultOptions defaultFlags fileName
-    []         -> reportError $ Diagnostic Nothing Nothing ErrorNoMainProvided
-    _          -> unimplemented
+optionsParser :: Parser (CompilerOptions, CompilerFlags, FilePath)
+optionsParser = do
+  _coVerbose <- switch $ mconcat
+    [ short 'v'
+    , long "verbose"
+    , help "print debug options"
+    ]
+  _coOutput <- optional $ strOption $ mconcat
+    [ short 'o'
+    , long "output"
+    , help "name of the output program"
+    ]
+  _coIncludePaths <- fmap Seq.fromList $ many $ strOption $ mconcat
+    [ short 'I'
+    , long "include"
+    , help "folder in which to search for source files"
+    ]
+  _coExportAST <- optional $ strOption $ mconcat
+    [ long "export-AST"
+    , help "folder in which to export the verified AST"
+    ]
+  _coExportIR <- optional $ strOption $ mconcat
+    [ long "export-IR"
+    , help "folder in which to export the IR"
+    ]
+  _cfSimplify <- boolOptionParser True  "simplify"
+  _cfOptimize <- boolOptionParser False "optimize"
+  _cfMinimize <- boolOptionParser True  "minimize"
+  mainFile <- strArgument $ mconcat
+    [ help "main program file"
+    ]
+  pure (CompilerOptions {..}, CompilerFlags {..}, mainFile)
+  where
+    boolOptionParser :: Bool -> String -> Parser Bool
+    boolOptionParser defaultValue name = asum
+      [ flag' True (long name)
+      , flag' False (long $ "no-" ++ name)
+      , pure defaultValue
+      ]
