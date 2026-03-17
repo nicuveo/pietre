@@ -16,5 +16,5 @@ renderHTML body = T.toStrict $ Lucid.renderText $ doctypehtml_ do
   script_ $ T.decodeUtf8Lenient script
   body_ body
   where
-    css = $(embedFileRelative "lib/Lang/Pietre/Export/style.css")
-    script = $(embedFileRelative "lib/Lang/Pietre/Export/script.js")
+    css = $(embedFileRelative "lib/Lang/Pietre/Export/HTML/style.css")
+    script = $(embedFileRelative "lib/Lang/Pietre/Export/HTML/script.js")
