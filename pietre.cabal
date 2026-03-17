@@ -31,6 +31,7 @@ library
       Lang.Pietre
       Lang.Pietre.Batteries.BuiltIn
       Lang.Pietre.Export.HTML
+      Lang.Pietre.Export.IR.Dot
       Lang.Pietre.Export.PrettyPrinting.AST.Common
       Lang.Pietre.Export.PrettyPrinting.AST.Parsed
       Lang.Pietre.Export.PrettyPrinting.AST.Validated
@@ -127,6 +128,7 @@ library
     , extra
     , file-embed
     , filepath
+    , graphwiz
     , hashable
     , hip
     , lens
@@ -249,6 +251,7 @@ executable pc
     , extra
     , file-embed
     , filepath
+    , graphwiz
     , hashable
     , hip
     , lens
@@ -319,6 +322,7 @@ test-suite tests
     , extra
     , file-embed
     , filepath
+    , graphwiz
     , hashable
     , hip
     , lens

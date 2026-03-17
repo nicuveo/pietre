@@ -14,6 +14,7 @@ import Data.Text                                       qualified as T
 import System.FilePath
 
 import Lang.Pietre.Export.HTML
+import Lang.Pietre.Export.IR.Dot
 import Lang.Pietre.Export.PrettyPrinting.AST.Validated
 import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Pipeline.Monad
@@ -22,6 +23,7 @@ import Lang.Pietre.Representations.AST.Parsed
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Image
 import Lang.Pietre.Representations.Interface
+import Lang.Pietre.Representations.IR
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 import Lang.Pietre.Stages.Analysis
@@ -79,8 +81,8 @@ compileModule moduleName moduleInfo = do
   -- lowering
   -- shouldOptimize <- view $ ciModuleFlags . cfOptimize
   moduleIR <- lowerModule interface
-  -- whenJustM (view $ ciCompilerOptions . coExportIR) $
-  --   exportIR moduleName moduleIR
+  whenJustM (view $ ciCompilerOptions . coExportIR) $
+    exportIR moduleName moduleIR
 
   -- code generation
   shouldMinimize <- view $ ciModuleFlags . cfMinimize
@@ -96,9 +98,19 @@ exportAST
   -> Interface
   -> FilePath
   -> Compile m ()
-exportAST moduleName interface prefix = do
-  let filePath = prefix </> L.intercalate "_" (map (T.unpack . rawIdentifier) (NE.toList moduleName)) ++ ".html"
+exportAST moduleName interface folder = do
+  let filePath = folder </> L.intercalate "_" (map (T.unpack . rawIdentifier) (NE.toList moduleName)) ++ ".html"
   writeToFile filePath $ renderHTML $ prettyPrintHTML interface
+
+exportIR
+  :: (MonadFileSystem m)
+  => ModuleName
+  -> IR
+  -> FilePath
+  -> Compile m ()
+exportIR moduleName ir folder = do
+  let filePath = folder </> L.intercalate "_" (map (T.unpack . rawIdentifier) (NE.toList moduleName)) ++ ".dot"
+  writeToFile filePath $ renderIR ir
 
 createBuildPlan
   :: forall m
