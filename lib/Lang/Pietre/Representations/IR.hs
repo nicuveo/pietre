@@ -45,6 +45,9 @@ data Register = Register
   , _registerType  :: Type
   }
 
+instance Show Register where
+  show Register {..} = show _registerIndex
+
 instance Eq Register where
   (==) = (==) `on` _registerIndex
 
@@ -53,20 +56,6 @@ instance Ord Register where
 
 instance Hashable Register where
   hashWithSalt s Register{..} = hashWithSalt s _registerIndex
-
-
--- TMP TMP TMP
-
-instance Show Register where
-  show Register {..} =
-    let typePrefix = case _registerType of
-          IntType          -> "i"
-          BoolType         -> "b"
-          CharType         -> "c"
-          EnumType _       -> "e"
-          StructType _ _   -> "s"
-          FunctionType _ _ -> "f"
-    in typePrefix ++ show _registerIndex
 
 data Terminator
   = Jump   Target
