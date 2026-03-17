@@ -12,7 +12,6 @@ import Data.Text                              qualified as T
 import System.FilePath
 
 import Lang.Pietre.Internal.Diagnosis
-import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Pipeline.Monad
 import Lang.Pietre.Pipeline.Options
 import Lang.Pietre.Representations.AST.Parsed
@@ -88,17 +87,12 @@ createBuildPlan
   => ModuleName
   -> FilePath
   -> Compile m (Seq (ModuleName, Module))
-createBuildPlan mainName mainPath = go Seq.empty impossibleLocation mainName mainPath
+createBuildPlan mainName mainPath = go Seq.empty Nothing mainName mainPath
   where
-    impossibleLocation = reportICE
-      "constructBuildGraph"
-      "circular import without import?"
-      ["file: " ++ mainPath]
-
     go parents importLocation moduleName sourcePath = do
       let
         throwDiagnostic :: Message -> Compile m a
-        throwDiagnostic = reportError . Diagnostic Nothing (Just importLocation)
+        throwDiagnostic = reportError . Diagnostic Nothing importLocation
       when (moduleName `L.elem` parents) $
         throwDiagnostic $ ErrorCircularImport moduleName parents
       uses ccModules (M.lookup moduleName) >>= \case
@@ -112,7 +106,7 @@ createBuildPlan mainName mainPath = go Seq.empty impossibleLocation mainName mai
           buildPlan <- for (_modImports parsedModule) \(WithLocation depLocation depImport) -> do
             let depName = _importPath depImport
             depPath <- locateSourceFile depLocation depName
-            go (parents |> moduleName) depLocation depName depPath
+            go (parents |> moduleName) (Just depLocation) depName depPath
           pure $ mconcat buildPlan |> (moduleName, parsedModule)
 
 locateSourceFile
