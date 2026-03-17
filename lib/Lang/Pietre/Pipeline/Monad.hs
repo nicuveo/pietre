@@ -4,7 +4,7 @@ module Lang.Pietre.Pipeline.Monad where
 
 import "this" Prelude
 
-import Control.Lens
+import Control.Lens                           hiding ((...))
 import Data.HashMap.Strict                    qualified as M
 
 import Lang.Pietre.Pipeline.Options
@@ -37,12 +37,14 @@ makeLenses ''CompileContext
 class Monad m => MonadFileSystem m where
   doesFileExist  :: FilePath -> m Bool
   readSourceFile :: FilePath -> m (Maybe Text)
+  writeToFile    :: FilePath -> Text -> m ()
   -- lookupCachedInterface :: FilePath -> m (Maybe Interface)
   -- lookupCachedObject    :: FilePath -> m (Maybe Object)
 
 instance (MonadTrans t, MonadFileSystem m) => MonadFileSystem (t m) where
   doesFileExist  = lift . doesFileExist
   readSourceFile = lift . readSourceFile
+  writeToFile    = lift ... writeToFile
 
 
 runCompile

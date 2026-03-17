@@ -5,18 +5,23 @@ module Lang.Pietre.Pipeline.Compile (compileBinary) where
 import "this" Prelude
 
 import Control.Lens
-import Data.HashMap.Strict                    qualified as M
-import Data.List                              qualified as L
-import Data.Sequence                          qualified as Seq
-import Data.Text                              qualified as T
+import Control.Monad.Extra                             (whenJustM)
+import Data.HashMap.Strict                             qualified as M
+import Data.List                                       qualified as L
+import Data.List.NonEmpty                              qualified as NE
+import Data.Sequence                                   qualified as Seq
+import Data.Text                                       qualified as T
 import System.FilePath
 
+import Lang.Pietre.Export.HTML
+import Lang.Pietre.Export.PrettyPrinting.AST.Validated
 import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Pipeline.Monad
 import Lang.Pietre.Pipeline.Options
 import Lang.Pietre.Representations.AST.Parsed
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Image
+import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Location
 import Lang.Pietre.Representations.Name
 import Lang.Pietre.Stages.Analysis
@@ -67,11 +72,15 @@ compileModule moduleName moduleInfo = do
       moduleName
       moduleInfo
   addInterface moduleName interface
+  whenJustM (view $ ciCompilerOptions . coExportAST) $
+    exportAST moduleName interface
   -- add to interface cache
 
   -- lowering
   -- shouldOptimize <- view $ ciModuleFlags . cfOptimize
   moduleIR <- lowerModule interface
+  -- whenJustM (view $ ciCompilerOptions . coExportIR) $
+  --   exportIR moduleName moduleIR
 
   -- code generation
   shouldMinimize <- view $ ciModuleFlags . cfMinimize
@@ -80,6 +89,16 @@ compileModule moduleName moduleInfo = do
         M.mapWithKey generateBytecode moduleIR
   ccObjects %= M.insert moduleName object
   -- add to object cache
+
+exportAST
+  :: (MonadFileSystem m)
+  => ModuleName
+  -> Interface
+  -> FilePath
+  -> Compile m ()
+exportAST moduleName interface prefix = do
+  let filePath = prefix </> L.intercalate "_" (map (T.unpack . rawIdentifier) (NE.toList moduleName)) ++ ".html"
+  writeToFile filePath $ renderHTML $ prettyPrintHTML interface
 
 createBuildPlan
   :: forall m
