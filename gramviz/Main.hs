@@ -19,12 +19,12 @@ import Data.Text.IO               qualified as T
 import System.Environment
 import System.Exit
 import System.IO                  qualified as IO
-import Text.Builder               qualified as TB
-import Text.Dot                   hiding (start)
+import Text.Dot                   hiding (retrieve, start)
 import Text.Megaparsec            hiding (Token, label, token, tokens)
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
 import Text.Printf
+import TextBuilder                qualified as TB
 
 
 --------------------------------------------------------------------------------
@@ -223,7 +223,7 @@ terminals gram = render =<< withTTYInfo do
 -- dot
 
 dot :: Grammar -> IO ()
-dot grammar = TB.putLnToStdOut =<< evalStateT visitGrammar mempty
+dot grammar = T.putStrLn . TB.toText =<< evalStateT visitGrammar mempty
   where
     categoryAttributes desc depth = M.fromList
       [ ("labeljust", "l")
@@ -281,7 +281,8 @@ dot grammar = TB.putLnToStdOut =<< evalStateT visitGrammar mempty
 
     visitSection (sectionName, ruleTree) = do
       path <- currentPath
-      clusterWith \categoryID -> do
+      cluster do
+        categoryID <- itsID
         attributes categoryID .= categoryAttributes sectionName (length path)
         visitTree ruleTree
 
@@ -289,9 +290,10 @@ dot grammar = TB.putLnToStdOut =<< evalStateT visitGrammar mempty
       whenM (lift $ uses _1 $ S.member name) $
         error $ "multiple definitions for " ++ T.unpack name
       lift $ _1 %= S.insert name
-      clusterWith \ruleID -> do
-        start <- node ""
-        stop  <- node ""
+      cluster do
+        ruleID <- itsID
+        start  <- node ""
+        stop   <- node ""
         attributes ruleID <>:= ruleAttributes name
         attributes start  <>:= startNodeAttributes
         attributes stop   <>:= stopNodeAttributes
@@ -352,5 +354,5 @@ applyCode code str = do
   TTYInfo isTTY <- ask
   pure $ if isTTY then printf "\ESC[%s%s\ESC[0m" code str else str
 
-render :: [TB.Builder] -> IO ()
-render = TB.putLnToStdOut . TB.intercalate "\n"
+render :: [TB.TextBuilder] -> IO ()
+render = T.putStrLn . TB.toText . TB.intercalate "\n"

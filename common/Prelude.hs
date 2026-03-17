@@ -59,10 +59,9 @@ import Data.Functor.Const         as P (Const (..))
 import Data.Hashable              as P (Hashable)
 import Data.HashMap.Strict        as P (HashMap, mapKeys)
 import Data.HashSet               as P (HashSet)
-import Data.List                  as P (find, findIndex, foldl', group,
-                                        intercalate, intersect, intersperse,
-                                        lookup, sort, sortBy, sortOn, union,
-                                        unionBy, (\\))
+import Data.List                  as P (find, findIndex, group, intercalate,
+                                        intersect, intersperse, lookup, sort,
+                                        sortBy, sortOn, union, unionBy, (\\))
 import Data.List.NonEmpty         as P (NonEmpty (..), nonEmpty)
 import Data.Maybe                 as P (catMaybes, fromMaybe, isJust, isNothing,
                                         listToMaybe, mapMaybe, maybeToList)

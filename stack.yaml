@@ -1,12 +1,12 @@
 snapshot:
-  url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/23/9.yaml
+  url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/24/34.yaml
 
 packages:
   - .
 
 extra-deps:
   - alex-3.5.3.0
-  - graphwiz-1.0.0
+  - graphwiz-3.0.0
   - hip-1.5.6.0
   - prettyprinter-lucid-0.2.0.1
   - repa-3.4.2.0
