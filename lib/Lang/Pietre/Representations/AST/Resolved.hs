@@ -30,7 +30,6 @@ instance ASTRepresentation Resolved where
 
 data Role
   = BuiltinType Name
-  | BuiltinFunction BaseName
   | Struct BaseName
   | Enum BaseName
   | Constant BaseName

@@ -274,7 +274,6 @@ validateFunctionPathExpression
   -> Validate (Typed Validated.Expression)
 validateFunctionPathExpression PathInfo {..} = do
   case _pathBase of
-    BuiltinFunction _baseName        -> unimplemented
     Function baseName                -> validateFunctionPath baseName
     Constant baseName                -> validateConstPath baseName
     FunctionArgument argName argType -> validateArgPath argName argType
@@ -487,8 +486,6 @@ validateFunctionCallExpression
   -> Validate (Typed Validated.Expression)
 validateFunctionCallExpression PathInfo {..} functionArgs =
   case _pathBase of
-    BuiltinFunction _baseName ->
-      unimplemented
     LetVariable identifier ->
       validateFunctionCallLetExpression identifier
     Function functionName ->
