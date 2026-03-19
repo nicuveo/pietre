@@ -77,7 +77,7 @@ expandInstruction = \case
     go 0 = []
     go n
       | n <= 16   = [PushInt n]
-      | n <= 32   = [PushInt 16, PushInt (n-16)]
+      | n <= 32   = [PushInt 16, PushInt (n-16), Add]
       | otherwise = let (d, r) = n `divMod` 16 in
           go d <> [PushInt 16, Multiply] <>
           if r > 0 then [PushInt r, Add] else []
