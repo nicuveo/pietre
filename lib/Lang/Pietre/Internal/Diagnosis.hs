@@ -77,6 +77,7 @@ data Message
   | ErrorRValueAssignment Resolved.Expression
   | ErrorTypeParametersToTypeParameter Identifier
   | ErrorNoMainSymbol
+  | ErrorSymbolNotFound Name
   | WarningNameShadow (NonEmpty Role) Identifier Role
   | WarningUnexpectedTopLevelExpression Validated.Expression
   deriving Show
