@@ -15,6 +15,7 @@ import Data.Tuple.Extra
 import System.FilePath
 
 import Lang.Pietre.Batteries.Prelude
+import Lang.Pietre.Export.Bytecode
 import Lang.Pietre.Export.HTML
 import Lang.Pietre.Export.IR.Dot
 import Lang.Pietre.Export.PrettyPrinting.AST.Validated
@@ -22,6 +23,8 @@ import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Pipeline.Monad
 import Lang.Pietre.Pipeline.Options
 import Lang.Pietre.Representations.AST.Parsed
+import Lang.Pietre.Representations.Binary              (Binary)
+import Lang.Pietre.Representations.Bytecode            (Object)
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Image
 import Lang.Pietre.Representations.Interface
@@ -53,6 +56,8 @@ compileBinary compilerOptions moduleFlags mainFile =
     traverse_ (uncurry3 compileModule) buildPlan
     allObjects <- M.unions . M.elems <$> use ccObjects
     binary <- link mainSymbolName allObjects -- <> Prelude.objects
+    whenJustM (view $ ciCompilerOptions . coExportBinary) $
+      exportBinary binary
     pure $ assemble binary
 
 compileModule
@@ -93,6 +98,8 @@ compileModule moduleName sourceFile moduleInfo = do
         maybeApply shouldMinimize (fmap minimize) $
         M.mapWithKey generateBytecode moduleIR
   ccObjects %= M.insert moduleName object
+  whenJustM (view $ ciCompilerOptions . coExportBytecode) $
+    exportBytecode moduleName object
   -- add to object cache
 
 addPrelude
@@ -109,8 +116,7 @@ exportAST
   -> FilePath
   -> Compile m ()
 exportAST moduleName interface folder = do
-  let filePath = folder </> L.intercalate "_" (map (T.unpack . rawIdentifier) (NE.toList moduleName)) ++ ".html"
-  writeToFile filePath $ renderHTML $ prettyPrintHTML interface
+  writeToFile (generateDebugPath moduleName folder ".html") (renderHTML $ prettyPrintHTML interface)
 
 exportIR
   :: (MonadFileSystem m)
@@ -119,8 +125,32 @@ exportIR
   -> FilePath
   -> Compile m ()
 exportIR moduleName ir folder = do
-  let filePath = folder </> L.intercalate "_" (map (T.unpack . rawIdentifier) (NE.toList moduleName)) ++ ".dot"
-  writeToFile filePath $ renderIR ir
+  writeToFile (generateDebugPath moduleName folder ".dot") (renderIR ir)
+
+exportBytecode
+  :: (MonadFileSystem m)
+  => ModuleName
+  -> Object
+  -> FilePath
+  -> Compile m ()
+exportBytecode moduleName object folder = do
+  writeToFile (generateDebugPath moduleName folder ".txt") (renderBytecode object)
+
+exportBinary
+  :: (MonadFileSystem m)
+  => Binary
+  -> FilePath
+  -> Compile m ()
+exportBinary binary folder = do
+  writeToFile (generateDebugPath (pure "Main") folder ".linked.txt") $ renderBinary binary
+
+generateDebugPath
+  :: ModuleName
+  -> FilePath
+  -> String
+  -> FilePath
+generateDebugPath moduleName folder ext =
+  folder </> L.intercalate "_" (map (T.unpack . rawIdentifier) (NE.toList moduleName)) ++ ext
 
 createBuildPlan
   :: forall m

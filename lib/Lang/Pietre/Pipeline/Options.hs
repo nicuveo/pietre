@@ -10,11 +10,13 @@ import Options.Applicative
 
 
 data CompilerOptions = CompilerOptions
-  { _coVerbose      :: Bool
-  , _coIncludePaths :: Seq FilePath
-  , _coExportAST    :: Maybe FilePath
-  , _coExportIR     :: Maybe FilePath
-  , _coOutput       :: Maybe FilePath
+  { _coVerbose        :: Bool
+  , _coIncludePaths   :: Seq FilePath
+  , _coExportAST      :: Maybe FilePath
+  , _coExportIR       :: Maybe FilePath
+  , _coExportBytecode :: Maybe FilePath
+  , _coExportBinary   :: Maybe FilePath
+  , _coOutput         :: Maybe FilePath
   } deriving Show
 
 data CompilerFlags = CompilerFlags
@@ -45,12 +47,20 @@ optionsParser = do
     , help "folder in which to search for source files"
     ]
   _coExportAST <- optional $ strOption $ mconcat
-    [ long "export-AST"
+    [ long "export-ast"
     , help "folder in which to export the verified AST"
     ]
   _coExportIR <- optional $ strOption $ mconcat
-    [ long "export-IR"
+    [ long "export-ir"
     , help "folder in which to export the IR"
+    ]
+  _coExportBytecode <- optional $ strOption $ mconcat
+    [ long "export-bytecode"
+    , help "folder in which to export the bytecode"
+    ]
+  _coExportBinary <- optional $ strOption $ mconcat
+    [ long "export-binary"
+    , help "folder in which to export the binary"
     ]
   _cfSimplify <- boolOptionParser True  "simplify"
   _cfOptimize <- boolOptionParser False "optimize"
