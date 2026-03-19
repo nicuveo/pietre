@@ -168,6 +168,7 @@ processIf resumeLabel IfInfo {..} = do
       startBlock elseBlockLabel
       processBlock elseBody
     ElseIf ifInfo -> do
+      sealBlock elseBlockLabel
       startBlock elseBlockLabel
       processIf resumeLabel ifInfo
 
