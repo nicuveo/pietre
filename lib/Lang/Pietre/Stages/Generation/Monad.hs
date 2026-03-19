@@ -88,15 +88,16 @@ appendFullStackRoll steps = do
 
 appendOperation
   :: HashSet Register
-  -> Register
+  -> [Register]
   -> [Register]
   -> InstructionBuffer
   -> Generate ()
-appendOperation outputRegisters target args bytecode = do
+appendOperation outputRegisters targets args bytecode = do
   appendRearrangeArgs outputRegisters args
   gcInstructions <>= bytecode
   replicateM_ (length args) $ gcStack %= Stack.pop
-  gcStack %= Stack.push target
+  for_ targets \target ->
+    gcStack %= Stack.push target
 
 appendRearrangeArgs
   :: HashSet Register

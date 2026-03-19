@@ -43,31 +43,31 @@ generateInstructionBytecode
   -> Generate ()
 generateInstructionBytecode outputRegisters = \case
   IR.Add target arg1 arg2 ->
-    go target [arg2, arg1] [BC.Add]
+    go [target] [arg2, arg1] [BC.Add]
   IR.Subtract target arg1 arg2 -> do
-    go target [arg2, arg1] [BC.Subtract]
+    go [target] [arg2, arg1] [BC.Subtract]
   IR.Multiply target arg1 arg2 ->
-    go target [arg2, arg1] [BC.Multiply]
+    go [target] [arg2, arg1] [BC.Multiply]
   IR.Divide target arg1 arg2 ->
-    go target [arg2, arg1] [BC.Divide]
+    go [target] [arg2, arg1] [BC.Divide]
   IR.Modulo target arg1 arg2 ->
-    go target [arg2, arg1] [BC.Mod]
+    go [target] [arg2, arg1] [BC.Mod]
   IR.NegateI target arg ->
-    go target [arg] [BC.PushInt 0, BC.PushInt 2, BC.PushInt 1, BC.Roll, BC.Subtract]
+    go [target] [arg] [BC.PushInt 0, BC.PushInt 2, BC.PushInt 1, BC.Roll, BC.Subtract]
   IR.NegateB target arg ->
-    go target [arg] [BC.Not]
+    go [target] [arg] [BC.Not]
   IR.CmpGT target arg1 arg2 ->
-    go target [arg2, arg1] [BC.Greater]
+    go [target] [arg2, arg1] [BC.Greater]
   IR.CmpLT target arg1 arg2 ->
-    go target [arg1, arg2] [BC.Greater]
+    go [target] [arg1, arg2] [BC.Greater]
   IR.CmpGE target arg1 arg2 ->
-    go target [arg1, arg2] [BC.Greater, BC.Not]
+    go [target] [arg1, arg2] [BC.Greater, BC.Not]
   IR.CmpLE target arg1 arg2 ->
-    go target [arg2, arg1] [BC.Greater, BC.Not]
+    go [target] [arg2, arg1] [BC.Greater, BC.Not]
   IR.CmpEQ target arg1 arg2 ->
-    go target [arg1, arg2, arg2, arg1] [BC.Greater, BC.PushInt 3, BC.PushInt 1, BC.Roll, BC.Greater, BC.Add, BC.Not]
+    go [target] [arg1, arg2, arg2, arg1] [BC.Greater, BC.PushInt 3, BC.PushInt 1, BC.Roll, BC.Greater, BC.Add, BC.Not]
   IR.CmpNE target arg1 arg2 ->
-    go target [arg1, arg2, arg2, arg1] [BC.Greater, BC.PushInt 3, BC.PushInt 1, BC.Roll, BC.Greater, BC.Add]
+    go [target] [arg1, arg2, arg2, arg1] [BC.Greater, BC.PushInt 3, BC.PushInt 1, BC.Roll, BC.Greater, BC.Add]
   IR.Exponent target arg1 arg2 -> do
     (conditionLabel, conditionEntrance) <- generateAddress
     (endLabel, endEntrance) <- generateAddress
@@ -106,13 +106,13 @@ generateInstructionBytecode outputRegisters = \case
             , BC.Pop
             ]
           ]
-    go target [arg2, arg1] instructions
+    go [target] [arg2, arg1] instructions
   IR.AssignI target intLiteral -> do
     appendPush target [BC.PushInt intLiteral]
-  IR.InvokeN (Just target) otherFunctionName args -> do
+  IR.InvokeN targets otherFunctionName args -> do
     (invokeReturnLabel, invokeReturnEntrance) <- generateAddress
     thisFunctionName <- view giFunctionName
-    go target args $ fold @[] @InstructionBuffer
+    go (maybeToList targets) args $ fold @[] @InstructionBuffer
       [ [ BC.PushAddr (thisFunctionName, invokeReturnLabel)
         , BC.PushInt (length args + 1)
         , BC.PushInt 1
@@ -122,7 +122,6 @@ generateInstructionBytecode outputRegisters = \case
         ]
       , invokeReturnEntrance
       ]
-
   _ ->
     unimplemented
   where
