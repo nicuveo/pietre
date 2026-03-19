@@ -30,6 +30,7 @@ library
       Prelude
       Lang.Pietre
       Lang.Pietre.Batteries.BuiltIn
+      Lang.Pietre.Batteries.Prelude
       Lang.Pietre.Export.HTML
       Lang.Pietre.Export.IR.Dot
       Lang.Pietre.Export.PrettyPrinting.AST.Common

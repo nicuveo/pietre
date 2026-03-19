@@ -1,0 +1,6 @@
+fn read_int() -> int {
+  return read_int();
+}
+
+fn write_int(x: int) {
+}
