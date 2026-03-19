@@ -11,8 +11,10 @@ import Data.List                                       qualified as L
 import Data.List.NonEmpty                              qualified as NE
 import Data.Sequence                                   qualified as Seq
 import Data.Text                                       qualified as T
+import Data.Tuple.Extra
 import System.FilePath
 
+import Lang.Pietre.Batteries.Prelude
 import Lang.Pietre.Export.HTML
 import Lang.Pietre.Export.IR.Dot
 import Lang.Pietre.Export.PrettyPrinting.AST.Validated
@@ -48,17 +50,18 @@ compileBinary compilerOptions moduleFlags mainFile =
       mainModuleName = pure "Main"
       mainSymbolName = Name (BaseName mainModuleName "main") []
     buildPlan <- createBuildPlan mainModuleName mainFile
-    traverse_ (uncurry compileModule) buildPlan
+    traverse_ (uncurry3 compileModule) buildPlan
     allObjects <- M.unions . M.elems <$> use ccObjects
-    binary <- link mainSymbolName allObjects
+    binary <- link mainSymbolName allObjects -- <> Prelude.objects
     pure $ assemble binary
 
 compileModule
   :: (MonadFileSystem m, MonadDiagnosis m)
   => ModuleName
+  -> FilePath
   -> Module
   -> Compile m ()
-compileModule moduleName moduleInfo = do
+compileModule moduleName sourceFile moduleInfo = do
   -- log: [1/20] Compiling moduleName
   CompileContext {..} <- get
 
@@ -72,7 +75,7 @@ compileModule moduleName moduleInfo = do
       _ccFunctionCache
       _ccSymbolCache
       moduleName
-      moduleInfo
+      (addPrelude sourceFile moduleInfo)
   addInterface moduleName interface
   whenJustM (view $ ciCompilerOptions . coExportAST) $
     exportAST moduleName interface
@@ -91,6 +94,13 @@ compileModule moduleName moduleInfo = do
         M.mapWithKey generateBytecode moduleIR
   ccObjects %= M.insert moduleName object
   -- add to object cache
+
+addPrelude
+  :: FilePath
+  -> Module
+  -> Module
+addPrelude sourceFile =
+  modImports <>:~ [WithLocation (initialLocation sourceFile) (Import preludeModuleName Exhaustive)]
 
 exportAST
   :: (MonadFileSystem m)
@@ -117,7 +127,7 @@ createBuildPlan
    . (MonadFileSystem m, MonadDiagnosis m)
   => ModuleName
   -> FilePath
-  -> Compile m (Seq (ModuleName, Module))
+  -> Compile m (Seq (ModuleName, FilePath, Module))
 createBuildPlan mainName mainPath = go Seq.empty Nothing mainName mainPath
   where
     go parents importLocation moduleName sourcePath = do
@@ -138,7 +148,7 @@ createBuildPlan mainName mainPath = go Seq.empty Nothing mainName mainPath
             let depName = _importPath depImport
             depPath <- locateSourceFile depLocation depName
             go (parents |> moduleName) (Just depLocation) depName depPath
-          pure $ mconcat buildPlan |> (moduleName, parsedModule)
+          pure $ mconcat buildPlan |> (moduleName, sourcePath, parsedModule)
 
 locateSourceFile
   :: (MonadFileSystem m, MonadDiagnosis m)

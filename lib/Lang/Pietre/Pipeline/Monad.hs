@@ -7,6 +7,7 @@ import "this" Prelude
 import Control.Lens                           hiding ((...))
 import Data.HashMap.Strict                    qualified as M
 
+import Lang.Pietre.Batteries.Prelude
 import Lang.Pietre.Pipeline.Options
 import Lang.Pietre.Representations.AST.Parsed
 import Lang.Pietre.Representations.Bytecode
@@ -53,12 +54,15 @@ runCompile
   -> CompilerFlags
   -> Compile m a
   -> m a
-runCompile options flags action = action
+runCompile options flags action = (setupPrelude >> action)
   & flip runReaderT compileInfo
   & flip evalStateT compileContext
   where
     compileInfo    = CompileInfo options flags
-    compileContext = CompileContext mempty mempty mempty mempty mempty mempty
+    compileContext = CompileContext M.empty M.empty M.empty M.empty M.empty M.empty
+    setupPrelude   = do
+      addInterface preludeModuleName preludeInterface
+      ccObjects %= M.insert preludeModuleName preludeObject
 
 addInterface
   :: Monad m
