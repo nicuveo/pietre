@@ -23,6 +23,6 @@ data Interface = Interface
   , _interfaceDefinitions  :: DefinitionCache
   , _interfaceFunctions    :: FunctionCache
   , _interfaceSymbols      :: SymbolCache
-  } deriving Show
+  } deriving (Show, Lift)
 
 makeLenses ''Interface

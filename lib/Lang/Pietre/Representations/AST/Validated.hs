@@ -64,6 +64,7 @@ data TypeNode f
   | FunctionType (FunctionTypeInfo f)
 
 deriving instance (Show (HKT f (TypeNode f))) => Show (TypeNode f)
+deriving instance (Lift (HKT f (TypeNode f))) => Lift (TypeNode f)
 
 instance FFunctor TypeNode where
   ffmap f = \case
@@ -89,6 +90,7 @@ data StructTypeInfo f = StructTypeInfo
   }
 
 deriving instance Show (HKT f (TypeNode f)) => Show (StructTypeInfo f)
+deriving instance Lift (HKT f (TypeNode f)) => Lift (StructTypeInfo f)
 
 typeName :: ConcreteType -> Maybe Name
 typeName = \case
@@ -132,13 +134,13 @@ data Definition
   | StructDef    (StructInfo ParameterizedFunctor)
   | ConstDef     (Typed ConstExpression)
   | FunctionDef  (FunctionTypeInfo ParameterizedFunctor)
-  deriving Show
+  deriving (Show, Lift)
 
 data TypeAliasInfo = TypeAliasInfo
   { _aliasParams :: [Identifier]
   , _aliasValue  :: ParameterizedType
   }
-  deriving Show
+  deriving (Show, Lift)
 
 data StructInfo f = StructInfo
   { _structParams :: [Identifier]
@@ -146,13 +148,14 @@ data StructInfo f = StructInfo
   }
 
 deriving instance Show (HKT f (TypeNode f)) => Show (StructInfo f)
+deriving instance Lift (HKT f (TypeNode f)) => Lift (StructInfo f)
 
 
 data FunctionInfo = FunctionInfo
   { _funType :: FunctionTypeInfo ConcreteFunctor
   , _funBody :: Block
   }
-  deriving Show
+  deriving (Show, Lift)
 
 data FunctionTypeInfo f = FunctionTypeInfo
   { _funParams :: [Identifier]
@@ -161,6 +164,7 @@ data FunctionTypeInfo f = FunctionTypeInfo
   }
 
 deriving instance Show (HKT f (TypeNode f)) => Show (FunctionTypeInfo f)
+deriving instance Lift (HKT f (TypeNode f)) => Lift (FunctionTypeInfo f)
 
 data ForInfo = ForInfo
   { _forVariableName :: Identifier
@@ -168,19 +172,19 @@ data ForInfo = ForInfo
   , _forRangeExpr    :: RangeExpression
   , _forBody         :: Block
   }
-  deriving Show
+  deriving (Show, Lift)
 
 data LetInfo = LetInfo
   { _letName  :: Identifier
   , _letValue :: Typed Expression
   }
-  deriving Show
+  deriving (Show, Lift)
 
 data Typed a = Typed
   { _typeInfo   :: ConcreteType
   , _typedValue :: a
   }
-  deriving (Show, Functor, Foldable, Traversable)
+  deriving (Show, Functor, Foldable, Traversable, Lift)
 
 data ConstExpression
   = ArrayConstExpr         [Typed ConstExpression]
@@ -189,7 +193,7 @@ data ConstExpression
   | IntLiteralConstExpr    Int
   | CharLiteralConstExpr   Char
   | StringLiteralConstExpr Text
-  deriving Show
+  deriving (Show, Lift)
 
 pattern IntConstExpr :: Int -> Typed ConstExpression
 pattern IntConstExpr i = Typed IntType (IntLiteralConstExpr i)
@@ -240,7 +244,7 @@ data Expression
   | DivisionAssignmentExpr       (Typed LValueExpression) (Typed Expression)
   | ModuloAssignmentExpr         (Typed LValueExpression) (Typed Expression)
   | ExponentiationAssignmentExpr (Typed LValueExpression) (Typed Expression)
-  deriving Show
+  deriving (Show, Lift)
 
 pattern IntExpr :: Int -> Typed Expression
 pattern IntExpr i = Typed IntType (IntLiteralExpr i)
@@ -255,14 +259,14 @@ pattern BoolExpr b = Typed BoolType (BoolLiteralExpr b)
 data RangeExpression
   = RangeInclusiveExpr (Typed Expression) (Typed Expression)
   | RangeExclusiveExpr (Typed Expression) (Typed Expression)
-  deriving Show
+  deriving (Show, Lift)
 
 data LValueExpression
   = LocalVariableLExpr     Identifier
   | ReferenceArgumentLExpr Identifier
   | FieldAccessLExpr       (StructInfo ConcreteFunctor) (Typed LValueExpression) Identifier
   | IndexLExpr             (Typed LValueExpression) (Typed LValueExpression)
-  deriving Show
+  deriving (Show, Lift)
 
 
 --------------------------------------------------------------------------------

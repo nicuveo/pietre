@@ -13,13 +13,13 @@ data Location = Location
   , _locLine     :: Int
   , _locColumn   :: Int
   }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Lift)
 
 data WithLocation a = WithLocation
   { _location :: Location
   , _located  :: a
   }
-  deriving (Show, Functor, Traversable, Foldable)
+  deriving (Show, Functor, Traversable, Foldable, Lift)
 
 makeLenses ''Location
 makeLenses ''WithLocation

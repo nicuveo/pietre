@@ -73,6 +73,7 @@ import Data.Text                  as P (Text)
 import Data.Traversable           as P (for)
 import Data.Void                  as P (Void, absurd)
 import GHC.Generics               as P (Generic)
+import Language.Haskell.TH.Syntax as P (Lift)
 import "base" Prelude             as P hiding (lookup)
 
 

@@ -17,14 +17,14 @@ type ModuleName = NonEmpty Identifier
 data BaseName = BaseName
   { _nameModule :: ModuleName
   , _nameIdent  :: Identifier
-  } deriving (Show, Eq, Ord, Generic)
+  } deriving (Show, Eq, Ord, Generic, Lift)
 
 instance Hashable BaseName
 
 data Name = Name
   { _nameBase   :: BaseName
   , _nameParams :: [Name]
-  } deriving (Show, Eq, Ord, Generic)
+  } deriving (Show, Eq, Ord, Generic, Lift)
 
 instance Hashable Name
 

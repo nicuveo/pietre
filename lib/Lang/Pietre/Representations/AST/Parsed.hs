@@ -32,9 +32,7 @@ instance ASTRepresentation Parsed where
 data Module = Module
   { _modImports     :: [WithLocation Import]
   , _modDefinitions :: [WithLocation Definition]
-  }
-
-deriving instance Show Module
+  } deriving (Show)
 
 instance Semigroup Module where
   Module imports1 decls1 <> Module imports2 decls2 =
@@ -48,13 +46,13 @@ data Import = Import
   { _importPath :: ModuleName
   , _importType :: ImportType
   }
-  deriving Show
+  deriving (Show, Lift)
 
 data ImportType
   = Qualified  (Maybe Identifier)
   | Specific   (NonEmpty Identifier)
   | Exhaustive
-  deriving Show
+  deriving (Show, Lift)
 
 
 --------------------------------------------------------------------------------

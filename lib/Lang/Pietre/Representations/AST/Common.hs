@@ -31,6 +31,13 @@ type ShowConstraints p =
   , Show (LetInfoType    p)
   )
 
+type LiftConstraints p =
+  ( Lift (PathBodyType   p)
+  , Lift (ExpressionType p)
+  , Lift (ForInfoType    p)
+  , Lift (LetInfoType    p)
+  )
+
 
 --------------------------------------------------------------------------------
 -- Common AST definitions
@@ -52,12 +59,13 @@ data CommonTypeAliasInfo p = TypeAliasInfo
   }
 
 deriving instance ShowConstraints p => Show (CommonTypeAliasInfo p)
+deriving instance LiftConstraints p => Lift (CommonTypeAliasInfo p)
 
 
 data EnumInfo = EnumInfo
   { _enumName   :: Identifier
   , _enumValues :: [Identifier]
-  } deriving Show
+  } deriving (Show, Lift)
 
 
 data CommonStructInfo p = StructInfo
@@ -67,6 +75,7 @@ data CommonStructInfo p = StructInfo
   }
 
 deriving instance ShowConstraints p => Show (CommonStructInfo p)
+deriving instance LiftConstraints p => Lift (CommonStructInfo p)
 
 
 data CommonConstInfo p = ConstInfo
@@ -76,6 +85,7 @@ data CommonConstInfo p = ConstInfo
   }
 
 deriving instance ShowConstraints p => Show (CommonConstInfo p)
+deriving instance LiftConstraints p => Lift (CommonConstInfo p)
 
 
 data CommonFunctionInfo p = FunctionInfo
@@ -85,6 +95,7 @@ data CommonFunctionInfo p = FunctionInfo
   }
 
 deriving instance ShowConstraints p => Show (CommonFunctionInfo p)
+deriving instance LiftConstraints p => Lift (CommonFunctionInfo p)
 
 isGeneric :: CommonFunctionInfo p -> Bool
 isGeneric = not . null . _funParams . _funType
@@ -97,12 +108,13 @@ data CommonFunctionType p = FunctionType
   }
 
 deriving instance ShowConstraints p => Show (CommonFunctionType p)
+deriving instance LiftConstraints p => Lift (CommonFunctionType p)
 
 
 data FunctionArgType a
   = ByValue     a
   | ByReference a
-  deriving (Show, Functor, Foldable, Traversable)
+  deriving (Show, Functor, Foldable, Traversable, Lift)
 
 functionArgType :: FunctionArgType a -> a
 functionArgType = \case
@@ -121,6 +133,7 @@ data CommonStatement p
   | ExpressionStmt (ExpressionType p)
 
 deriving instance ShowConstraints p => Show (CommonStatement p)
+deriving instance LiftConstraints p => Lift (CommonStatement p)
 
 type CommonBlock p = [WithLocation (CommonStatement p)]
 
@@ -132,6 +145,7 @@ data CommonIfInfo p = IfInfo
   }
 
 deriving instance ShowConstraints p => Show (CommonIfInfo p)
+deriving instance LiftConstraints p => Lift (CommonIfInfo p)
 
 
 data CommonElseInfo p
@@ -139,6 +153,7 @@ data CommonElseInfo p
   | ElseBlock (CommonBlock p)
 
 deriving instance ShowConstraints p => Show (CommonElseInfo p)
+deriving instance LiftConstraints p => Lift (CommonElseInfo p)
 
 
 data CommonForInfo p = ForInfo
@@ -148,6 +163,7 @@ data CommonForInfo p = ForInfo
   }
 
 deriving instance ShowConstraints p => Show (CommonForInfo p)
+deriving instance LiftConstraints p => Lift (CommonForInfo p)
 
 
 data CommonWhileInfo p = WhileInfo
@@ -156,6 +172,7 @@ data CommonWhileInfo p = WhileInfo
   }
 
 deriving instance ShowConstraints p => Show (CommonWhileInfo p)
+deriving instance LiftConstraints p => Lift (CommonWhileInfo p)
 
 
 data CommonLetInfo p = LetInfo
@@ -165,6 +182,7 @@ data CommonLetInfo p = LetInfo
   }
 
 deriving instance ShowConstraints p => Show (CommonLetInfo p)
+deriving instance LiftConstraints p => Lift (CommonLetInfo p)
 
 
 data CommonExpression p
@@ -207,14 +225,16 @@ data CommonExpression p
   | ExponentiationAssignmentExpr (ExpressionType p) (ExpressionType p)
 
 deriving instance ShowConstraints p => Show (CommonExpression p)
+deriving instance LiftConstraints p => Lift (CommonExpression p)
 
 
 data CommonPathInfo p = PathInfo
   { _pathBase   :: PathBodyType p
   , _pathParams :: [CommonPathInfo p]
-  } deriving (Generic)
+  }
 
 deriving instance ShowConstraints p => Show (CommonPathInfo p)
+deriving instance LiftConstraints p => Lift (CommonPathInfo p)
 
 
 --------------------------------------------------------------------------------

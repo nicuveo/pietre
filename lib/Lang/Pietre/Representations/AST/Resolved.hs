@@ -42,6 +42,7 @@ data Role
   | LetVariable Identifier
 
 deriving instance ShowConstraints Resolved => Show Role
+deriving instance LiftConstraints Resolved => Lift Role
 
 
 --------------------------------------------------------------------------------
