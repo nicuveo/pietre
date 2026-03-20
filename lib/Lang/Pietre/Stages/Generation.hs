@@ -109,6 +109,8 @@ generateInstructionBytecode outputRegisters = \case
     go [target] [arg2, arg1] instructions
   IR.AssignI target intLiteral -> do
     appendPush target [BC.PushInt intLiteral]
+  IR.AssignC target charLiteral -> do
+    appendPush target [BC.PushInt $ ord charLiteral]
   IR.InvokeN targets otherFunctionName args -> do
     (invokeReturnLabel, invokeReturnEntrance) <- generateAddress
     thisFunctionName <- view giFunctionName
