@@ -110,7 +110,7 @@ renderInstruction = \case
   AssignB target value ->
     T.unwords [renderRegister target, "=", T.show value]
   AssignC target value ->
-    T.unwords [renderRegister target, "=", T.show value]
+    T.unwords [renderRegister target, "=", T.replace "\\" "\\\\" (T.show value)]
   AssignA target value ->
     T.unwords [renderRegister target, renderName value]
   InvokeN Nothing funcName args ->
