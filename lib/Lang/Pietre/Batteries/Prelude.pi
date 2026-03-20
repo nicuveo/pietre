@@ -4,3 +4,6 @@ fn read_int() -> int {
 
 fn write_int(x: int) {
 }
+
+fn write_char(c: char) {
+}

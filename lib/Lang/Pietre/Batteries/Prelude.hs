@@ -45,12 +45,14 @@ preludeInterface = $(
 
 preludeObject :: Object
 preludeObject =
-  [ (readIntName,  readIntBytecode)
-  , (writeIntName, writeIntBytecode)
+  [ (readIntName,   readIntBytecode)
+  , (writeIntName,  writeIntBytecode)
+  , (writeCharName, writeCharBytecode)
   ]
   where
-    readIntName  = Name (BaseName ["Prelude"] "read_int")  []
-    writeIntName = Name (BaseName ["Prelude"] "write_int") []
+    readIntName   = Name (BaseName ["Prelude"] "read_int")   []
+    writeIntName  = Name (BaseName ["Prelude"] "write_int")  []
+    writeCharName = Name (BaseName ["Prelude"] "write_char") []
     readIntBytecode =
       [ Entrance (readIntName, Label 0 0)
       , InInt -- TODO: what do we do if this fails?!
@@ -62,5 +64,10 @@ preludeObject =
     writeIntBytecode =
       [ Entrance (writeIntName, Label 0 0)
       , OutInt
+      , Return
+      ]
+    writeCharBytecode =
+      [ Entrance (writeCharName, Label 0 0)
+      , OutChar
       , Return
       ]
