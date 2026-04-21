@@ -2,9 +2,13 @@ module Lang.Pietre.Stages.Linking (link) where
 
 import "this" Prelude
 
-import Control.Lens
-import Data.HashMap.Strict                  qualified as M
+import Control.Lens                         hiding ((:<))
+import Control.Monad.Extra
+import Control.Monad.Loops
+import Data.HashMap.Strict                  qualified as Map
+import Data.Sequence                        (ViewL (..), viewl)
 import Data.Sequence                        qualified as Seq
+import Data.Set.Ordered                     qualified as Set
 
 import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Internal.ICE
@@ -21,25 +25,56 @@ link
   -> m Binary
 link main functions = do
   compiledFunctions <- runLinker do
-    traverse collectAddresses functions
-    ensureNested $ traverse (tryNested . replaceAddresses) functions
-  compiledMain <- M.lookup main compiledFunctions `onNothing`
+    mainInstructions <-
+      Map.lookup main functions `onNothing`
+        reportError (Diagnostic Nothing Nothing ErrorNoMainSymbol)
+    lcFuncQueue |>= (main, mainInstructions)
+    collectAddresses functions
+    includedFunctions <- uses lcFuncSeen (Seq.fromList . toList)
+    ensureNested $
+      for includedFunctions \functionName -> tryNested do
+        instructions <- Map.lookup functionName functions `onNothing`
+          reportError (Diagnostic Nothing Nothing $ ErrorSymbolNotFound functionName)
+        replaceAddresses instructions
+  compiledMain <- sequenceHead compiledFunctions `onNothing`
     reportError (Diagnostic Nothing Nothing ErrorNoMainSymbol)
   -- TODO: also check that main has the right type
   let mainAddress = _fFunctionEntrance compiledMain
-  pure $ Binary mainAddress $ Seq.fromList $ M.elems compiledFunctions
+  pure $ Binary mainAddress compiledFunctions
+
+  where
+    sequenceHead = viewl >>> \case
+      EmptyL   -> Nothing
+      (x :< _) -> Just x
 
 collectAddresses
-  :: Monad m
-  => InstructionBuffer
+  :: MonadDiagnosis m
+  => HashMap Name InstructionBuffer
   -> Link m ()
-collectAddresses instructions = do
-  for_ instructions \case
-    Entrance name -> do
-      address <- use lcCurrent
-      lcCurrent += 1
-      lcRegistry %= M.insert name address
-    _ -> pass
+collectAddresses functions = do
+  success <- whileJust popNextFunction \(functionName, functionInstructions) -> do
+    try $ unlessM (uses lcFuncSeen $ Set.member functionName) do
+      lcFuncSeen %= (Set.|> functionName)
+      for_ functionInstructions \case
+        PushAddr (otherFunctionName, _) -> do
+          unlessM (uses lcFuncSeen $ Set.member otherFunctionName) do
+            otherFunctionInstructions <- Map.lookup otherFunctionName functions `onNothing`
+              reportError (Diagnostic Nothing Nothing $ ErrorSymbolNotFound otherFunctionName)
+            lcFuncQueue |>= (otherFunctionName, otherFunctionInstructions)
+        Entrance name -> do
+          address <- use lcCurrent
+          lcCurrent += 1
+          lcRegistry %= Map.insert name address
+        _ -> pass
+  void $ ensure $ sequence success
+
+  where
+    popNextFunction = do
+      uses lcFuncQueue Seq.viewl >>= \case
+        EmptyL -> pure Nothing
+        functionInfo :< otherFunctions -> do
+          lcFuncQueue .= otherFunctions
+          pure $ Just functionInfo
 
 replaceAddresses
   :: MonadDiagnosis m
@@ -48,7 +83,7 @@ replaceAddresses
 replaceAddresses instructions = do
   result <- ensureNested $ for instructions $ tryNested . \case
     PushAddr name -> do
-      target <- uses lcRegistry (M.lookup name) `onNothingM`
+      target <- uses lcRegistry (Map.lookup name) `onNothingM`
         reportError (Diagnostic Nothing Nothing $ ErrorSymbolNotFound $ fst name)
       pure $ PushInt target
     Entrance _ -> pure $ Entrance ()
@@ -83,7 +118,7 @@ findFirstEntrance instructions = do
         find isEntrance instructions >>= \case
           Entrance a -> Just a
           _          -> Nothing
-  uses lcRegistry (M.lookup addr) `onNothingM`
+  uses lcRegistry (Map.lookup addr) `onNothingM`
     entranceNotFound
   where
     entranceNotFound =

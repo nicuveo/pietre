@@ -55,7 +55,7 @@ compileBinary compilerOptions moduleFlags mainFile =
     buildPlan <- createBuildPlan mainModuleName mainFile
     traverse_ (uncurry3 compileModule) buildPlan
     allObjects <- M.unions . M.elems <$> use ccObjects
-    binary <- link mainSymbolName allObjects -- <> Prelude.objects
+    binary <- link mainSymbolName allObjects
     whenJustM (view $ ciCompilerOptions . coExportBinary) $
       exportBinary binary
     pure $ assemble binary
