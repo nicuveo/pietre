@@ -4,6 +4,7 @@ module Lang.Pietre.Stages.Minimization (minimize) where
 
 import "this" Prelude
 
+import Control.Applicative
 import Data.HashSet                         qualified as S
 import Data.List                            qualified as L
 import Data.Sequence                        as Seq
@@ -32,8 +33,16 @@ rules =
   , reorganizeStack
   , removeRedundantJumps
   , removeUnusedEntrances
+  , replacePushByDuplicate
   ]
 
+
+replacePushByDuplicate :: Rule
+replacePushByDuplicate = applyOnAllSuffixes $ segmented 2 \case
+  [PushInt x, PushInt y]
+    | x == y
+    -> Just [PushInt x, Duplicate]
+  _ -> Nothing
 
 mergeRolls :: Rule
 mergeRolls = applyOnAllPrefixes $ segmented 6 \case
@@ -97,6 +106,13 @@ applyOnAllPrefixes rule = go Seq.Empty
       Nothing     -> case viewl s of
         EmptyL    -> Nothing
         x :< rest -> go (lhs |> x) rest
+
+applyOnAllSuffixes :: Rule -> Rule
+applyOnAllSuffixes rule = go Seq.Empty
+  where
+    go lhs s = case viewl s of
+      EmptyL    -> Nothing
+      x :< rest -> go (lhs |> x) rest <|> fmap (lhs <>) (rule s)
 
 segmented :: Int -> Rule -> Rule
 segmented n rule s =
