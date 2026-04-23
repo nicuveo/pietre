@@ -35,7 +35,10 @@ data Label = Label
   { _labelBlock :: Int
   , _labelInner :: Int
   }
-  deriving (Show, Eq)
+  deriving (Eq)
+
+instance Show Label where
+  show (Label b i) = "Label " ++ show b ++ " " ++ show i
 
 instance Hashable Label where
   hashWithSalt s (Label b i) = s `hashWithSalt` b `hashWithSalt` i

@@ -4,4 +4,5 @@ import "this" Prelude
 
 
 newtype Identifier = Identifier { rawIdentifier :: Text }
-  deriving (Show, Eq, Ord, Hashable, IsString, Semigroup, Monoid, Lift)
+  deriving (Eq, Ord, Hashable, IsString, Semigroup, Monoid, Lift)
+  deriving Show via Text
