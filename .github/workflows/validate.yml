@@ -56,6 +56,7 @@ jobs:
       - uses: haskell-actions/hlint-setup@v2
       - uses: haskell-actions/hlint-run@v2
         with:
+          fail-on: error
           path: ${{ needs.generate-file-list.outputs.haskell-files-json }}
 
   # Check formatting.
@@ -85,4 +86,4 @@ jobs:
       - uses: freckle/stack-action@v5
         with:
           stack-build-arguments: ""
-          test: false
+          test: true
