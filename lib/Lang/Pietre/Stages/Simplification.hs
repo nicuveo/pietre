@@ -78,12 +78,6 @@ instance Simplifiable a => Simplifiable (Maybe a) where
 instance Simplifiable a => Simplifiable (WithLocation a) where
   simplify = fmap simplify
 
-instance Simplifiable (Typed LValueExpression) where
-  simplify = id
-
-instance Simplifiable (Typed ConstExpression) where
-  simplify = id
-
 instance Simplifiable (Typed Expression) where
   simplify = rewrite \ref -> case _typedValue ref of
     AdditionExpr lhs (IntExpr 0) -> Just lhs
