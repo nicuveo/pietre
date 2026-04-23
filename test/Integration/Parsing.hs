@@ -12,14 +12,13 @@ import Data.Text.Lazy                               qualified as T
 import Data.Text.Lazy.Encoding                      qualified as T
 import System.FilePath
 import Test.Tasty.Golden
-import Test.Tasty.HUnit
 import Test.Tasty.QuickCheck
 
 import Lang.Pietre.Export.PrettyPrinting.AST.Parsed
 import Lang.Pietre.Representations.AST.Parsed
-import Lang.Pietre.Stages.Parsing
 
 import Arbitrary                                    ()
+import Compile
 import Locate
 
 
@@ -30,15 +29,22 @@ test_batch = do
     goldenFile = testInputFile -<.> "golden"
   pure $ goldenVsString testName goldenFile do
     source <- T.readFile testInputFile
-    ast <- parseModule testInputFile source
-      `onLeft` (assertFailure . show)
     pure
       $ T.encodeUtf8
       $ T.fromStrict
-      $ prettyPrintText ast
+      $ prettyPrintText
+      $ parseModule testInputFile source
 
 test_prop :: Module -> Property
 test_prop "round-trip" m =
   let print1 = prettyPrintText m
-      print2 = prettyPrintText <$> parseModule "" print1
-  in  Right print1 === print2
+      print2 = prettyPrintText $ parseModule "" print1
+  in  print1 === print2
+
+
+parseModule
+  :: FilePath
+  -> Text
+  -> Module
+parseModule filePath sourceCode =
+  either error id $ runTestCompiler filePath $ parse sourceCode

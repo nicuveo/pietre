@@ -58,9 +58,9 @@ test_batch = do
     source     <- T.readFile sourceFile
     simplified <- T.readFile simplifiedFile
     reference  <- runTestCompiler fakeFilename (parse simplified >>= analyze)
-      `onLeftM` assertFailure
+      `onLeft` assertFailure
     testValue  <- runTestCompiler fakeFilename (parse source     >>= analyze >>= simplify)
-      `onLeftM` assertFailure
+      `onLeft` assertFailure
     let testSymbols = _interfaceSymbols testValue
         refSymbols  = _interfaceSymbols reference
         allNames    = S.union (M.keysSet testSymbols) (M.keysSet refSymbols)

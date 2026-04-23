@@ -26,26 +26,24 @@ import Lang.Pietre.Stages.Simplification
 
 type TestCompiler m =
   ( MonadReader FilePath m
-  , MonadError String m
+  , MonadDiagnosis m
   )
 
 parse :: TestCompiler m => Text -> m Module
 parse source = do
   filename <- ask
-  parseModule filename source `onLeft` (throwError . show)
+  parseModule filename source
 
 analyze :: TestCompiler m => Module -> m Interface
 analyze parsedModule = do
   name <- moduleName
-  (diagnostics, result) <- runDiagnosisT $
-    analyzeModule
-      M.empty
-      M.empty
-      M.empty
-      M.empty
-      name
-      parsedModule
-  result `onNothing` throwError (show diagnostics)
+  analyzeModule
+    M.empty
+    M.empty
+    M.empty
+    M.empty
+    name
+    parsedModule
 
 simplify :: TestCompiler m => Interface -> m Interface
 simplify = pure . simplifyModule
@@ -53,9 +51,13 @@ simplify = pure . simplifyModule
 
 runTestCompiler
   :: FilePath
-  -> ReaderT FilePath (ExceptT String m) a
-  -> m (Either String a)
-runTestCompiler filename action = runExceptT (runReaderT action filename)
+  -> ReaderT FilePath Diagnosis a
+  -> Either String a
+runTestCompiler filename action =
+  let (diagnostics, result) = runDiagnosis (runReaderT action filename)
+  in  case result of
+        Nothing    -> Left $ show diagnostics
+        Just value -> Right value
 
 
 --------------------------------------------------------------------------------
