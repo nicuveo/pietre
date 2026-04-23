@@ -1,0 +1,23 @@
+use Foo::Bar::*;
+use Baz::{a, b, c};
+use Fksdf as G;
+
+const ANSWER: int = 42;
+
+enum Color {Red, Green, Blue}
+
+struct Customer<T> {
+  uniqueID: T,
+}
+
+fn main<T, U>() -> T {
+  let s = Customer::<Int>@{uniqueID: 0};
+  if true {
+    if false {
+      if 66 {
+        print((((a) * (b)) + (c)) - (((d) / ((e) ^ (f))) % (g)));
+        let 名 = -(42);
+      }
+    }
+  }
+}

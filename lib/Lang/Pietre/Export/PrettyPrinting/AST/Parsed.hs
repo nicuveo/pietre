@@ -58,7 +58,7 @@ htmlAnnotation = \case
 -- Implementations
 
 prettyModule :: Module -> Doc Annotation
-prettyModule Module {..} = sepByNewlines
+prettyModule Module {..} = sepEndByNewlines
   [ vsep $ map (prettyImport . _located) _modImports
   , sepByNewlines $ map (prettyDefinition . _located) _modDefinitions
   ]

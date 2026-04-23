@@ -520,4 +520,4 @@ prettyInterface :: Prettifier Interface
 prettyInterface Interface {..} = do
   defs <- prettyDefinitionCache _interfaceDefinitions
   syms <- prettySymbolCache _interfaceSymbols
-  pure $ defs <> hardline <> hardline <> syms
+  pure $ defs <> hardline <> hardline <> syms <> hardline

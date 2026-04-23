@@ -13,3 +13,6 @@ sepByCommas = concatWith \x y -> x <> "," <+> y
 
 sepByNewlines :: [Doc ann] -> Doc ann
 sepByNewlines = concatWith \x y -> x <> hardline <> hardline <> y
+
+sepEndByNewlines :: [Doc ann] -> Doc ann
+sepEndByNewlines = sepByNewlines >>> (<> hardline)
