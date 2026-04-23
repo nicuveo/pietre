@@ -7,12 +7,13 @@ module Integration.Simplification
 
 import "this" Prelude
 
-import Data.HashMap.Strict                       qualified as M
-import Data.HashSet                              qualified as S
-import Data.Text.IO                              qualified as T
+import Data.HashMap.Strict                             qualified as M
+import Data.HashSet                                    qualified as S
+import Data.Text.IO                                    qualified as T
 import System.FilePath
 import Test.Tasty.HUnit
 
+import Lang.Pietre.Export.PrettyPrinting.AST.Validated
 import Lang.Pietre.Representations.AST.Validated
 import Lang.Pietre.Representations.Interface
 import Lang.Pietre.Representations.Location
@@ -67,4 +68,4 @@ test_batch = do
     for_ allNames \name -> do
       let refExprs  = expressions $ refSymbols  M.! name
           testExprs = expressions $ testSymbols M.! name
-      zipWithM ((@?=) `on` show) testExprs refExprs
+      zipWithM ((@?=) `on` prettyPrintExpressionText) testExprs refExprs
