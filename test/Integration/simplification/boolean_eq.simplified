@@ -1,35 +1,31 @@
 fn b1(x: bool) -> bool {
-  return true && x;
+  return x;
 }
 
 fn b2(x: bool) -> bool {
-  return false && x;
+  return !x;
 }
 
 fn b3(x: bool) -> bool {
-  return x && true;
+  return !x;
 }
 
 fn b4(x: bool) -> bool {
-  return x && false;
-}
-
-fn b5(x: bool) -> bool {
-  return !!x;
+  return x;
 }
 
 fn b6(x: bool) -> bool {
-  return x == true;
+  return x;
 }
 
 fn b7(x: bool) -> bool {
-  return x == false;
+  return !x;
 }
 
 fn b8(x: bool) -> bool {
-  return x != true;
+  return !x;
 }
 
 fn b9(x: bool) -> bool {
-  return x != false;
+  return x;
 }

@@ -1,5 +1,5 @@
-fn foo() -> int {
-  return ((1 + 0) / 1) * 1;
+fn foo(x: int) -> int {
+  return ((x + 0) / 1) * 1;
 }
 
 fn bar(x: int) -> int {

@@ -1,0 +1,23 @@
+struct Foo {
+  z: int
+}
+
+fn foo(a: int, b: bool) -> int {
+  while b == true {
+    if a + 0 < 5 {
+      let x = foo(a, !!b);
+      return a;
+    } else if a > 8 {
+      continue;
+      return a / 1;
+    } else {
+      foo(a * 1, false);
+      break;
+    }
+  }
+  let y = Foo@{z: 0 + a};
+  y.z = 1 * a;
+  return y.z;
+}
+
+const newline: char = '\n';

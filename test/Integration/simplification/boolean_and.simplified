@@ -1,0 +1,15 @@
+fn b1(x: bool) -> bool {
+  return x;
+}
+
+fn b2(x: bool) -> bool {
+  return false;
+}
+
+fn b3(x: bool) -> bool {
+  return x;
+}
+
+fn b4(x: bool) -> bool {
+  return x && false;
+}

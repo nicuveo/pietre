@@ -1,0 +1,10 @@
+fn foo() {
+  let x: int = 0;
+  x =  x;
+  x += x;
+  x -= x;
+  x *= x;
+  x /= x;
+  x %= x;
+  x ^= x;
+}
