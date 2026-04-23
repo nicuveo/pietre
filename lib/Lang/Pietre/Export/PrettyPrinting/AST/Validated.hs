@@ -1,6 +1,7 @@
 module Lang.Pietre.Export.PrettyPrinting.AST.Validated
   ( prettyPrintText
   , prettyPrintHTML
+  , prettyPrintExpressionText
   ) where
 
 import "this" Prelude
@@ -41,6 +42,12 @@ prettyPrintHTML = prettyInterface
   >>> fmap htmlAnnotation
   >>> treeForm
   >>> renderHtml
+
+prettyPrintExpressionText :: Typed Expression -> Text
+prettyPrintExpressionText = prettyExpression
+  >>> runPrinter
+  >>> layoutSmart (LayoutOptions Unbounded)
+  >>> renderStrict
 
 
 --------------------------------------------------------------------------------
