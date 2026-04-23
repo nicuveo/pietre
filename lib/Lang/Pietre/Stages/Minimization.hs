@@ -28,38 +28,43 @@ type Rule = InstructionBuffer -> Maybe (InstructionBuffer)
 
 rules :: [Rule]
 rules =
-  [ mergeRolls
+  [ removeRedundantReturns
+  , removeRedundantBranches
+  , mergeRolls
   , removeRolls
   , reorganizeStack
-  , removeRedundantJumps
   , removeUnusedEntrances
   , replacePushByDuplicate
+  , removePushPop
   ]
 
 
 replacePushByDuplicate :: Rule
-replacePushByDuplicate = applyOnAllSuffixes $ segmented 2 \case
+replacePushByDuplicate = applyOnRightMost $ segmented 2 \case
   [PushInt x, PushInt y]
     | x == y
     -> Just [PushInt x, Duplicate]
+  [PushAddr x, PushAddr y]
+    | x == y
+    -> Just [PushAddr x, Duplicate]
   _ -> Nothing
 
 mergeRolls :: Rule
-mergeRolls = applyOnAllPrefixes $ segmented 6 \case
+mergeRolls = applyOnLeftMost $ segmented 6 \case
   [PushInt depth1, PushInt steps1, Roll, PushInt depth2, PushInt steps2, Roll]
     | depth1 == depth2
     -> Just [PushInt depth1, PushInt (steps1 + steps2), Roll]
   _ -> Nothing
 
 removeRolls :: Rule
-removeRolls = applyOnAllPrefixes $ segmented 3 \case
+removeRolls = applyOnLeftMost $ segmented 3 \case
   [PushInt depth, PushInt steps, Roll]
-    | steps == 0 || steps == depth
+    | (steps `mod` depth) == 0
     -> Just []
   _ -> Nothing
 
 reorganizeStack :: Rule
-reorganizeStack = applyOnAllPrefixes \s -> case Seq.spanl isPush s of
+reorganizeStack = applyOnLeftMost \s -> case Seq.spanl isPush s of
   (viewr -> (viewr -> lhs :> PushInt depth) :> PushInt steps, viewl -> Roll :< rhs)
     | depth <= Seq.length lhs
     -> Just $ roll depth steps lhs <> rhs
@@ -74,11 +79,25 @@ reorganizeStack = applyOnAllPrefixes \s -> case Seq.spanl isPush s of
           (segment1, segment2) = Seq.splitAt (depth - steps) rolled
       in lhs <> segment2 <> segment1
 
-removeRedundantJumps :: Rule
-removeRedundantJumps = applyOnAllPrefixes $ segmented 3 \case
+removeRedundantReturns :: Rule
+removeRedundantReturns = applyOnLeftMost $ segmented 3 \case
   [PushAddr addr1, Return, Entrance addr2]
     | addr1 == addr2
     -> Just [Entrance addr2]
+  _ -> Nothing
+
+removeRedundantBranches :: Rule
+removeRedundantBranches = applyOnLeftMost $ segmented 7 \case
+  [PushAddr addr1, PushInt 2, PushInt 1, Roll, Branch, Pop, Entrance addr2]
+    | addr1 == addr2
+    -> Just [Pop, Entrance addr2]
+  _ -> Nothing
+
+removePushPop :: Rule
+removePushPop = applyOnLeftMost $ segmented 2 \case
+  [PushAddr _, Pop] -> Just []
+  [PushInt  _, Pop] -> Just []
+  [Duplicate , Pop] -> Just []
   _ -> Nothing
 
 removeUnusedEntrances :: Rule
@@ -98,8 +117,8 @@ removeUnusedEntrances s =
       _ -> False
 
 
-applyOnAllPrefixes :: Rule -> Rule
-applyOnAllPrefixes rule = go Seq.Empty
+applyOnLeftMost :: Rule -> Rule
+applyOnLeftMost rule = go Seq.Empty
   where
     go lhs s = case rule s of
       Just newSeq -> Just (lhs <> newSeq)
@@ -107,8 +126,8 @@ applyOnAllPrefixes rule = go Seq.Empty
         EmptyL    -> Nothing
         x :< rest -> go (lhs |> x) rest
 
-applyOnAllSuffixes :: Rule -> Rule
-applyOnAllSuffixes rule = go Seq.Empty
+applyOnRightMost :: Rule -> Rule
+applyOnRightMost rule = go Seq.Empty
   where
     go lhs s = case viewl s of
       EmptyL    -> Nothing
