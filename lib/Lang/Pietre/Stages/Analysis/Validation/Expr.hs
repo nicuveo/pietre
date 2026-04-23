@@ -624,7 +624,7 @@ validateStructFunctionExpression =
 validateStructExpression
   :: (WithLocation Resolved.Expression -> Validate (Typed e))
   -> (    Validated.StructInfo ConcreteFunctor
-       -> (NonEmpty (Identifier, Typed e))
+       -> NonEmpty (Identifier, Typed e)
        -> e
      )
   -> Resolved.PathInfo

@@ -17,7 +17,7 @@ type Resolve = DiagnosisT (ReaderT ResolveInfo (State ResolveContext))
 
 type Scope = HashMap Path (NonEmpty Role)
 
-data ResolveInfo = ResolveInfo
+newtype ResolveInfo = ResolveInfo
   { _riDeclarationName :: BaseName
   }
 

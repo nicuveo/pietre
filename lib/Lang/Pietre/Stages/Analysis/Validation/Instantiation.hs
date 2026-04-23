@@ -121,9 +121,9 @@ validateExpressionStatement resolvedExpr = do
   validatedExpr <- validateFunctionExpression resolvedExpr
   unless (_typeInfo validatedExpr `typeMatches` UnitType) $
     case _typedValue validatedExpr of
-      FunctionCallExpr _ _ _ -> pass
-      VariableCallExpr _ _ _ -> pass
-      e                      -> warn $ WarningUnexpectedTopLevelExpression e
+      FunctionCallExpr {} -> pass
+      VariableCallExpr {} -> pass
+      e                   -> warn $ WarningUnexpectedTopLevelExpression e
   pure validatedExpr
 
 validateLetStatement

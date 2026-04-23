@@ -24,7 +24,7 @@ minimize instructions = go instructions rules
         Nothing      -> go buffer  rs
 
 
-type Rule = InstructionBuffer -> Maybe (InstructionBuffer)
+type Rule = InstructionBuffer -> Maybe InstructionBuffer
 
 rules :: [Rule]
 rules =

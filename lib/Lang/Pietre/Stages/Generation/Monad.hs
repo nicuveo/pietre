@@ -19,7 +19,7 @@ import Lang.Pietre.Stages.Generation.Stack  qualified as Stack
 
 type Generate = ReaderT GenerationInfo (State GenerationContext)
 
-data GenerationInfo = GenerationInfo
+newtype GenerationInfo = GenerationInfo
   { _giFunctionName :: Name
   }
 
@@ -124,7 +124,7 @@ appendRearrangeStack desiredStack = do
           uses gcStack Stack.head >>= \case
             Nothing -> pass
             Just r  -> do
-              let delta = (M.lookupDefault 0 r desiredContent) - (currentContent M.! r)
+              let delta = M.lookupDefault 0 r desiredContent - (currentContent M.! r)
               case compare delta 0 of
                 GT -> do
                   replicateM_ delta do

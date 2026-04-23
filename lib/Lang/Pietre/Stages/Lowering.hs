@@ -72,7 +72,7 @@ processBlock = \case
     if not reachable
     then do
       endBlock Panic
-      when (not $ null stmts) $
+      unless (null stmts) do
         -- emit warning: unreachable code
         unimplemented
     else do
@@ -82,7 +82,7 @@ processBlock = \case
       then do
         processBlock stmts
       else do
-        when (not $ null stmts) $
+        unless (null stmts) do
           -- emit warning: unreachable code
           unimplemented
 

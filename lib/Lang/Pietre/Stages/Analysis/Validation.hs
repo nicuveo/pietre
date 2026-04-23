@@ -65,7 +65,7 @@ validateDefinition baseName WithLocation {..} = do
     defStack <- use vsDefinitionStack
     if baseName `OSet.member` defStack
     then
-      fatal $ ErrorCyclicDefinition baseName $ snd $ L.break (== baseName) $ toList defStack
+      fatal $ ErrorCyclicDefinition baseName $ L.dropWhile (/= baseName) $ toList defStack
     else do
       vsDefinitionStack %= (OSet.|> baseName)
       result <- try performValidation

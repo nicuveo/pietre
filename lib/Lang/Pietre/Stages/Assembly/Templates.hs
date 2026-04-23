@@ -10,6 +10,7 @@ import Data.ByteString.Char8                      qualified as B
 import Data.Vector                                qualified as V
 import Graphics.Image                             qualified as I
 
+import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.Image
 import Lang.Pietre.Stages.Assembly.Color
 import Lang.Pietre.Stages.Assembly.Templates.Load
@@ -80,7 +81,7 @@ readTemplate s = Template (length rows) (maximum $ map length rows)
       'c' -> Relative 5 0
       'I' -> Relative 5 1
       'C' -> Relative 5 2
-      c   -> error $ "unknown character: '" ++ [c] ++ "'"
+      c   -> reportICE "readTemplate" ("unknown character: '" ++ [c] ++ "'") []
 
 makeImage :: Color -> Template -> Image
 makeImage startingColor Template{..} =

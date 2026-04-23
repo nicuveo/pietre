@@ -19,7 +19,7 @@ data Type
   | StructType BaseName [Type]
   | FunctionType [Type] (Maybe Type)
 
-data Function = Function
+newtype Function = Function
   { _funBlocks :: NonEmpty (Label, Block)
   }
   deriving Show

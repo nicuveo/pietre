@@ -186,7 +186,7 @@ buildTypeParameterMap expected actual =
       (Left identifier, _) ->
         pure [(identifier, a)]
       (Right (StructType structType), VoidType) -> do
-        concat <$> traverse (uncurry go) (map (, VoidType) $ _structTypeParams structType)
+        concat <$> traverse (uncurry go . (, VoidType)) (_structTypeParams structType)
       (_, VoidType) ->
         pure []
       (Right IntType, IntType) ->
@@ -229,7 +229,7 @@ validateTypePattern expected actual =
       (Just (StructType structType1), StructType structType2) -> do
         unless (_structBaseName structType1 == _structBaseName structType2) $
           fatal errorMessage
-        void $ zipWithM go (_structTypeParams structType1) (_structTypeParams structType2)
+        zipWithM_ go (_structTypeParams structType1) (_structTypeParams structType2)
       _ ->
         fatal errorMessage
 
