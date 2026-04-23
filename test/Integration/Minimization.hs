@@ -142,11 +142,11 @@ test = testGroup "remove push pop"
       []
   , run
       "remove push pop (x2)"
-      [PushInt 1, Pop, PushInt 2, Pop]
+      [PushInt 1, Pop, PushAddr mainFoo12, Pop]
       []
   , run
       "remove nested push pop"
-      [PushInt 1, PushInt 2, Pop, Pop]
+      [PushInt 1, PushAddr mainFoo12, Pop, Pop]
       []
   , run
       "remove duplicate pop"
@@ -194,10 +194,15 @@ test = testGroup "remove unused entrances"
       "do not remove a used entrance (jump after)"
       [Entrance mainFoo00, Entrance mainFoo12, Return, PushAddr mainFoo12, Return]
       [Entrance mainFoo00, Entrance mainFoo12, Return, PushAddr mainFoo12, Return]
+  , run
+      "only remove unused entrance"
+      [Entrance mainFoo00, PushAddr mainFoo12, Roll, Branch, Multiply, Entrance mainFoo12, Entrance mainFoo13, Return]
+      [Entrance mainFoo00, PushAddr mainFoo12, Roll, Branch, Multiply, Entrance mainFoo12, Return]
   ]
   where
     mainFoo00 = (Name (BaseName ["Main"] "foo") [], Label 0 0)
     mainFoo12 = (Name (BaseName ["Main"] "foo") [], Label 1 2)
+    mainFoo13 = (Name (BaseName ["Main"] "foo") [], Label 1 3)
 
 test = testGroup "combined"
   [ run
