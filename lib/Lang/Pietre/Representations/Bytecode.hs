@@ -13,6 +13,8 @@ data LinkerPhase = Unresolved | Resolved
 class
   ( Show (PushAddress     p)
   , Show (EntranceAddress p)
+  , Eq   (PushAddress     p)
+  , Eq   (EntranceAddress p)
   ) => PhaseTypes (p :: LinkerPhase) where
   type PushAddress     p :: Type
   type EntranceAddress p :: Type
@@ -51,6 +53,7 @@ data Instruction (phase :: LinkerPhase)
   | Terminate
 
 deriving instance PhaseTypes p => Show (Instruction p)
+deriving instance PhaseTypes p => Eq   (Instruction p)
 
 
 type InstructionBuffer = Seq (Instruction Unresolved)
