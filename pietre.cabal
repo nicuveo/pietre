@@ -282,6 +282,7 @@ test-suite tests
       Prelude
       Arbitrary
       Compile
+      Integration.Minimization
       Integration.Parsing
       Integration.Simplification
       Locate
