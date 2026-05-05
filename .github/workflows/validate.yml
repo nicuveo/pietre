@@ -23,7 +23,7 @@ jobs:
       haskell-files-text: ${{ steps[format('{0}-files', github.event_name)].outputs.text }}
       haskell-files-json: ${{ steps[format('{0}-files', github.event_name)].outputs.json }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - id: pr_changed_files
         if: ${{ github.event_name == 'pull_request' }}
         uses: tj-actions/changed-files@v45
@@ -52,7 +52,7 @@ jobs:
     needs: generate-file-list
     if: needs.generate-file-list.outputs.haskell-files-text
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: haskell-actions/hlint-setup@v2
       - uses: haskell-actions/hlint-run@v2
         with:
@@ -67,7 +67,7 @@ jobs:
     needs: generate-file-list
     if: needs.generate-file-list.outputs.haskell-files-text
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: "Run stylish-haskell"
         env:
           TARGETS: ${{ needs.generate-file-list.outputs.haskell-files-text }}
@@ -82,7 +82,19 @@ jobs:
     name: "build"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Download npiet
+        uses: actions/checkout@v6
+        with:
+          repository: gleitz/npiet
+          path: npiet
+      - name: Install npiet
+        run: |
+          cd npiet
+          sudo apt install libgd-dev groff
+          ./configure
+          make
+          sudo make install
+      - uses: actions/checkout@v6
       - uses: freckle/stack-action@v5
         with:
           stack-build-arguments: ""
