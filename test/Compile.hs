@@ -2,7 +2,7 @@ module Compile
   ( parse
   , analyze
   , simplify
-  , runTestCompiler
+  , runTest
   ) where
 
 import "this" Prelude
@@ -12,6 +12,7 @@ import Data.Text                              qualified as T
 import System.FilePath
 
 import Lang.Pietre.Internal.Diagnosis
+import Lang.Pietre.Pipeline.Monad
 import Lang.Pietre.Representations.AST.Parsed
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Interface
@@ -24,17 +25,29 @@ import Lang.Pietre.Stages.Simplification
 --------------------------------------------------------------------------------
 -- Public API
 
-type TestCompiler m =
-  ( MonadReader FilePath m
-  , MonadDiagnosis m
-  )
+newtype TestRun a = TestRun (ReaderT FilePath (DiagnosisT (State InMemoryFileSystem)) a)
+  deriving
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadReader FilePath
+    , MonadState  InMemoryFileSystem
+    , MonadDiagnosis
+    )
 
-parse :: TestCompiler m => Text -> m Module
+type InMemoryFileSystem = HashMap FilePath Text
+
+instance MonadFileSystem TestRun where
+  doesFileExist  = gets     . M.member
+  readSourceFile = gets     . M.lookup
+  writeToFile    = modify ... M.insert
+
+parse :: Text -> TestRun Module
 parse source = do
   filename <- ask
   parseModule filename source
 
-analyze :: TestCompiler m => Module -> m Interface
+analyze :: Module -> TestRun Interface
 analyze parsedModule = do
   name <- moduleName
   analyzeModule
@@ -45,17 +58,21 @@ analyze parsedModule = do
     name
     parsedModule
 
-simplify :: TestCompiler m => Interface -> m Interface
+simplify :: Interface -> TestRun Interface
 simplify = pure . simplifyModule
 
 
-runTestCompiler
+runTest
   :: FilePath
-  -> ReaderT FilePath Diagnosis a
-  -> Either String a
-runTestCompiler filename action =
-  let (diagnostics, result) = runDiagnosis (runReaderT action filename)
-  in  case result of
+  -> InMemoryFileSystem
+  -> TestRun a
+  -> (InMemoryFileSystem, Either String a)
+runTest filename files (TestRun action) =
+  let ((diagnostics, result), fileResult) = action
+        & flip runReaderT filename
+        & runDiagnosisT
+        & flip runState files
+  in  (fileResult,) $ case result of
         Nothing    -> Left $ show diagnostics
         Just value -> Right value
 
@@ -63,7 +80,7 @@ runTestCompiler filename action =
 --------------------------------------------------------------------------------
 -- Local helpers
 
-moduleName :: TestCompiler m => m ModuleName
+moduleName :: TestRun ModuleName
 moduleName = do
   filename <- ask
   pure $ pure $ Identifier $ T.pack $ takeBaseName filename

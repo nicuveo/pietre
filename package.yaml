@@ -121,3 +121,4 @@ tests:
       - tasty-golden
       - tasty-quickcheck
       - tasty-autocollect
+      - process

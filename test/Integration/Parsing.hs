@@ -47,4 +47,4 @@ parseModule
   -> Text
   -> Module
 parseModule filePath sourceCode =
-  either error id $ runTestCompiler filePath $ parse sourceCode
+  either error id $ snd $ runTest filePath mempty $ parse sourceCode

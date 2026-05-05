@@ -1,0 +1,19 @@
+fn main() {
+    write_int(fibo(read_int()));
+    write_char('\n');
+}
+
+fn fibo(n: int) -> int {
+    if n == 0 {
+        return 0;
+    }
+    let prev = 0;
+    let current = 1;
+    while n > 1 {
+        let tmp = current;
+        current += prev;
+        prev = tmp;
+        n -= 1;
+    }
+    return current;
+}

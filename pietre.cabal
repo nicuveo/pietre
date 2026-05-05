@@ -282,6 +282,7 @@ test-suite tests
       Prelude
       Arbitrary
       Compile
+      E2E.Examples
       Integration.Minimization
       Integration.Parsing
       Integration.Simplification
@@ -338,6 +339,7 @@ test-suite tests
     , pietre
     , prettyprinter
     , prettyprinter-lucid
+    , process
     , tasty
     , tasty-autocollect
     , tasty-golden
