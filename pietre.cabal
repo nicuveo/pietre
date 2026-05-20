@@ -35,6 +35,7 @@ library
       Lang.Pietre.Export.HTML.AST.Parsed
       Lang.Pietre.Export.HTML.AST.Validated
       Lang.Pietre.Export.HTML.Common
+      Lang.Pietre.Export.JSON.Diagnostic
       Lang.Pietre.Export.PrettyPrinting.AST.Parsed
       Lang.Pietre.Export.PrettyPrinting.AST.Parsed.Rendering
       Lang.Pietre.Export.PrettyPrinting.AST.Validated
@@ -126,7 +127,8 @@ library
       alex:alex
     , happy:happy
   build-depends:
-      array
+      aeson
+    , array
     , base
     , bytestring
     , containers
@@ -187,7 +189,8 @@ executable gramviz
       ViewPatterns
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      array
+      aeson
+    , array
     , base
     , bytestring
     , containers
@@ -249,7 +252,8 @@ executable pc
       ViewPatterns
   ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wpartial-fields -Wredundant-constraints -Wtabs -Wno-unused-do-bind -fhide-source-paths -foptimal-applicative-do -funbox-small-strict-fields -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      array
+      aeson
+    , array
     , base
     , bytestring
     , containers
@@ -322,7 +326,8 @@ test-suite tests
   build-tool-depends:
       tasty-autocollect:tasty-autocollect
   build-depends:
-      array
+      aeson
+    , array
     , base
     , bytestring
     , containers

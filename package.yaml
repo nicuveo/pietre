@@ -51,6 +51,7 @@ default-extensions:
 
 dependencies:
   - base
+  - aeson
   - array
   - bytestring
   - containers
