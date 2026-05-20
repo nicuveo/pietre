@@ -35,7 +35,6 @@ data Message
   | ErrorFileNotFound FilePath
   | ErrorModuleNotFound ModuleName
   | ErrorAmbiguousModule ModuleName (Seq FilePath)
-  | ErrorImportPath ModuleName
   | ErrorImportSymbol ModuleName Identifier
   | ErrorMultipleDeclaration Identifier (NonEmpty Location)
   | ErrorRoleNotFound Path

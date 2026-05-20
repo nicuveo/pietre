@@ -9,6 +9,7 @@ import Data.List.NonEmpty                                    qualified as NE
 
 import Lang.Pietre.Batteries.BuiltIn
 import Lang.Pietre.Internal.Diagnosis
+import Lang.Pietre.Internal.ICE
 import Lang.Pietre.Representations.AST.Common
 import Lang.Pietre.Representations.AST.Parsed                as Parsed
 import Lang.Pietre.Representations.AST.Resolved              as Resolved
@@ -40,7 +41,10 @@ createImportedScope moduleInterfaces imports = do
       exportedIdentifiers <-
         fmap _interfaceExported $
           M.lookup _importPath moduleInterfaces `onNothing`
-            reportError (mkDiagnostic $ ErrorImportPath _importPath)
+            reportICE
+              "createImportedScope"
+              "could not find imported module"
+              ["path: " ++ show _importPath]
       M.singleton _importPath . M.fromListWith (<>) <$> case _importType of
         Qualified Nothing ->
           pure $ M.toList exportedIdentifiers <&> \(identifier, role) ->
