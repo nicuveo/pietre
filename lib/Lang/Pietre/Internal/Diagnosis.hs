@@ -73,7 +73,8 @@ data Message
   | ErrorDivideByZero
   | ErrorNegativeExponent
   | ErrorReferenceNotLocalVariable Validated.Expression
-  | ErrorFunctionCallArgExpectingReference Identifier
+  | ErrorFunctionCallArgExpectingReference BaseName Identifier Resolved.Expression
+  | ErrorFunctionCallArgNotExpectingReference BaseName Identifier
   | ErrorNoMainSymbol
   | ErrorSymbolNotFound Name
   | WarningNameShadow (NonEmpty Role) Identifier Role

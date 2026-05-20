@@ -512,7 +512,7 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
       validatedArgs <-
         ensureNested $ for (zip _funArgs functionArgs) \((argName, argType), argExpression) ->
           tryNested do
-            (actualType, validatedArg) <- validateFunctionCallArgument @ConcreteFunctor (argName, argType) argExpression
+            (actualType, validatedArg) <- validateFunctionCallArgument @ConcreteFunctor fakeName (argName, argType) argExpression
             expectType actualType $ _typeInfo validatedArg
             pure validatedArg
 
@@ -528,7 +528,7 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
 
       -- validate arguments
       validatedFunctionArgs <- ensureNested $ fmap2 snd $ zipWithM
-        (tryNested ... validateFunctionCallArgument @ParameterizedFunctor)
+        (tryNested ... validateFunctionCallArgument @ParameterizedFunctor functionBaseName)
         _funArgs
         functionArgs
 
@@ -567,13 +567,18 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
       pure $ Typed validatedReturnType $ FunctionCallExpr functionName concreteFunctionTypeInfo validatedFunctionArgs
 
     validateFunctionCallArgument
-      :: (Identifier, FunctionArgType (TypeTree f))
+      :: BaseName
+      -> (Identifier, FunctionArgType (TypeTree f))
       -> WithLocation Resolved.Expression
       -> Validate (TypeTree f, Typed Validated.Expression)
-    validateFunctionCallArgument (argName, argType) argExpression =
+    validateFunctionCallArgument functionName (argName, argType) argExpression =
       case argType of
         Validated.ByValue actualType ->
-          (actualType,) <$> validateFunctionExpression argExpression
+          case _located argExpression of
+            ReferenceExpr _ -> do
+              fatal $ ErrorFunctionCallArgNotExpectingReference functionName argName
+            _ ->
+              (actualType,) <$> validateFunctionExpression argExpression
         Validated.ByReference actualType ->
           case _located argExpression of
             ReferenceExpr subExpr -> do
@@ -582,8 +587,8 @@ validateFunctionCallExpression PathInfo {..} functionArgs =
                 LocalVariableExpr     _ -> pure (actualType, validatedSubExpr)
                 ReferenceArgumentExpr _ -> pure (actualType, validatedSubExpr)
                 invalidExpr -> fatal $ ErrorReferenceNotLocalVariable invalidExpr
-            _ ->
-              fatal $ ErrorFunctionCallArgExpectingReference argName
+            expr ->
+              fatal $ ErrorFunctionCallArgExpectingReference functionName argName expr
 
     validateParam
       :: HashMap Identifier [ConcreteType]
