@@ -250,7 +250,7 @@ validateLValueExpression WithLocation {..} = do
     Resolved.IndexExpr _ _ ->
       unimplemented
     incorrectExpression ->
-      fatal $ ErrorRValueAssignment incorrectExpression
+      fatal $ ErrorInvalidLValue incorrectExpression
 
 validateRangeExpression
   :: WithLocation Resolved.Expression

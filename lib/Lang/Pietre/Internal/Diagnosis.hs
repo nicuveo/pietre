@@ -45,6 +45,7 @@ data Message
   | ErrorNotAnLValue Role
   | ErrorNotAFunctionRole Role
   | ErrorNotAFunctionType ConcreteType
+  | ErrorInvalidLValue Resolved.Expression
   | ErrorAmbiguousPath Path (NonEmpty Role)
   | ErrorCyclicDefinition BaseName [BaseName]
   | ErrorIncorrectTypeParameterCount BaseName Int Int
@@ -74,7 +75,6 @@ data Message
   | ErrorNegativeExponent
   | ErrorReferenceNotLocalVariable Validated.Expression
   | ErrorFunctionCallArgExpectingReference Identifier
-  | ErrorRValueAssignment Resolved.Expression
   | ErrorTypeParametersToTypeParameter Identifier
   | ErrorNoMainSymbol
   | ErrorSymbolNotFound Name
