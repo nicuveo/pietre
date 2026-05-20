@@ -158,7 +158,7 @@ createBuildPlan
   => ModuleName
   -> FilePath
   -> Compile m (Seq (ModuleName, FilePath, Module))
-createBuildPlan mainName mainPath = go Seq.empty Nothing mainName mainPath
+createBuildPlan = go Seq.empty Nothing
   where
     go parents importLocation moduleName sourcePath = do
       let

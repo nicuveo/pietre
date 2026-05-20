@@ -379,8 +379,8 @@ validateFunctionCastExpression validatedExpr targetType =
   where
     resultWith f =
       case _typedValue validatedExpr of
+        Validated.IntLiteralExpr  i -> f i
         Validated.BoolLiteralExpr b -> f $ fromEnum b
-        Validated.IntLiteralExpr  i -> f $ i
         Validated.CharLiteralExpr c -> f $ ord c
         _                          -> pure $ Validated.CastExpr validatedExpr targetType
     intResult =
