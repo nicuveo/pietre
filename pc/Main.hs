@@ -2,15 +2,16 @@ module Main where
 
 import "this" Prelude
 
-import Control.Exception              qualified as CE
-import Data.Text.IO                   qualified as T
-import Graphics.Image                 qualified as I
-import Options.Applicative            hiding (action)
-import System.Directory               qualified as SD
+import Control.Exception                            qualified as CE
+import Data.Text.IO                                 qualified as T
+import Graphics.Image                               qualified as I
+import Options.Applicative                          hiding (action)
+import System.Directory                             qualified as SD
 import System.Exit
 import System.FilePath
 
 import Lang.Pietre
+import Lang.Pietre.Export.PrettyPrinting.Diagnostic
 import Lang.Pietre.Internal.Diagnosis
 
 
@@ -50,5 +51,5 @@ main = do
     image <- compileBinary options flags mainFile
     let programName = fromMaybe "program.png" $ _coOutput options
     liftIO $ I.writeImageExact I.PNG [] programName image
-  traverse_ print diagnostics
+  traverse_ (T.putStrLn . prettyPrint) diagnostics
   maybe exitFailure (const exitSuccess) result
