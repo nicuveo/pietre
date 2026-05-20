@@ -10,13 +10,14 @@ import Options.Applicative
 
 
 data CompilerOptions = CompilerOptions
-  { _coVerbose        :: Bool
-  , _coIncludePaths   :: Seq FilePath
-  , _coExportAST      :: Maybe FilePath
-  , _coExportIR       :: Maybe FilePath
-  , _coExportBytecode :: Maybe FilePath
-  , _coExportBinary   :: Maybe FilePath
-  , _coOutput         :: Maybe FilePath
+  { _coVerbose         :: Bool
+  , _coJSONDiagnostics :: Bool
+  , _coIncludePaths    :: Seq FilePath
+  , _coExportAST       :: Maybe FilePath
+  , _coExportIR        :: Maybe FilePath
+  , _coExportBytecode  :: Maybe FilePath
+  , _coExportBinary    :: Maybe FilePath
+  , _coOutput          :: Maybe FilePath
   } deriving Show
 
 data CompilerFlags = CompilerFlags
@@ -35,6 +36,10 @@ optionsParser = do
     [ short 'v'
     , long "verbose"
     , help "print debug options"
+    ]
+  _coJSONDiagnostics <- switch $ mconcat
+    [ long "json-diagnostics"
+    , help "serialize diagnostics as JSON"
     ]
   _coOutput <- optional $ strOption $ mconcat
     [ short 'o'
