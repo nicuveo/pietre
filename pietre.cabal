@@ -38,6 +38,7 @@ library
       Lang.Pietre.Export.PrettyPrinting.AST.Parsed
       Lang.Pietre.Export.PrettyPrinting.AST.Validated
       Lang.Pietre.Export.PrettyPrinting.AST.Validated.Monad
+      Lang.Pietre.Export.PrettyPrinting.Diagnostic
       Lang.Pietre.Internal.Diagnosis
       Lang.Pietre.Internal.Encoding
       Lang.Pietre.Internal.HKT
