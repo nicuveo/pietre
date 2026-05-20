@@ -64,7 +64,8 @@ data Message
   | ErrorFieldAccessNotAStruct ConcreteType
   | ErrorFieldAccessFieldNotFound ConcreteType Identifier
   | ErrorReservedIdentifier Identifier
-  | ErrorPlaceholder Text
+  | ErrorRootPlaceholder
+  | ErrorInvalidPlaceholder
   | ErrorFunctionDuplicatedArg Identifier
   | ErrorBreakNotInLoop
   | ErrorContinueNotInLoop

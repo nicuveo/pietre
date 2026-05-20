@@ -54,7 +54,7 @@ validateNonEmptyPartialType
   -> Validate (TypeNode PartialFunctor)
 validateNonEmptyPartialType path =
   validatePartialType path `onNothingM`
-    fatal (ErrorPlaceholder "placeholder at root")
+    fatal ErrorRootPlaceholder
 
 validatePartialType
   :: Resolved.PathInfo
@@ -107,7 +107,7 @@ validateParameterizedType = go M.empty
         TypeParameter _ paramName ->
           pure $ Left paramName
         Placeholder ->
-          fatal $ ErrorPlaceholder unimplemented
+          fatal ErrorInvalidPlaceholder
         _ ->
           fatal $ ErrorNotAType _pathBase
     validateStructType baseName actualParams = do
