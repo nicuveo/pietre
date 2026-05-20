@@ -5,26 +5,25 @@ module Lang.Pietre.Pipeline.Compile (compileBinary) where
 import "this" Prelude
 
 import Control.Lens
-import Control.Monad.Extra                             (whenJustM)
-import Data.HashMap.Strict                             qualified as M
-import Data.List                                       qualified as L
-import Data.List.NonEmpty                              qualified as NE
-import Data.Sequence                                   qualified as Seq
-import Data.Text                                       qualified as T
+import Control.Monad.Extra                    (whenJustM)
+import Data.HashMap.Strict                    qualified as M
+import Data.List                              qualified as L
+import Data.List.NonEmpty                     qualified as NE
+import Data.Sequence                          qualified as Seq
+import Data.Text                              qualified as T
 import Data.Tuple.Extra
 import System.FilePath
 
 import Lang.Pietre.Batteries.Prelude
-import Lang.Pietre.Export.Bytecode
-import Lang.Pietre.Export.HTML
-import Lang.Pietre.Export.IR.Dot
-import Lang.Pietre.Export.PrettyPrinting.AST.Validated
+import Lang.Pietre.Export.Dot.IR
+import Lang.Pietre.Export.HTML.AST.Validated
+import Lang.Pietre.Export.Text.Bytecode
 import Lang.Pietre.Internal.Diagnosis
 import Lang.Pietre.Pipeline.Monad
 import Lang.Pietre.Pipeline.Options
 import Lang.Pietre.Representations.AST.Parsed
-import Lang.Pietre.Representations.Binary              (Binary)
-import Lang.Pietre.Representations.Bytecode            (Object)
+import Lang.Pietre.Representations.Binary     (Binary)
+import Lang.Pietre.Representations.Bytecode   (Object)
 import Lang.Pietre.Representations.Identifier
 import Lang.Pietre.Representations.Image
 import Lang.Pietre.Representations.Interface
@@ -116,7 +115,7 @@ exportAST
   -> FilePath
   -> Compile m ()
 exportAST moduleName interface folder = do
-  writeToFile (generateDebugPath moduleName folder ".html") (renderHTML $ prettyPrintHTML interface)
+  writeToFile (generateDebugPath moduleName folder ".html") (renderHTML interface)
 
 exportIR
   :: (MonadFileSystem m)

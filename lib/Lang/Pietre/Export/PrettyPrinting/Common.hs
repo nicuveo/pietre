@@ -1,4 +1,4 @@
-module Lang.Pietre.Export.PrettyPrinting.AST.Common where
+module Lang.Pietre.Export.PrettyPrinting.Common where
 
 import "this" Prelude
 

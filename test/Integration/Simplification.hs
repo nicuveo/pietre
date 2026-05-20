@@ -67,4 +67,4 @@ test_batch = do
     for_ allNames \name -> do
       let refExprs  = expressions $ refSymbols  M.! name
           testExprs = expressions $ testSymbols M.! name
-      zipWithM ((@?=) `on` prettyPrintExpressionText) testExprs refExprs
+      zipWithM ((@?=) `on` prettyPrintExpression) testExprs refExprs

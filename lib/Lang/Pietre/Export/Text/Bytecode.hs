@@ -1,4 +1,4 @@
-module Lang.Pietre.Export.Bytecode
+module Lang.Pietre.Export.Text.Bytecode
   ( renderBytecode
   , renderBinary
   ) where

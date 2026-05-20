@@ -31,14 +31,18 @@ library
       Lang.Pietre
       Lang.Pietre.Batteries.BuiltIn
       Lang.Pietre.Batteries.Prelude
-      Lang.Pietre.Export.Bytecode
-      Lang.Pietre.Export.HTML
-      Lang.Pietre.Export.IR.Dot
-      Lang.Pietre.Export.PrettyPrinting.AST.Common
+      Lang.Pietre.Export.Dot.IR
+      Lang.Pietre.Export.HTML.AST.Parsed
+      Lang.Pietre.Export.HTML.AST.Validated
+      Lang.Pietre.Export.HTML.Common
       Lang.Pietre.Export.PrettyPrinting.AST.Parsed
+      Lang.Pietre.Export.PrettyPrinting.AST.Parsed.Rendering
       Lang.Pietre.Export.PrettyPrinting.AST.Validated
       Lang.Pietre.Export.PrettyPrinting.AST.Validated.Monad
+      Lang.Pietre.Export.PrettyPrinting.AST.Validated.Rendering
+      Lang.Pietre.Export.PrettyPrinting.Common
       Lang.Pietre.Export.PrettyPrinting.Diagnostic
+      Lang.Pietre.Export.Text.Bytecode
       Lang.Pietre.Internal.Diagnosis
       Lang.Pietre.Internal.Encoding
       Lang.Pietre.Internal.HKT

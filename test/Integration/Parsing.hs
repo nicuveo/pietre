@@ -32,13 +32,13 @@ test_batch = do
     pure
       $ T.encodeUtf8
       $ T.fromStrict
-      $ prettyPrintText
+      $ prettyPrint
       $ parseModule testInputFile source
 
 test_prop :: Module -> Property
 test_prop "round-trip" m =
-  let print1 = prettyPrintText m
-      print2 = prettyPrintText $ parseModule "" print1
+  let print1 = prettyPrint m
+      print2 = prettyPrint $ parseModule "" print1
   in  print1 === print2
 
 

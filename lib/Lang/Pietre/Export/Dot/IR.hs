@@ -1,4 +1,4 @@
-module Lang.Pietre.Export.IR.Dot (renderIR) where
+module Lang.Pietre.Export.Dot.IR (renderIR) where
 
 import "this" Prelude
 
