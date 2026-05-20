@@ -3,6 +3,8 @@ module Main where
 import "this" Prelude
 
 import Control.Exception                            qualified as CE
+import Data.Aeson                                   (encode)
+import Data.ByteString.Lazy                         qualified as BS
 import Data.Text.IO                                 qualified as T
 import Graphics.Image                               qualified as I
 import Options.Applicative                          hiding (action)
@@ -11,6 +13,7 @@ import System.Exit
 import System.FilePath
 
 import Lang.Pietre
+import Lang.Pietre.Export.JSON.Diagnostic
 import Lang.Pietre.Export.PrettyPrinting.Diagnostic
 import Lang.Pietre.Internal.Diagnosis
 
@@ -46,10 +49,14 @@ programOptions = info (optionsParser <**> helper) $ mconcat
 
 main :: IO ()
 main = do
+  (options, flags, mainFile) <- execParser programOptions
   (diagnostics, result) <- execute do
-    (options, flags, mainFile) <- liftIO $ execParser programOptions
     image <- compileBinary options flags mainFile
     let programName = fromMaybe "program.png" $ _coOutput options
     liftIO $ I.writeImageExact I.PNG [] programName image
-  traverse_ (T.putStrLn . prettyPrint) diagnostics
+  if _coJSONDiagnostics options
+  then
+    BS.putStr $ encode $ serialize diagnostics
+  else
+    traverse_ (T.putStrLn . prettyPrint) diagnostics
   maybe exitFailure (const exitSuccess) result
