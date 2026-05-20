@@ -33,7 +33,7 @@ data Message
   | ErrorParsing Token [String]
   | ErrorCircularImport ModuleName (Seq ModuleName)
   | ErrorFileNotFound FilePath
-  | ErrorModuleNotFound ModuleName
+  | ErrorModuleNotFound ModuleName (Seq FilePath)
   | ErrorAmbiguousModule ModuleName (Seq FilePath)
   | ErrorImportSymbol ModuleName Identifier
   | ErrorMultipleDeclaration Identifier (NonEmpty Location)

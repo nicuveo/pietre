@@ -191,7 +191,7 @@ locateSourceFile importLocation moduleName = do
     [filePath] ->
       pure filePath
     [] ->
-      throwDiagnostic $ ErrorModuleNotFound moduleName
+      throwDiagnostic $ ErrorModuleNotFound moduleName includePaths
     filePaths ->
       throwDiagnostic $ ErrorAmbiguousModule moduleName filePaths
   where
