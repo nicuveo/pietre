@@ -28,8 +28,7 @@ data Diagnostic = Diagnostic
   } deriving Show
 
 data Message
-  = ErrorNoMainProvided
-  | ErrorLexing
+  = ErrorLexing
   | ErrorParsing Token [String]
   | ErrorCircularImport ModuleName (Seq ModuleName)
   | ErrorFileNotFound FilePath
@@ -75,7 +74,6 @@ data Message
   | ErrorNegativeExponent
   | ErrorReferenceNotLocalVariable Validated.Expression
   | ErrorFunctionCallArgExpectingReference Identifier
-  | ErrorTypeParametersToTypeParameter Identifier
   | ErrorNoMainSymbol
   | ErrorSymbolNotFound Name
   | WarningNameShadow (NonEmpty Role) Identifier Role
