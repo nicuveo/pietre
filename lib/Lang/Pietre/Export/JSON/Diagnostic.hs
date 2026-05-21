@@ -51,7 +51,7 @@ instance {-# OVERLAPPABLE #-} (Foldable t, Serialize a) => Serialize (t a) where
 instance Serialize Diagnostic where
   visit Diagnostic {..} = case _diagnosticMessage of
     ErrorLexing                                                                          -> go "errors"   "Lexing"                               $ object []
-    ErrorParsing                              actual expected                            -> go "errors"   "Parsing"                              $ object ["actual" .= visit actual, "expected" .= visit expected]
+    ErrorParsing                              actual expected                            -> go "errors"   "Parsing"                              $ object ["actual" .= visit actual, "expected" .= visitTokens expected]
     ErrorCircularImport                       moduleName path                            -> go "errors"   "CircularImport"                       $ object ["module name" .= visit moduleName, "path" .= visit path]
     ErrorFileNotFound                         path                                       -> go "errors"   "FileNotFound"                         $ object ["path" .= visit path]
     ErrorModuleNotFound                       moduleName includePaths                    -> go "errors"   "ModuleNotFound"                       $ object ["module name" .= visit moduleName, "include paths" .= visit includePaths]
@@ -113,6 +113,8 @@ instance Serialize Diagnostic where
             ]
         in
           object [kind .= [innerObject]]
+      visitTokens :: [String] -> Value
+      visitTokens = toJSON . map (filter (/= '"'))
 
 instance Serialize Token where
   visit = \case
