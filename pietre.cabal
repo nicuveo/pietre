@@ -291,6 +291,7 @@ test-suite tests
       Prelude
       Arbitrary
       Compile
+      E2E.Errors
       E2E.Examples
       Integration.Minimization
       Integration.Parsing
