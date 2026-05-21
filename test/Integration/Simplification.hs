@@ -58,7 +58,7 @@ test_batch = do
   pure $ testCase testName do
     source     <- T.readFile sourceFile
     simplified <- T.readFile simplifiedFile
-    let run action = snd (runTest fakeFilename mempty action) `onLeft` assertFailure
+    let run = fmap fst . runTestOrFail fakeFilename mempty
     reference  <- run (parse simplified >>= analyze)
     testValue  <- run (parse source     >>= analyze >>= simplify)
     let testSymbols = _interfaceSymbols testValue

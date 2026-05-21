@@ -29,22 +29,23 @@ test_batch = do
     goldenFile = testInputFile -<.> "golden"
   pure $ goldenVsString testName goldenFile do
     source <- T.readFile testInputFile
+    parsedModule <- parseModule testInputFile source
     pure
       $ T.encodeUtf8
       $ T.fromStrict
       $ prettyPrint
-      $ parseModule testInputFile source
+      $ parsedModule
 
 test_prop :: Module -> Property
-test_prop "round-trip" m =
+test_prop "round-trip" m = ioProperty do
   let print1 = prettyPrint m
-      print2 = prettyPrint $ parseModule "" print1
-  in  print1 === print2
+  print2 <- prettyPrint <$> parseModule "" print1
+  pure $ print1 === print2
 
 
 parseModule
   :: FilePath
   -> Text
-  -> Module
+  -> IO Module
 parseModule filePath sourceCode =
-  either error id $ snd $ runTest filePath mempty $ parse sourceCode
+  fmap fst $ runTestOrFail filePath mempty $ parse sourceCode
