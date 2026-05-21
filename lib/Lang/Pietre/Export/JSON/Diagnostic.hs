@@ -118,67 +118,67 @@ instance Serialize Diagnostic where
 
 instance Serialize Token where
   visit = \case
-    TKeywordAs              -> "keyword 'as'"
-    TKeywordBreak           -> "keyword 'break'"
-    TKeywordConst           -> "keyword 'const'"
-    TKeywordContinue        -> "keyword 'continue'"
-    TKeywordElse            -> "keyword 'else'"
-    TKeywordEnum            -> "keyword 'enum'"
-    TKeywordFalse           -> "keyword 'false'"
-    TKeywordFn              -> "keyword 'fn'"
-    TKeywordFor             -> "keyword 'for'"
-    TKeywordIf              -> "keyword 'if'"
-    TKeywordIn              -> "keyword 'in'"
-    TKeywordLet             -> "keyword 'let'"
-    TKeywordReturn          -> "keyword 'return'"
-    TKeywordStruct          -> "keyword 'struct'"
-    TKeywordTrue            -> "keyword 'true'"
-    TKeywordType            -> "keyword 'type'"
-    TKeywordUse             -> "keyword 'use'"
-    TKeywordWhile           -> "keyword 'while'"
-    TOperatorAt             -> "operator '@'"
-    TOperatorSemicolon      -> "operator ';'"
-    TOperatorType           -> "operator '::'"
-    TOperatorStar           -> "operator '*'"
-    TOperatorComma          -> "operator ','"
-    TOperatorAssign         -> "operator '='"
-    TOperatorColon          -> "operator '@'"
-    TOperatorArrow          -> "operator '->'"
-    TOperatorLessThan       -> "operator '<'"
-    TOperatorGreaterThan    -> "operator '>'"
-    TOperatorDot            -> "operator '.'"
-    TOperatorRangeInclusive -> "operator '..='"
-    TOperatorRangeExclusive -> "operator '..'"
-    TOperatorReference      -> "operator '&'"
-    TOperatorNot            -> "operator '!'"
-    TOperatorMinus          -> "operator '-'"
-    TOperatorPlus           -> "operator '+'"
-    TOperatorDiv            -> "operator '/'"
-    TOperatorMod            -> "operator '%'"
-    TOperatorPow            -> "operator '^'"
-    TOperatorEqual          -> "operator '=='"
-    TOperatorDiff           -> "operator '!='"
-    TOperatorGreaterOrEqual -> "operator '>='"
-    TOperatorLessOrEqual    -> "operator '<='"
-    TOperatorBoolAnd        -> "operator '&&'"
-    TOperatorBoolOr         -> "operator '||'"
-    TOperatorAssignPlus     -> "operator '+='"
-    TOperatorAssignMinus    -> "operator '-='"
-    TOperatorAssignMult     -> "operator '*='"
-    TOperatorAssignDiv      -> "operator '/='"
-    TOperatorAssignMod      -> "operator '%='"
-    TOperatorAssignPow      -> "operator '^='"
-    TDelimiterParensOpen    -> "delimiter '('"
-    TDelimiterParensClose   -> "delimiter ')'"
-    TDelimiterBracesOpen    -> "delimiter '{'"
-    TDelimiterBracesClose   -> "delimiter '}'"
-    TDelimiterBracketsOpen  -> "delimiter '['"
-    TDelimiterBracketsClose -> "delimiter ']'"
-    TLiteralString s        -> String $ "string literal " <> Text.pack (show s)
-    TLiteralChar   c        -> String $ "char literal "   <> Text.pack (show c)
-    TLiteralInt    i        -> String $ "int literal "    <> Text.pack (show i)
-    TIdentifier    n        -> String $ "identifier "     <> Text.pack (show n)
-    TEOF                    -> "end of file"
+    TKeywordAs              -> object ["kind" .= String "keyword",    "value" .= String "as"      ]
+    TKeywordBreak           -> object ["kind" .= String "keyword",    "value" .= String "break"   ]
+    TKeywordConst           -> object ["kind" .= String "keyword",    "value" .= String "const"   ]
+    TKeywordContinue        -> object ["kind" .= String "keyword",    "value" .= String "continue"]
+    TKeywordElse            -> object ["kind" .= String "keyword",    "value" .= String "else"    ]
+    TKeywordEnum            -> object ["kind" .= String "keyword",    "value" .= String "enum"    ]
+    TKeywordFalse           -> object ["kind" .= String "keyword",    "value" .= String "false"   ]
+    TKeywordFn              -> object ["kind" .= String "keyword",    "value" .= String "fn"      ]
+    TKeywordFor             -> object ["kind" .= String "keyword",    "value" .= String "for"     ]
+    TKeywordIf              -> object ["kind" .= String "keyword",    "value" .= String "if"      ]
+    TKeywordIn              -> object ["kind" .= String "keyword",    "value" .= String "in"      ]
+    TKeywordLet             -> object ["kind" .= String "keyword",    "value" .= String "let"     ]
+    TKeywordReturn          -> object ["kind" .= String "keyword",    "value" .= String "return"  ]
+    TKeywordStruct          -> object ["kind" .= String "keyword",    "value" .= String "struct"  ]
+    TKeywordTrue            -> object ["kind" .= String "keyword",    "value" .= String "true"    ]
+    TKeywordType            -> object ["kind" .= String "keyword",    "value" .= String "type"    ]
+    TKeywordUse             -> object ["kind" .= String "keyword",    "value" .= String "use"     ]
+    TKeywordWhile           -> object ["kind" .= String "keyword",    "value" .= String "while"   ]
+    TOperatorAt             -> object ["kind" .= String "operator",   "value" .= String "@"       ]
+    TOperatorSemicolon      -> object ["kind" .= String "operator",   "value" .= String ";"       ]
+    TOperatorType           -> object ["kind" .= String "operator",   "value" .= String "::"      ]
+    TOperatorStar           -> object ["kind" .= String "operator",   "value" .= String "*"       ]
+    TOperatorComma          -> object ["kind" .= String "operator",   "value" .= String ","       ]
+    TOperatorAssign         -> object ["kind" .= String "operator",   "value" .= String "="       ]
+    TOperatorColon          -> object ["kind" .= String "operator",   "value" .= String "@"       ]
+    TOperatorArrow          -> object ["kind" .= String "operator",   "value" .= String "->"      ]
+    TOperatorLessThan       -> object ["kind" .= String "operator",   "value" .= String "<"       ]
+    TOperatorGreaterThan    -> object ["kind" .= String "operator",   "value" .= String ">"       ]
+    TOperatorDot            -> object ["kind" .= String "operator",   "value" .= String "."       ]
+    TOperatorRangeInclusive -> object ["kind" .= String "operator",   "value" .= String "..="     ]
+    TOperatorRangeExclusive -> object ["kind" .= String "operator",   "value" .= String ".."      ]
+    TOperatorReference      -> object ["kind" .= String "operator",   "value" .= String "&"       ]
+    TOperatorNot            -> object ["kind" .= String "operator",   "value" .= String "!"       ]
+    TOperatorMinus          -> object ["kind" .= String "operator",   "value" .= String "-"       ]
+    TOperatorPlus           -> object ["kind" .= String "operator",   "value" .= String "+"       ]
+    TOperatorDiv            -> object ["kind" .= String "operator",   "value" .= String "/"       ]
+    TOperatorMod            -> object ["kind" .= String "operator",   "value" .= String "%"       ]
+    TOperatorPow            -> object ["kind" .= String "operator",   "value" .= String "^"       ]
+    TOperatorEqual          -> object ["kind" .= String "operator",   "value" .= String "=="      ]
+    TOperatorDiff           -> object ["kind" .= String "operator",   "value" .= String "!="      ]
+    TOperatorGreaterOrEqual -> object ["kind" .= String "operator",   "value" .= String ">="      ]
+    TOperatorLessOrEqual    -> object ["kind" .= String "operator",   "value" .= String "<="      ]
+    TOperatorBoolAnd        -> object ["kind" .= String "operator",   "value" .= String "&&"      ]
+    TOperatorBoolOr         -> object ["kind" .= String "operator",   "value" .= String "||"      ]
+    TOperatorAssignPlus     -> object ["kind" .= String "operator",   "value" .= String "+="      ]
+    TOperatorAssignMinus    -> object ["kind" .= String "operator",   "value" .= String "-="      ]
+    TOperatorAssignMult     -> object ["kind" .= String "operator",   "value" .= String "*="      ]
+    TOperatorAssignDiv      -> object ["kind" .= String "operator",   "value" .= String "/="      ]
+    TOperatorAssignMod      -> object ["kind" .= String "operator",   "value" .= String "%="      ]
+    TOperatorAssignPow      -> object ["kind" .= String "operator",   "value" .= String "^="      ]
+    TDelimiterParensOpen    -> object ["kind" .= String "delimiter",  "value" .= String "("       ]
+    TDelimiterParensClose   -> object ["kind" .= String "delimiter",  "value" .= String ")"       ]
+    TDelimiterBracesOpen    -> object ["kind" .= String "delimiter",  "value" .= String "{"       ]
+    TDelimiterBracesClose   -> object ["kind" .= String "delimiter",  "value" .= String "}"       ]
+    TDelimiterBracketsOpen  -> object ["kind" .= String "delimiter",  "value" .= String "["       ]
+    TDelimiterBracketsClose -> object ["kind" .= String "delimiter",  "value" .= String "]"       ]
+    TLiteralString s        -> object ["kind" .= String "literal",    "value" .= s                ]
+    TLiteralChar   c        -> object ["kind" .= String "literal",    "value" .= c                ]
+    TLiteralInt    i        -> object ["kind" .= String "literal",    "value" .= i                ]
+    TIdentifier    n        -> object ["kind" .= String "literal",    "value" .= rawIdentifier n  ]
+    TEOF                    -> object ["kind" .= String "system",     "value" .= String "EOF"     ]
 
 instance Serialize Role where
   visit = \case
